@@ -111,6 +111,17 @@ class TokenManager:
         logger.info("Registered token for '%s'", device_name)
         return self._to_info(entry)
 
+    def is_token_expired(self, token: str) -> bool:
+        """Check if a token is known and expired.
+
+        Returns False if the token is valid or unknown (never existed).
+        Returns True only if the token exists but has passed its expiry.
+        """
+        entry = self._tokens.get(token)
+        if entry is None:
+            return False
+        return self._to_info(entry).expired
+
     def validate_token(self, token: str) -> TokenInfo | None:
         """Check if a token is valid.
 

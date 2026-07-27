@@ -59,7 +59,7 @@ def create_auth_middleware(token_manager: TokenManager):
         info = token_manager.validate_token(token)
         if info is None:
             # Check if it's an expired token vs. invalid
-            is_expired = _is_token_expired(token_manager, token)
+            is_expired = token_manager.is_token_expired(token)
             return JSONResponse(
                 {"detail": "unauthorized"},
                 status_code=401,
@@ -71,15 +71,6 @@ def create_auth_middleware(token_manager: TokenManager):
         return response
 
     return middleware
-
-
-def _is_token_expired(tm: TokenManager, token: str) -> bool:
-    """Check if a token is known but expired (vs. never existed)."""
-    entry = tm._tokens.get(token)
-    if entry is None:
-        return False
-    info = tm._to_info(entry)
-    return info.expired
 
 
 def create_auth_router(

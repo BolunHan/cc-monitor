@@ -133,6 +133,13 @@ def create_app(
                                 })
                     except Exception:
                         logger.exception("Error polling pairing requests")
+
+                    # Cap _seen to prevent unbounded memory growth
+                    if len(_seen) > 1000:
+                        _seen.clear()
+                        for req in pairing_manager.get_pending():
+                            _seen.add(req.id)
+
                     await asyncio.sleep(1.0)
 
             asyncio.ensure_future(_poll_loop())
