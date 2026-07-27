@@ -205,6 +205,7 @@ def create_auth_router(
                 {
                     "id": r.id,
                     "device_name": r.device_name,
+                    "pairing_code": r.pairing_code,
                     "requested_at": r.requested_at.isoformat(),
                     "status": r.status,
                 }
