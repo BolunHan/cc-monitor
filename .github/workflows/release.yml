@@ -2,19 +2,30 @@ name: Release
 
 on:
     push:
-        workflow_dispatch:
-        tags: [ "v*.*.*" ]
+        tags: ["v*.*.*"]
 
 permissions:
     contents: write
     packages: write
+    actions: read
 
 jobs:
+    docker:
+        uses: ./.github/workflows/build-docker.yml
+        with:
+            version: ${{ github.ref_name }}
+        secrets: inherit
+
+    apk:
+        uses: ./.github/workflows/build-apk.yml
+        with:
+            version: ${{ github.ref_name }}
+        secrets: inherit
+
     release:
+        needs: [docker, apk]
         runs-on: ubuntu-latest
         steps:
-            -   uses: actions/checkout@v4
-
             -   name: Set up Docker Buildx
                 uses: docker/setup-buildx-action@v3
 
@@ -25,50 +36,43 @@ jobs:
                     username: ${{ github.actor }}
                     password: ${{ secrets.GITHUB_TOKEN }}
 
-            -   name: Extract metadata
-                id: meta
-                run: |
-                    VERSION=${GITHUB_REF#refs/tags/v}
-                    OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-                    echo "version=${VERSION}" >> $GITHUB_OUTPUT
-                    echo "owner=${OWNER}" >> $GITHUB_OUTPUT
-                    echo "image=ghcr.io/${OWNER}/cc-monitor" >> $GITHUB_OUTPUT
-
-            -   name: Build and push Docker image
-                uses: docker/build-push-action@v6
+            -   name: Download APK artifact
+                uses: actions/download-artifact@v4
                 with:
-                    context: .
-                    push: true
-                    tags: |
-                        ${{ steps.meta.outputs.image }}:latest
-                        ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
-                    cache-from: type=gha
-                    cache-to: type=gha,mode=max
+                    name: cc-monitor-${{ needs.apk.outputs.version }}.apk
 
-            -   name: Export image as tar
+            -   name: Pull and export Docker image as tar
                 run: |
-                    docker pull ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
-                    docker save ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }} | \
-                      gzip > cc-monitor-${{ steps.meta.outputs.version }}.tar.gz
+                    VERSION="${{ needs.docker.outputs.version }}"
+                    IMAGE="${{ needs.docker.outputs.image }}"
+                    docker pull "${IMAGE}:${VERSION}"
+                    docker save "${IMAGE}:${VERSION}" | gzip > "cc-monitor-${VERSION}.tar.gz"
 
             -   name: Create GitHub Release
                 uses: softprops/action-gh-release@v2
                 with:
-                    name: "cc-monitor v${{ steps.meta.outputs.version }}"
+                    name: "cc-monitor v${{ needs.docker.outputs.version }}"
                     body: |
-                        ## cc-monitor v${{ steps.meta.outputs.version }}
-                        
+                        ## cc-monitor v${{ needs.docker.outputs.version }}
+
                         ### Docker
                         ```bash
-                        docker pull ghcr.io/${{ steps.meta.outputs.owner }}/cc-monitor:${{ steps.meta.outputs.version }}
-                        docker run -p 9876:9876 ghcr.io/${{ steps.meta.outputs.owner }}/cc-monitor:${{ steps.meta.outputs.version }}
+                        docker pull ${{ needs.docker.outputs.image }}:${{ needs.docker.outputs.version }}
+                        docker run -p 9876:9876 ${{ needs.docker.outputs.image }}:${{ needs.docker.outputs.version }}
                         ```
-                        
-                        ### Run
+
+                        ### Android
+                        Download the APK below and install via ADB:
                         ```bash
-                        docker load -i cc-monitor-${{ steps.meta.outputs.version }}.tar.gz
-                        docker run -p 9876:9876 cc-monitor:${{ steps.meta.outputs.version }}
+                        adb install cc-monitor-${{ needs.apk.outputs.version }}.apk
+                        ```
+
+                        ### Docker (offline)
+                        ```bash
+                        docker load -i cc-monitor-${{ needs.docker.outputs.version }}.tar.gz
+                        docker run -p 9876:9876 ${{ needs.docker.outputs.image }}:${{ needs.docker.outputs.version }}
                         ```
                     files: |
-                        cc-monitor-${{ steps.meta.outputs.version }}.tar.gz
+                        cc-monitor-${{ needs.docker.outputs.version }}.tar.gz
+                        app-release.apk
                     generate_release_notes: true

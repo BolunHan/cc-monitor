@@ -1,0 +1,57 @@
+name: Build APK
+
+on:
+    workflow_dispatch:
+    workflow_call:
+        inputs:
+            version:
+                type: string
+                description: "Version tag (e.g. 0.4.2)"
+                default: ""
+        outputs:
+            version:
+                value: ${{ jobs.build.outputs.version }}
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        outputs:
+            version: ${{ steps.meta.outputs.version }}
+        steps:
+            -   uses: actions/checkout@v4
+
+            -   name: Set up Java
+                uses: actions/setup-java@v4
+                with:
+                    java-version: "17"
+                    distribution: temurin
+
+            -   name: Set up Flutter
+                uses: subosito/flutter-action@v2
+                with:
+                    channel: stable
+
+            -   name: Extract metadata
+                id: meta
+                run: |
+                    VERSION="${{ inputs.version }}"
+                    VERSION="${VERSION#v}"
+                    if [ -z "$VERSION" ]; then
+                      VERSION="dev-$(date +%Y%m%d-%H%M%S)"
+                    fi
+                    echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+            -   name: Generate Android platform files
+                working-directory: android_app
+                run: |
+                    flutter create --platforms=android --org com.ccmonitor --project-name cc_monitor_app .
+
+            -   name: Build APK
+                working-directory: android_app
+                run: flutter build apk --release
+
+            -   name: Upload APK artifact
+                uses: actions/upload-artifact@v4
+                with:
+                    name: cc-monitor-${{ steps.meta.outputs.version }}.apk
+                    path: android_app/build/app/outputs/flutter-apk/app-release.apk
