@@ -102,6 +102,8 @@ class StateManager:
                 existing.raw_event = "Stop"
                 existing.raw_detail = None
                 existing.updated_at = datetime.now(timezone.utc)
+                self._write_file(existing)
+                await self._broadcast(existing)
                 return existing
             # No existing session — create as idle anyway (edge case)
             new_state = MonitorState.IDLE
