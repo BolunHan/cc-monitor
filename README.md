@@ -46,3 +46,14 @@ Copy the hook entries from `.claude/settings.json` in this repo, adjusting paths
 ## Architecture
 
 Hook scripts (stdlib-only Python) write `~/.cc-monitor/<session_id>.json` files and POST to the server. The FastAPI server holds in-memory state, broadcasts changes via SSE, and restores state from disk on startup.
+
+## Remote Dashboard (GitHub Pages)
+
+The dashboard is fully static — you can host it anywhere and point it at your cc-monitor server.
+
+**Automatic deployment** via GitHub Actions on every push to `main`:
+
+1. Push to `main` — the workflow in `.github/workflows/deploy-gh-pages.yml` deploys `static/` to the `gh-pages` branch
+2. In your repo: **Settings → Pages → Source** → "Deploy from a branch", select `gh-pages`, `/ (root)`, Save
+3. Open `https://<user>.github.io/cc-monitor/`
+4. Click ⚙ → set **Server URL** + **Port** to your cc-monitor server → Save & Reconnect
