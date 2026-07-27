@@ -11,6 +11,7 @@ import 'screens/dashboard_screen.dart';
 import 'screens/session_detail_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/server_picker_screen.dart';
+import 'screens/pairing_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -52,7 +53,9 @@ class CCMonitorApp extends StatelessWidget {
         title: 'cc-monitor',
         theme: AppTheme.light,
         darkTheme: AppTheme.dark,
-        initialRoute: '/',
+        home: _StartupGate(
+          apiClient: apiClient,
+        ),
         onGenerateRoute: (settings) {
           switch (settings.name) {
             case '/':
@@ -72,6 +75,10 @@ class CCMonitorApp extends StatelessWidget {
               return MaterialPageRoute(
                 builder: (_) => const ServerPickerScreen(),
               );
+            case '/pair':
+              return MaterialPageRoute(
+                builder: (_) => const PairingScreen(),
+              );
             default:
               return MaterialPageRoute(
                 builder: (_) => const DashboardScreen(),
@@ -79,6 +86,46 @@ class CCMonitorApp extends StatelessWidget {
           }
         },
       ),
+    );
+  }
+}
+
+class _StartupGate extends StatefulWidget {
+  final ApiClient apiClient;
+  const _StartupGate({required this.apiClient});
+
+  @override
+  State<_StartupGate> createState() => _StartupGateState();
+}
+
+class _StartupGateState extends State<_StartupGate> {
+  late Future<bool> _configureFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _configureFuture = widget.apiClient.configureFromStore().then((_) {
+      return widget.apiClient.isConfigured;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: _configureFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (snapshot.data == true) {
+          return const DashboardScreen();
+        }
+
+        return const ServerPickerScreen();
+      },
     );
   }
 }
