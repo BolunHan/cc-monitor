@@ -7,8 +7,20 @@
     <link rel="stylesheet" href="/static/css/app.css">
 </head>
 <body>
-    <h1>cc-monitor</h1>
-    <p>Claude Code session monitor.</p>
+    <header class="header">
+        <h1 class="header__title">cc-monitor</h1>
+        <div class="header__status">
+            <span class="connection-indicator" id="connection-indicator" title="SSE connection status"></span>
+            <span class="connection-label" id="connection-label">connecting</span>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="session-grid" id="session-grid">
+            <p class="empty-state" id="empty-state">No active sessions. Start a Claude Code session to see it here.</p>
+        </div>
+    </main>
+
     <script src="/static/js/app.js"></script>
 </body>
 </html>
