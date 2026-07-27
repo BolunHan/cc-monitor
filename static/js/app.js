@@ -526,6 +526,7 @@
 
     const btnPair = document.getElementById("btn-pair");
     const pairingPanel = document.getElementById("pairing-panel");
+    const btnRefreshQr = document.getElementById("btn-refresh-qr");
     const pairQr = document.getElementById("pair-qr");
     const pairingRequestsList = document.getElementById("pairing-requests-list");
     let qrCodeInstance = null;
@@ -533,7 +534,6 @@
 
     btnPair.addEventListener("click", () => {
         const wasHidden = pairingPanel.classList.contains("hidden");
-        // Close settings if open
         settingsPanel.classList.add("hidden");
         pairingPanel.classList.toggle("hidden");
         if (wasHidden) {
@@ -542,6 +542,10 @@
         } else {
             stopPairingPoll();
         }
+    });
+
+    btnRefreshQr.addEventListener("click", () => {
+        loadPairingQR();
     });
 
     async function loadPairingQR() {
