@@ -29,7 +29,7 @@
             <div class="settings-panel__fields">
                 <label class="settings-panel__label">
                     Server URL
-                    <input type="text" class="settings-panel__input" id="settings-url" placeholder="http://127.0.0.1:9876">
+                    <input type="text" class="settings-panel__input" id="settings-url" placeholder="http://127.0.0.1">
                 </label>
                 <label class="settings-panel__label">
                     Port
@@ -48,9 +48,44 @@
     </div>
 
     <main class="main">
-        <div class="session-grid" id="session-grid">
-            <p class="empty-state" id="empty-state">No active sessions. Start a Claude Code session to see it here.</p>
-        </div>
+        <!-- Active sessions (default expanded) -->
+        <section class="section" id="section-active">
+            <div class="section__header" data-section="active">
+                <span class="section__toggle">▼</span>
+                <h2 class="section__title">Active</h2>
+                <span class="section__count" id="count-active">0</span>
+            </div>
+            <div class="section__body" id="body-active">
+                <div class="session-grid" id="grid-active"></div>
+                <p class="empty-state" id="empty-active">No active sessions</p>
+            </div>
+        </section>
+
+        <!-- Completed sessions (default collapsed) -->
+        <section class="section section--collapsed" id="section-complete">
+            <div class="section__header" data-section="complete">
+                <span class="section__toggle">▶</span>
+                <h2 class="section__title">Complete</h2>
+                <span class="section__count" id="count-complete">0</span>
+            </div>
+            <div class="section__body hidden" id="body-complete">
+                <div class="session-grid" id="grid-complete"></div>
+                <p class="empty-state" id="empty-complete">No completed sessions</p>
+            </div>
+        </section>
+
+        <!-- Archived sessions (default collapsed) -->
+        <section class="section section--collapsed" id="section-archive">
+            <div class="section__header" data-section="archive">
+                <span class="section__toggle">▶</span>
+                <h2 class="section__title">Archived</h2>
+                <span class="section__count" id="count-archive">0</span>
+            </div>
+            <div class="section__body hidden" id="body-archive">
+                <div class="session-grid" id="grid-archive"></div>
+                <p class="empty-state" id="empty-archive">No archived sessions</p>
+            </div>
+        </section>
     </main>
 
     <footer class="footer">

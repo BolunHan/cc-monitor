@@ -5,21 +5,25 @@
  */
 (() => {
     const STORAGE_KEY_URL = "cc-monitor-server-url";
+    const DEFAULT_HOST = "http://127.0.0.1";
+    const DEFAULT_PORT = "9876";
 
     // ---- Server URL ----
 
     function getServerUrl() {
         const stored = localStorage.getItem(STORAGE_KEY_URL);
         if (stored) return stored.replace(/\/+$/, "");
-        return window.location.origin;
+        // If served from localhost, use current origin (server knows its port)
+        const hostname = window.location.hostname;
+        if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]") {
+            return window.location.origin;
+        }
+        // Default for remote dashboards (gh-pages, etc.)
+        return DEFAULT_HOST + ":" + DEFAULT_PORT;
     }
 
     function setServerUrl(url) {
         localStorage.setItem(STORAGE_KEY_URL, url.replace(/\/+$/, ""));
-    }
-
-    function clearServerUrl() {
-        localStorage.removeItem(STORAGE_KEY_URL);
     }
 
     function apiUrl(path) {
@@ -28,12 +32,10 @@
 
     // ---- Globals ----
 
-    const grid = document.getElementById("session-grid");
-    const emptyState = document.getElementById("empty-state");
     const indicator = document.getElementById("connection-indicator");
     const label = document.getElementById("connection-label");
-    const cards = new Map();
-    const prevStates = new Map();
+    const cards = new Map(); // session_id -> {section, element}
+    const prevStates = new Map(); // session_id -> {state, archived}
     let notificationsPermitted = false;
     let currentEventSource = null;
 
@@ -53,7 +55,7 @@
     function notify(session) {
         if (!notificationsPermitted) return;
         const prev = prevStates.get(session.session_id);
-        if (session.state === prev) return;
+        if (prev && session.state === prev.state) return;
         if (session.state !== "idle" && session.state !== "pending_approval") return;
 
         const basename = dirBasename(session.cwd) || session.session_id.substring(0, 8);
@@ -108,6 +110,37 @@
         return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
     }
 
+    // ---- Section routing ----
+
+    function getSection(session) {
+        if (session.archived) return "archive";
+        if (session.state === "all_done") return "complete";
+        return "active";
+    }
+
+    function getGrid(section) {
+        return document.getElementById("grid-" + section);
+    }
+
+    function getEmpty(section) {
+        return document.getElementById("empty-" + section);
+    }
+
+    function getCount(section) {
+        return document.getElementById("count-" + section);
+    }
+
+    function updateCounts() {
+        let counts = {active: 0, complete: 0, archive: 0};
+        cards.forEach((_, sid) => {
+            const s = prevStates.get(sid);
+            if (s) counts[getSection({archived: s.archived, state: s.state})]++;
+        });
+        for (const sec of ["active", "complete", "archive"]) {
+            getCount(sec).textContent = counts[sec];
+        }
+    }
+
     // ---- Session Cards ----
 
     function createCard(session) {
@@ -122,6 +155,21 @@
             ? `<div class="session-card__summary" title="${escapeHtml(session.summary)}">${escapeHtml(truncate(session.summary, 100))}</div>`
             : "";
 
+        const section = getSection(session);
+        const isArchived = section === "archive";
+        const badgeState = isArchived ? "archived" : session.state;
+        const badgeLabel = isArchived ? "archived" : session.state.replace("_", " ");
+
+        let actions = "";
+        if (section === "active" || section === "complete") {
+            actions += `<button class="btn--card btn--card-archive" data-action="archive" data-sid="${escapeHtml(session.session_id)}">Archive</button>`;
+        } else {
+            actions += `<button class="btn--card btn--card-unarchive" data-action="unarchive" data-sid="${escapeHtml(session.session_id)}">Unarchive</button>`;
+        }
+        if (section === "active") {
+            actions += `<button class="btn--card btn--card-complete" data-action="complete" data-sid="${escapeHtml(session.session_id)}">Mark Done</button>`;
+        }
+
         card.innerHTML = `
             <div class="session-card__header">
                 <div>
@@ -130,8 +178,8 @@
                     </div>
                     ${subtitle ? `<div class="session-card__subtitle" title="${escapeHtml(session.session_id)}">${subtitle.substring(0, 20)}</div>` : ""}
                 </div>
-                <span class="session-card__badge badge-${session.state}">
-                    ${session.state.replace("_", " ")}
+                <span class="session-card__badge badge-${badgeState}">
+                    ${badgeLabel}
                 </span>
             </div>
             ${summary}
@@ -141,26 +189,69 @@
                 ${session.raw_detail ? ` (${escapeHtml(session.raw_detail)})` : ""}
             </div>
             <div class="session-card__time">${relativeTime(session.updated_at)}</div>
+            ${actions ? `<div class="session-card__actions">${actions}</div>` : ""}
         `;
         return card;
     }
 
+    function placeCard(session, cardEl) {
+        const section = getSection(session);
+        const grid = getGrid(section);
+        const empty = getEmpty(section);
+        const existing = cards.get(session.session_id);
+
+        if (existing) {
+            if (existing.section === section) {
+                existing.element.replaceWith(cardEl);
+            } else {
+                existing.element.remove();
+                grid.appendChild(cardEl);
+            }
+        } else {
+            grid.appendChild(cardEl);
+        }
+        empty.style.display = "none";
+        cards.set(session.session_id, {section, element: cardEl});
+    }
+
     function updateCard(session) {
         const card = createCard(session);
-        const existing = cards.get(session.session_id);
-        if (existing) {
-            existing.replaceWith(card);
-        } else {
-            grid.appendChild(card);
-            emptyState.style.display = "none";
-        }
-        cards.set(session.session_id, card);
+        placeCard(session, card);
+        updateCounts();
+        bindCardActions(card);
     }
 
     function clearAllCards() {
         cards.clear();
-        grid.querySelectorAll(".session-card").forEach(c => c.remove());
-        emptyState.style.removeProperty("display");
+        for (const sec of ["active", "complete", "archive"]) {
+            getGrid(sec).querySelectorAll(".session-card").forEach(c => c.remove());
+            getEmpty(sec).style.removeProperty("display");
+            getCount(sec).textContent = "0";
+        }
+    }
+
+    // ---- Card actions ----
+
+    async function handleCardAction(action, sessionId) {
+        try {
+            const resp = await fetch(apiUrl(`/api/session/${sessionId}/${action}`), {method: "POST"});
+            if (resp.ok) {
+                const session = await resp.json();
+                updateCard(session);
+                prevStates.set(session.session_id, {state: session.state, archived: session.archived});
+            }
+        } catch (err) {
+            console.error("cc-monitor: action failed", action, err);
+        }
+    }
+
+    function bindCardActions(card) {
+        card.querySelectorAll("[data-action]").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                handleCardAction(btn.dataset.action, btn.dataset.sid);
+            });
+        });
     }
 
     // ---- SSE Connection ----
@@ -169,13 +260,8 @@
     const HEARTBEAT_GRACE = 10;
 
     function connectSSE() {
-        if (currentEventSource) {
-            currentEventSource.close();
-        }
-        clearAllCards();
-        setConnected(false);
+        if (currentEventSource) currentEventSource.close();
         lastHeartbeat = 0;
-        label.textContent = "connecting";
 
         const es = new EventSource(apiUrl("/api/stream"));
         currentEventSource = es;
@@ -183,6 +269,7 @@
         es.addEventListener("open", () => {
             lastHeartbeat = Date.now();
             setConnected(true);
+            // Refresh in case events were missed while disconnected
             loadSessions();
         });
 
@@ -191,7 +278,7 @@
                 const session = JSON.parse(e.data);
                 updateCard(session);
                 notify(session);
-                prevStates.set(session.session_id, session.state);
+                prevStates.set(session.session_id, {state: session.state, archived: session.archived});
                 lastHeartbeat = Date.now();
             } catch (err) {
                 console.error("cc-monitor: failed to parse SSE data", err);
@@ -202,9 +289,7 @@
             lastHeartbeat = Date.now();
         });
 
-        es.addEventListener("error", () => {
-            // EventSource auto-reconnects; watchdog handles disconnect detection
-        });
+        es.addEventListener("error", () => {});
     }
 
     setInterval(() => {
@@ -222,12 +307,10 @@
             if (data.sessions && data.sessions.length > 0) {
                 data.sessions.forEach(s => {
                     updateCard(s);
-                    prevStates.set(s.session_id, s.state);
+                    prevStates.set(s.session_id, {state: s.state, archived: s.archived});
                 });
             }
-            if (cards.size === 0) {
-                emptyState.style.removeProperty("display");
-            }
+            updateCounts();
         } catch (err) {
             console.error("cc-monitor: failed to load sessions", err);
         }
@@ -311,11 +394,10 @@
 
     function populateSettingsInputs() {
         const url = getServerUrl();
-        // Parse URL into host and port
         try {
             const u = new URL(url);
             settingsUrl.value = u.protocol + "//" + u.hostname;
-            settingsPort.value = u.port || "9876";
+            settingsPort.value = u.port || DEFAULT_PORT;
         } catch (_) {
             settingsUrl.value = url;
             settingsPort.value = "";
@@ -338,10 +420,8 @@
             settingsFeedback.className = "settings-panel__feedback error";
             return;
         }
-
         let fullUrl = host;
         if (port) fullUrl = host + ":" + port;
-
         setServerUrl(fullUrl);
         settingsFeedback.textContent = "✓ saved, reconnecting…";
         settingsFeedback.className = "settings-panel__feedback success";
@@ -349,7 +429,6 @@
             settingsFeedback.textContent = "";
             settingsFeedback.className = "settings-panel__feedback";
         }, 2000);
-
         connectSSE();
         loadVersion();
         checkHooksStatus();
@@ -357,7 +436,6 @@
 
     btnUninstall.addEventListener("click", async () => {
         if (!confirm("Remove cc-monitor hooks from ~/.claude/settings.json?")) return;
-
         btnUninstall.disabled = true;
         settingsFeedback.textContent = "removing…";
         settingsFeedback.className = "settings-panel__feedback";
@@ -383,11 +461,38 @@
         }, 4000);
     });
 
+    // ---- Section collapse/expand ----
+
+    document.querySelectorAll(".section__header").forEach(header => {
+        header.addEventListener("click", () => {
+            const section = header.closest(".section");
+            const body = section.querySelector(".section__body");
+            const toggle = section.querySelector(".section__toggle");
+            const isCollapsed = body.classList.contains("hidden");
+            if (isCollapsed) {
+                body.classList.remove("hidden");
+                toggle.textContent = "▼";
+                section.classList.remove("section--collapsed");
+            } else {
+                body.classList.add("hidden");
+                toggle.textContent = "▶";
+                section.classList.add("section--collapsed");
+            }
+        });
+    });
+
     // ---- Initialise ----
 
     requestNotificationPermission();
     populateSettingsInputs();
     loadVersion();
     checkHooksStatus();
+
+    // Fetch sessions immediately via REST — don't wait for SSE to connect.
+    // SSE connects in parallel for live updates; when its 'open' fires,
+    // loadSessions() refreshes any events missed during the handshake.
+    loadSessions().then(() => {
+        if (lastHeartbeat === 0) setConnected(true);
+    });
     connectSSE();
 })();

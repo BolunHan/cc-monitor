@@ -301,11 +301,60 @@ body {
     color: var(--color-disconnected);
 }
 
-/* ---- Session Grid ---- */
+/* ---- Sections ---- */
 
 .main {
     padding: 24px;
 }
+
+.section {
+    margin-bottom: 24px;
+}
+
+.section__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 0;
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid var(--color-border);
+    margin-bottom: 12px;
+}
+
+.section__header:hover .section__title {
+    color: var(--color-text);
+}
+
+.section__toggle {
+    font-size: 11px;
+    color: var(--color-text-muted);
+    width: 16px;
+    text-align: center;
+    transition: transform 0.15s;
+}
+
+.section__title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.section__count {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    background: var(--color-bg);
+    padding: 1px 8px;
+    border-radius: 10px;
+}
+
+.section__body.hidden {
+    display: none;
+}
+
+/* ---- Session Grid ---- */
 
 .session-grid {
     display: grid;
@@ -394,6 +443,11 @@ body {
     color: var(--color-done);
 }
 
+.badge-archived {
+    background: color-mix(in srgb, var(--color-text-muted) 15%, transparent);
+    color: var(--color-text-muted);
+}
+
 @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.6; }
@@ -427,6 +481,44 @@ body {
     margin-top: 8px;
     font-size: 12px;
     color: var(--color-text-muted);
+}
+
+.session-card__actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--color-border);
+}
+
+.btn--card {
+    padding: 3px 10px;
+    font-size: 11px;
+    border-radius: 4px;
+    border: 1px solid var(--color-border);
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.btn--card:hover {
+    color: var(--color-text);
+    border-color: var(--color-text-muted);
+}
+
+.btn--card-archive:hover {
+    border-color: var(--color-text-muted);
+}
+
+.btn--card-complete:hover {
+    border-color: var(--color-done);
+    color: var(--color-done);
+}
+
+.btn--card-unarchive:hover {
+    border-color: var(--color-working);
+    color: var(--color-working);
 }
 
 /* ---- Footer ---- */
