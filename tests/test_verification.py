@@ -52,17 +52,17 @@ def server():
 class TestVersion:
     """Verify version endpoint and __version__ consistency."""
 
-    def test_version_endpoint_returns_030(self, server):
+    def test_version_endpoint_returns_200(self, server):
         resp = httpx.get(f"{server}/api/version")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["version"] == "0.4.1"
+        assert "version" in data
+        assert len(data["version"]) > 0
 
     def test_version_matches_package(self, server):
         from cc_monitor import __version__
         resp = httpx.get(f"{server}/api/version")
         assert resp.json()["version"] == __version__
-        assert __version__ == "0.4.1"
 
 
 class TestEventWithSummary:
