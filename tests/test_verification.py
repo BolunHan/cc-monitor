@@ -57,13 +57,13 @@ class TestVersion:
         resp = httpx.get(f"{server}/api/version")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["version"] == "0.3.0"
+        assert data["version"] == "0.3.1"
 
     def test_version_matches_package(self, server):
         from cc_monitor import __version__
         resp = httpx.get(f"{server}/api/version")
         assert resp.json()["version"] == __version__
-        assert __version__ == "0.3.0"
+        assert __version__ == "0.3.1"
 
 
 class TestEventWithSummary:
@@ -145,6 +145,38 @@ class TestEventWithSummary:
         resp = httpx.get(f"{server}/api/status/summary-test-5")
         assert resp.status_code == 200
         assert resp.json()["summary"] == "Update dependencies"
+
+
+class TestCors:
+    """CORS headers must be present for cross-origin dashboard hosting.
+
+    Note: CORS headers are only added when the request includes an Origin
+    header that differs from the server.  Same-origin requests (no Origin
+    header) correctly omit CORS headers per the spec.
+    """
+
+    _ORIGIN = {"Origin": "https://bolunhan.github.io"}
+
+    def test_cors_header_on_api(self, server):
+        resp = httpx.get(f"{server}/api/version", headers=self._ORIGIN)
+        assert resp.headers["access-control-allow-origin"] == "*"
+
+    def test_cors_header_on_status(self, server):
+        resp = httpx.get(f"{server}/api/status", headers=self._ORIGIN)
+        assert resp.headers["access-control-allow-origin"] == "*"
+
+    def test_cors_header_on_event_post(self, server):
+        resp = httpx.options(f"{server}/api/event", headers=self._ORIGIN)
+        assert resp.headers["access-control-allow-origin"] == "*"
+
+    def test_cors_preflight(self, server):
+        """OPTIONS preflight must return CORS headers."""
+        resp = httpx.options(f"{server}/api/version", headers={
+            "Origin": "https://bolunhan.github.io",
+            "Access-Control-Request-Method": "GET",
+        })
+        assert resp.status_code == 200
+        assert resp.headers["access-control-allow-origin"] == "*"
 
 
 class TestStaticFiles:

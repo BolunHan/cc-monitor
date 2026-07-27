@@ -9,6 +9,7 @@ from pathlib import Path
 from cc_monitor import __version__
 from cc_monitor.state import StateManager
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -48,6 +49,15 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     """
     app = FastAPI(title="cc-monitor", version=__version__)
     manager = StateManager(data_dir=data_dir)
+
+    # Allow cross-origin requests from any origin (dashboard may be
+    # hosted on GitHub Pages or another static host).
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.on_event("startup")
     async def _restore():
