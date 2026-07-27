@@ -67,14 +67,18 @@ class _ConnectingScreenState extends State<ConnectingScreen> {
     final baseUrl = 'https://${widget.host}:${widget.port}';
     _addLog('Target: $baseUrl');
 
+    final store = context.read<SecureStore>();
+    final clientId = await store.getClientId();
+    _addLog('Client ID: ${clientId.substring(0, 8)}...');
+
     if (widget.qrToken != null) {
-      await _pairViaQr(baseUrl);
+      await _pairViaQr(baseUrl, clientId);
     } else {
-      await _pairViaApproval(baseUrl);
+      await _pairViaApproval(baseUrl, clientId);
     }
   }
 
-  Future<void> _pairViaQr(String baseUrl) async {
+  Future<void> _pairViaQr(String baseUrl, String clientId) async {
     _addLog('Mode: QR code pairing');
     _addLog('Token: ${widget.qrToken!.substring(0, 12)}...');
 
@@ -98,7 +102,11 @@ class _ConnectingScreenState extends State<ConnectingScreen> {
       _addLog('Confirming QR token...');
       final resp = await dio.post(
         '/api/auth/pair/qr/confirm',
-        data: {'token': widget.qrToken, 'device_name': 'Android'},
+        data: {
+          'token': widget.qrToken,
+          'device_name': _deviceName,
+          'client_id': clientId,
+        },
       );
       _addLog('Confirm response: ${resp.statusCode} ${resp.data}');
 
@@ -117,10 +125,11 @@ class _ConnectingScreenState extends State<ConnectingScreen> {
     }
   }
 
-  Future<void> _pairViaApproval(String baseUrl) async {
+  Future<void> _pairViaApproval(String baseUrl, String clientId) async {
     _addLog('Mode: approval-based pairing');
     _addLog('Device: $_deviceName');
     _addLog('Pairing code: $_pairingCode');
+    _addLog('Client ID: ${clientId.substring(0, 8)}...');
 
     final dio = _createPairingDio(baseUrl);
 
@@ -131,6 +140,7 @@ class _ConnectingScreenState extends State<ConnectingScreen> {
         data: {
           'device_name': _deviceName,
           'pairing_code': _pairingCode,
+          'client_id': clientId,
         },
       );
       _addLog('Request response: ${resp.statusCode} ${resp.data}');
@@ -175,7 +185,7 @@ class _ConnectingScreenState extends State<ConnectingScreen> {
             // Confirm the token
             await dio.post(
               '/api/auth/pair/qr/confirm',
-              data: {'token': qrData['token'], 'device_name': 'Android'},
+              data: {'token': qrData['token'], 'device_name': _deviceName, 'client_id': clientId},
             );
 
             _addLog('Pairing successful!');

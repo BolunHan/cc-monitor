@@ -19,6 +19,7 @@ class TokenInfo:
 
     token: str
     device_name: str
+    client_id: str
     created_at: datetime
     expires_at: datetime
 
@@ -43,12 +44,15 @@ class TokenManager:
     # Public API
     # ------------------------------------------------------------------
 
-    def create_token(self, device_name: str, ttl_seconds: int = 0) -> TokenInfo:
+    def create_token(
+        self, device_name: str, ttl_seconds: int = 0, client_id: str = "",
+    ) -> TokenInfo:
         """Generate a new token for a device.
 
         Args:
             device_name: Human-readable device identifier.
             ttl_seconds: Token lifetime in seconds. 0 means never expires.
+            client_id: Unique client UUID for identifying this device.
 
         Returns:
             TokenInfo for the newly created token.
@@ -64,16 +68,18 @@ class TokenManager:
         entry = {
             "token": token,
             "device_name": device_name,
+            "client_id": client_id,
             "created_at": now.isoformat(),
             "expires_at": expires_at.isoformat(),
         }
         self._tokens[token] = entry
         self._save()
-        logger.info("Created token for '%s' (expires: %s)", device_name, expires_at)
+        logger.info("Created token for '%s' (client: %s)", device_name, client_id[:8] if client_id else "-")
         return self._to_info(entry)
 
     def register_token(
-        self, token: str, device_name: str, ttl_seconds: int = 0
+        self, token: str, device_name: str, ttl_seconds: int = 0,
+        client_id: str = "",
     ) -> TokenInfo:
         """Register a pre-existing token string with TokenManager.
 
@@ -85,6 +91,7 @@ class TokenManager:
             token: The pre-existing token string to register.
             device_name: Human-readable device identifier.
             ttl_seconds: Token lifetime in seconds. 0 means never expires.
+            client_id: Unique client UUID for identifying this device.
 
         Returns:
             TokenInfo for the registered token.
@@ -103,6 +110,7 @@ class TokenManager:
         entry = {
             "token": token,
             "device_name": device_name,
+            "client_id": client_id,
             "created_at": now.isoformat(),
             "expires_at": expires_at.isoformat(),
         }
@@ -228,6 +236,7 @@ class TokenManager:
         return TokenInfo(
             token=entry["token"],
             device_name=entry["device_name"],
+            client_id=entry.get("client_id", ""),
             created_at=datetime.fromisoformat(entry["created_at"]),
             expires_at=datetime.fromisoformat(entry["expires_at"]),
         )
@@ -315,7 +324,7 @@ class PairingManager:
         return token, expires_at
 
     def confirm_qr_token(
-        self, token: str, device_name: str
+        self, token: str, device_name: str, client_id: str = "",
     ) -> TokenInfo | None:
         """Confirm a pending QR token and activate it.
 
@@ -324,6 +333,7 @@ class PairingManager:
         Args:
             token: The pending QR token.
             device_name: Human-readable device name.
+            client_id: Unique client UUID.
 
         Returns:
             TokenInfo if confirmed, None if token unknown or expired.
@@ -338,7 +348,8 @@ class PairingManager:
 
         # Register the QR token itself as a valid auth token
         return self._token_manager.register_token(
-            token, device_name, ttl_seconds=pending["ttl_seconds"]
+            token, device_name, ttl_seconds=pending["ttl_seconds"],
+            client_id=client_id,
         )
 
     def expire_stale_qr_tokens(self) -> int:
@@ -360,13 +371,15 @@ class PairingManager:
     # ------------------------------------------------------------------
 
     def create_request(
-        self, device_name: str, pairing_code: str = ""
+        self, device_name: str, pairing_code: str = "",
+        client_id: str = "",
     ) -> str:
         """Submit a pairing request for manual approval.
 
         Args:
             device_name: Human-readable device identifier.
             pairing_code: Optional 6-digit code for identification.
+            client_id: Unique client UUID.
 
         Returns:
             The request ID for polling.
@@ -377,13 +390,14 @@ class PairingManager:
             "id": request_id,
             "device_name": device_name,
             "pairing_code": pairing_code,
+            "client_id": client_id,
             "requested_at": now.isoformat(),
             "status": "pending",
         }
         self._save_requests()
         logger.info(
-            "Pairing request '%s' from '%s' (code: %s)",
-            request_id, device_name, pairing_code,
+            "Pairing request '%s' from '%s' (client: %s, code: %s)",
+            request_id, device_name, client_id[:8] if client_id else "-", pairing_code,
         )
         return request_id
 
@@ -418,7 +432,9 @@ class PairingManager:
         entry["status"] = "approved"
         self._save_requests()
         return self._token_manager.create_token(
-            entry["device_name"], ttl_seconds=self._ttl_seconds
+            entry["device_name"],
+            ttl_seconds=self._ttl_seconds,
+            client_id=entry.get("client_id", ""),
         )
 
     def deny_request(self, request_id: str) -> bool:
@@ -459,6 +475,7 @@ class PairingManager:
             info = self._token_manager._to_info(entry)
             devices.append({
                 "device_name": info.device_name,
+                "client_id": info.client_id,
                 "created_at": info.created_at.isoformat(),
                 "expires_at": info.expires_at.isoformat(),
                 "expired": info.expired,

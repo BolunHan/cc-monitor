@@ -144,8 +144,9 @@ def create_auth_router(
         body = await request.json()
         token = body.get("token", "")
         device_name = body.get("device_name", "Unknown Device")
+        client_id = body.get("client_id", "")
 
-        info = pairing_manager.confirm_qr_token(token, device_name)
+        info = pairing_manager.confirm_qr_token(token, device_name, client_id)
         if info is None:
             raise HTTPException(
                 status_code=400,
@@ -168,7 +169,8 @@ def create_auth_router(
         body = await request.json()
         device_name = body.get("device_name", "Unknown Device")
         pairing_code = body.get("pairing_code", "")
-        request_id = pairing_manager.create_request(device_name, pairing_code)
+        client_id = body.get("client_id", "")
+        request_id = pairing_manager.create_request(device_name, pairing_code, client_id)
 
         return JSONResponse({
             "request_id": request_id,

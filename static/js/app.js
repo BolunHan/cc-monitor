@@ -635,7 +635,7 @@
             }
             list.innerHTML = devices.map(d => `
                 <div class="pairing-request">
-                    <span class="pairing-request__name">${escHtml(d.device_name)}<br><small>${d.expired ? 'expired' : 'active'}</small></span>
+                    <span class="pairing-request__name">${escHtml(d.device_name)}<br><code style="font-size:0.85em">${escHtml(d.client_id ? d.client_id.substring(0, 8) : '-')}</code> <small>${d.expired ? 'expired' : 'active'}</small></span>
                     <div class="pairing-request__actions">
                         <button class="btn btn--danger btn--tiny" onclick="window._ccRevokeDevice('${d.token_prefix}')" title="Revoke">✕</button>
                     </div>
