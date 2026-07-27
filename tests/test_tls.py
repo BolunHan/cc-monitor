@@ -1,5 +1,4 @@
 """Tests for cc_monitor.tls."""
-import tempfile
 from pathlib import Path
 
 from cc_monitor.tls import generate_self_signed_cert, get_cert_fingerprint
