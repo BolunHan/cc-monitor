@@ -1,0 +1,102 @@
+# Flutter + Android SDK builder image for cc-monitor
+#
+# Build (one-time):
+#   docker build --build-arg HTTP_PROXY=$http_proxy --build-arg HTTPS_PROXY=$https_proxy \
+#     -f Dockerfile.flutter -t cc-monitor-flutter .
+#
+# Run (build APK interactively):
+#   docker run --rm -it \
+#     -e HTTP_PROXY=$http_proxy -e HTTPS_PROXY=$https_proxy \
+#     -v ${PWD}:/build --workdir /build/android_app \
+#     cc-monitor-flutter flutter build apk --release
+
+FROM ubuntu:24.04
+
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8
+
+# ------------------------------------------------------------------
+# Proxy setup for build-time downloads
+# ------------------------------------------------------------------
+RUN if [ -n "$HTTP_PROXY" ]; then \
+      echo "build-time proxy: $HTTP_PROXY"; \
+      echo "Acquire::http::Proxy \"$HTTP_PROXY\";"  > /etc/apt/apt.conf.d/99proxy; \
+      echo "Acquire::https::Proxy \"$HTTPS_PROXY\";" >> /etc/apt/apt.conf.d/99proxy; \
+    fi
+
+# ------------------------------------------------------------------
+# System dependencies
+# ------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      curl git unzip xz-utils zip libglu1-mesa \
+      openjdk-17-jdk-headless \
+    && rm -rf /etc/apt/apt.conf.d/99proxy \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+
+# ------------------------------------------------------------------
+# Android SDK
+# ------------------------------------------------------------------
+ENV ANDROID_HOME=/opt/android-sdk
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+
+RUN mkdir -p $ANDROID_HOME/cmdline-tools \
+    && cd $ANDROID_HOME/cmdline-tools \
+    && curl ${HTTP_PROXY:+--proxy "$HTTP_PROXY"} -O \
+         https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
+    && unzip -q commandlinetools-linux-*.zip \
+    && rm commandlinetools-linux-*.zip \
+    && mv cmdline-tools latest
+
+ENV PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+
+RUN yes | sdkmanager --licenses > /dev/null \
+    && sdkmanager --install \
+         "platform-tools" \
+         "build-tools;34.0.0" \
+         "platforms;android-34"
+
+# ------------------------------------------------------------------
+# Gradle proxy (written at build time, used at run time if env var is set)
+# ------------------------------------------------------------------
+COPY <<'PREFLIGHT' /usr/local/bin/preflight
+#!/bin/bash
+# Runtime proxy injection for Gradle
+if [ -n "$HTTP_PROXY" ]; then
+  HOST=$(echo "$HTTP_PROXY" | sed 's|.*://||;s|:.*||')
+  PORT=$(echo "$HTTP_PROXY" | sed 's|.*:||')
+  mkdir -p /root/.gradle
+  cat > /root/.gradle/gradle.properties << EOF
+systemProp.http.proxyHost=$HOST
+systemProp.http.proxyPort=$PORT
+systemProp.https.proxyHost=$HOST
+systemProp.https.proxyPort=$PORT
+EOF
+  echo "gradle proxy: $HOST:$PORT"
+fi
+exec "$@"
+PREFLIGHT
+RUN chmod +x /usr/local/bin/preflight
+
+# ------------------------------------------------------------------
+# Flutter SDK
+# ------------------------------------------------------------------
+RUN git clone https://github.com/flutter/flutter.git -b stable /opt/flutter --depth 1
+ENV PATH="/opt/flutter/bin:$PATH"
+
+RUN flutter config --no-analytics \
+    && if [ -n "$HTTP_PROXY" ]; then \
+         flutter config --http-proxy "$HTTP_PROXY" --https-proxy "$HTTPS_PROXY"; \
+       fi \
+    && flutter precache --android
+
+RUN flutter doctor --android-licenses
+
+WORKDIR /build
+ENTRYPOINT ["/usr/local/bin/preflight"]
+CMD ["flutter", "doctor"]

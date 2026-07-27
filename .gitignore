@@ -4,3 +4,15 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 .claude/
+
+# Flutter generated
+android_app/android/
+android_app/build/
+android_app/.dart_tool/
+android_app/.flutter-plugins*
+android_app/.packages
+android_app/pubspec.lock
+
+# Docker env files (proxy settings)
+.env
+env

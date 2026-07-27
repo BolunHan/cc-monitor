@@ -11,3 +11,10 @@ static/
 .superpowers/
 venv/
 .venv/
+
+# Flutter / Android
+android_app/
+
+# Proxy / env files
+.env
+env
