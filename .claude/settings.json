@@ -1,0 +1,85 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/bolun/Projects/cc-monitor/hooks/pre_tool_use.py",
+            "description": "cc-monitor: mark session as working"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/bolun/Projects/cc-monitor/hooks/post_tool_use.py",
+            "description": "cc-monitor: mark session as working"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/bolun/Projects/cc-monitor/hooks/user_prompt_submit.py",
+            "description": "cc-monitor: mark session as working"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/bolun/Projects/cc-monitor/hooks/stop.py",
+            "description": "cc-monitor: mark session as idle"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/bolun/Projects/cc-monitor/hooks/notification.py",
+            "description": "cc-monitor: handle notification events"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/bolun/Projects/cc-monitor/hooks/permission_request.py",
+            "description": "cc-monitor: mark session as pending approval"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/bolun/Projects/cc-monitor/hooks/session_end.py",
+            "description": "cc-monitor: mark session as all done"
+          }
+        ]
+      }
+    ]
+  }
+}
