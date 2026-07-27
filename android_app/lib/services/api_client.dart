@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
@@ -43,6 +45,11 @@ class ApiClient {
     final port = int.parse(pairing['port']!);
     _dio.options.baseUrl = 'https://$host:$port';
     debugPrint('[$_tag] Configured: $host:$port (token: ${_token!.substring(0, 8)}...)');
+
+    // Bypass cert validation for self-signed certs
+    (_dio.httpClientAdapter as dynamic).onHttpClientCreate = (HttpClient client) {
+      client.badCertificateCallback = (cert, host, port) => true;
+    };
 
     _configured = true;
     return true;

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -48,6 +49,8 @@ class _ConnectingScreenState extends State<ConnectingScreen> {
   final List<String> _log = [];
   String _status = 'Connecting...';
   bool _done = false;
+  final String _pairingCode = (Random().nextInt(900000) + 100000).toString();
+  final String _deviceName = 'Android';
 
   @override
   void initState() {
@@ -116,7 +119,8 @@ class _ConnectingScreenState extends State<ConnectingScreen> {
 
   Future<void> _pairViaApproval(String baseUrl) async {
     _addLog('Mode: approval-based pairing');
-    _addLog('Device name: Android');
+    _addLog('Device: $_deviceName');
+    _addLog('Pairing code: $_pairingCode');
 
     final dio = _createPairingDio(baseUrl);
 
@@ -124,7 +128,10 @@ class _ConnectingScreenState extends State<ConnectingScreen> {
       _addLog('Submitting pairing request...');
       final resp = await dio.post(
         '/api/auth/pair/request',
-        data: {'device_name': 'Android'},
+        data: {
+          'device_name': _deviceName,
+          'pairing_code': _pairingCode,
+        },
       );
       _addLog('Request response: ${resp.statusCode} ${resp.data}');
 
@@ -225,6 +232,24 @@ class _ConnectingScreenState extends State<ConnectingScreen> {
                     color: _done ? Colors.green : Colors.orange,
                   ),
                 ),
+                if (widget.qrToken == null) ...[
+                  const SizedBox(height: 12),
+                  const Text('Pairing Code',
+                      style: TextStyle(fontSize: 11, color: Colors.grey)),
+                  const SizedBox(height: 4),
+                  Text(
+                    _pairingCode,
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace',
+                      letterSpacing: 6,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text('Verify this code on the web dashboard',
+                      style: TextStyle(fontSize: 11, color: Colors.grey)),
+                ],
               ],
             ),
           ),

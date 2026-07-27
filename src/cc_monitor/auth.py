@@ -262,6 +262,7 @@ class PairingRequest:
     device_name: str
     requested_at: datetime
     status: str  # "pending", "approved", "denied"
+    pairing_code: str = ""
 
 
 class PairingManager:
@@ -358,11 +359,14 @@ class PairingManager:
     # Approval-based pairing
     # ------------------------------------------------------------------
 
-    def create_request(self, device_name: str) -> str:
+    def create_request(
+        self, device_name: str, pairing_code: str = ""
+    ) -> str:
         """Submit a pairing request for manual approval.
 
         Args:
             device_name: Human-readable device identifier.
+            pairing_code: Optional 6-digit code for identification.
 
         Returns:
             The request ID for polling.
@@ -372,11 +376,15 @@ class PairingManager:
         self._requests[request_id] = {
             "id": request_id,
             "device_name": device_name,
+            "pairing_code": pairing_code,
             "requested_at": now.isoformat(),
             "status": "pending",
         }
         self._save_requests()
-        logger.info("Pairing request '%s' from '%s'", request_id, device_name)
+        logger.info(
+            "Pairing request '%s' from '%s' (code: %s)",
+            request_id, device_name, pairing_code,
+        )
         return request_id
 
     def get_request(self, request_id: str) -> PairingRequest | None:
@@ -439,9 +447,31 @@ class PairingManager:
         return PairingRequest(
             id=entry["id"],
             device_name=entry["device_name"],
+            pairing_code=entry.get("pairing_code", ""),
             requested_at=datetime.fromisoformat(entry["requested_at"]),
             status=entry["status"],
         )
+
+    def get_device_list(self) -> list[dict]:
+        """Return all paired (active) devices with their token info."""
+        devices = []
+        for token, entry in self._token_manager._tokens.items():
+            info = self._token_manager._to_info(entry)
+            devices.append({
+                "device_name": info.device_name,
+                "created_at": info.created_at.isoformat(),
+                "expires_at": info.expires_at.isoformat(),
+                "expired": info.expired,
+                "token_prefix": token[:12] + "...",
+            })
+        return devices
+
+    def revoke_device(self, token_prefix: str) -> bool:
+        """Revoke a device by token prefix match."""
+        for token in list(self._token_manager._tokens.keys()):
+            if token.startswith(token_prefix.rstrip(".")):
+                return self._token_manager.revoke_token(token)
+        return False
 
     def _load_requests(self) -> dict:
         path = self._data_dir / _PAIRING_REQUESTS_FILE

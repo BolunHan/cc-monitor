@@ -539,6 +539,7 @@
         if (wasHidden) {
             loadPairingQR();
             startPairingPoll();
+            loadPairedDevices();
         } else {
             stopPairingPoll();
         }
@@ -596,7 +597,7 @@
             }
             pairingRequestsList.innerHTML = requests.map(r => `
                 <div class="pairing-request">
-                    <span class="pairing-request__name">${escHtml(r.device_name)}</span>
+                    <span class="pairing-request__name">${escHtml(r.device_name)}${r.pairing_code ? `<br><code style="font-size:0.9em">${escHtml(r.pairing_code)}</code>` : ''}</span>
                     <div class="pairing-request__actions">
                         <button class="btn btn--success btn--tiny" onclick="window._ccApprovePair('${r.id}')">✓</button>
                         <button class="btn btn--danger btn--tiny" onclick="window._ccDenyPair('${r.id}')">✗</button>
@@ -618,6 +619,35 @@
         try {
             await fetch(apiUrl(`/api/auth/pair/request/${requestId}/deny`), { method: "POST" });
             pollPairingRequests();
+        } catch (_) {}
+    };
+
+    async function loadPairedDevices() {
+        const list = document.getElementById("paired-devices-list");
+        try {
+            const resp = await fetch(apiUrl("/api/auth/devices"));
+            if (!resp.ok) { list.innerHTML = '<p class="pairing-empty">—</p>'; return; }
+            const data = await resp.json();
+            const devices = data.devices || [];
+            if (devices.length === 0) {
+                list.innerHTML = '<p class="pairing-empty">No paired devices</p>';
+                return;
+            }
+            list.innerHTML = devices.map(d => `
+                <div class="pairing-request">
+                    <span class="pairing-request__name">${escHtml(d.device_name)}<br><small>${d.expired ? 'expired' : 'active'}</small></span>
+                    <div class="pairing-request__actions">
+                        <button class="btn btn--danger btn--tiny" onclick="window._ccRevokeDevice('${d.token_prefix}')" title="Revoke">✕</button>
+                    </div>
+                </div>
+            `).join("");
+        } catch (_) {}
+    }
+
+    window._ccRevokeDevice = async function(tokenPrefix) {
+        try {
+            await fetch(apiUrl(`/api/auth/devices/${encodeURIComponent(tokenPrefix)}`), { method: "DELETE" });
+            loadPairedDevices();
         } catch (_) {}
     };
 

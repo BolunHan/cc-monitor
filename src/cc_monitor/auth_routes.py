@@ -167,11 +167,13 @@ def create_auth_router(
         """
         body = await request.json()
         device_name = body.get("device_name", "Unknown Device")
-        request_id = pairing_manager.create_request(device_name)
+        pairing_code = body.get("pairing_code", "")
+        request_id = pairing_manager.create_request(device_name, pairing_code)
 
         return JSONResponse({
             "request_id": request_id,
             "status": "pending",
+            "pairing_code": pairing_code,
         })
 
     @router.get("/api/auth/pair/request/{request_id}/status")
@@ -283,5 +285,18 @@ def create_auth_router(
             "expires_at": info.expires_at.isoformat(),
             "ttl_seconds": ttl_seconds,
         })
+
+    @router.get("/api/auth/devices")
+    async def list_devices():
+        """List all paired devices."""
+        devices = pairing_manager.get_device_list()
+        return JSONResponse({"devices": devices})
+
+    @router.delete("/api/auth/devices/{token_prefix}")
+    async def revoke_device(token_prefix: str):
+        """Revoke a paired device by token prefix."""
+        if pairing_manager.revoke_device(token_prefix):
+            return JSONResponse({"status": "revoked"})
+        raise HTTPException(status_code=404, detail="Device not found")
 
     return router
