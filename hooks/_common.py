@@ -81,6 +81,9 @@ def run_hook(expected_event: str) -> None:
     except json.JSONDecodeError:
         return
 
+    if data.get("hook_event_name") != expected_event:
+        return
+
     session_id = data.get("session_id", "unknown")
     write_state_file(session_id, data)
     notify_server(data)
