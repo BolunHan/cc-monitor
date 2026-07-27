@@ -7,6 +7,45 @@
     const indicator = document.getElementById("connection-indicator");
     const label = document.getElementById("connection-label");
     const cards = new Map(); // session_id -> HTMLElement
+    const prevStates = new Map(); // session_id -> state string
+    let notificationsPermitted = false;
+
+    // ---- Browser Notifications ----
+
+    function requestNotificationPermission() {
+        if (!("Notification" in window)) return;
+        if (Notification.permission === "granted") {
+            notificationsPermitted = true;
+        } else if (Notification.permission !== "denied") {
+            Notification.requestPermission().then(p => {
+                notificationsPermitted = (p === "granted");
+            });
+        }
+    }
+
+    function notify(session) {
+        if (!notificationsPermitted) return;
+
+        const prev = prevStates.get(session.session_id);
+        // Only notify on transition to these states
+        if (session.state === prev) return;
+        if (session.state !== "idle" && session.state !== "pending_approval") return;
+
+        const basename = dirBasename(session.cwd) || session.session_id.substring(0, 8);
+
+        let title, body;
+        if (session.state === "idle") {
+            title = `${basename} — Task Complete`;
+            body = "Claude Code is idle, waiting for your input.";
+        } else {
+            title = `${basename} — Pending Approval`;
+            body = "Claude Code needs permission to proceed.";
+        }
+
+        try {
+            new Notification(title, { body, icon: "/static/favicon.ico", tag: session.session_id });
+        } catch (_) { /* ignore */ }
+    }
 
     // ---- Connection state ----
 
@@ -96,6 +135,8 @@
             try {
                 const session = JSON.parse(e.data);
                 updateCard(session);
+                notify(session);
+                prevStates.set(session.session_id, session.state);
             } catch (err) {
                 console.error("cc-monitor: failed to parse SSE data", err);
             }
@@ -220,11 +261,16 @@
 
     // ---- Initialise ----
 
+    requestNotificationPermission();
+
     fetch("/api/status")
         .then(r => r.json())
         .then(data => {
             if (data.sessions && data.sessions.length > 0) {
-                data.sessions.forEach(updateCard);
+                data.sessions.forEach(s => {
+                    updateCard(s);
+                    prevStates.set(s.session_id, s.state);
+                });
             }
             if (cards.size === 0) {
                 emptyState.style.removeProperty("display");
