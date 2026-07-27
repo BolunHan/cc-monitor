@@ -1,5 +1,8 @@
 # cc-monitor
 
+**[→ Open Dashboard](https://bolunhan.github.io/cc-monitor/)**
+[![Deploy to GitHub Pages](https://github.com/bolunhan/cc-monitor/actions/workflows/deploy-gh-pages.yml/badge.svg)](https://github.com/bolunhan/cc-monitor/actions/workflows/deploy-gh-pages.yml)
+
 Monitor Claude Code working status via hooks — see which sessions are idle, working, pending approval, or done, in a local browser dashboard.
 
 ## Install
@@ -30,7 +33,8 @@ Copy the hook entries from `.claude/settings.json` in this repo, adjusting paths
 | State | Meaning |
 |-------|---------|
 | `working` | Claude is actively processing — executing tools, generating output |
-| `idle` | Claude is waiting for your input |
+| `pending_review` | Claude finished responding — output ready for review |
+| `idle` | No activity for 24hr — session is dormant |
 | `pending_approval` | Claude needs permission to proceed (PermissionRequest or permission prompt) |
 | `all_done` | Session has ended |
 
@@ -42,14 +46,15 @@ Copy the hook entries from `.claude/settings.json` in this repo, adjusting paths
 | `GET` | `/api/status` | All sessions' current states |
 | `GET` | `/api/status/<id>` | Single session state |
 | `GET` | `/api/stream` | SSE stream of state updates |
+| `POST` | `/api/session/<id>/archive` | Archive a session |
+| `POST` | `/api/session/<id>/unarchive` | Unarchive a session |
+| `POST` | `/api/session/<id>/complete` | Mark session as all_done |
 
 ## Architecture
 
 Hook scripts (stdlib-only Python) write `~/.cc-monitor/<session_id>.json` files and POST to the server. The FastAPI server holds in-memory state, broadcasts changes via SSE, and restores state from disk on startup.
 
 ## Remote Dashboard
-
-**[→ Open Dashboard](https://<user>.github.io/cc-monitor/)**
 
 The dashboard is fully static — host it anywhere and point it at your cc-monitor server.
 
