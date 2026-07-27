@@ -578,9 +578,22 @@ body {
     opacity: 0.6;
 }
 
-/* ---- Device pairing ---- */
-.pairing-section {
-    padding: 12px 0;
+/* ---- Pairing panel ---- */
+.pairing-panel {
+    border-bottom: 1px solid var(--color-border);
+}
+.pairing-panel__content {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 16px 20px;
+}
+.pairing-panel__title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 16px;
+}
+.pairing-panel__title + .pairing-qr-wrap {
+    margin-top: 0;
 }
 .pairing-qr-wrap {
     text-align: center;

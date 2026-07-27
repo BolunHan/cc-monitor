@@ -524,17 +524,20 @@
 
     // ---- Device Pairing ----
 
-    const btnShowPair = document.getElementById("btn-show-pair");
-    const pairingSection = document.getElementById("pairing-section");
+    const btnPair = document.getElementById("btn-pair");
+    const pairingPanel = document.getElementById("pairing-panel");
     const pairQr = document.getElementById("pair-qr");
     const pairingRequestsList = document.getElementById("pairing-requests-list");
     let qrCodeInstance = null;
     let pairingPollInterval = null;
 
-    btnShowPair.addEventListener("click", async () => {
-        const hidden = pairingSection.classList.toggle("hidden");
-        if (!hidden) {
-            await loadPairingQR();
+    btnPair.addEventListener("click", () => {
+        const wasHidden = pairingPanel.classList.contains("hidden");
+        // Close settings if open
+        settingsPanel.classList.add("hidden");
+        pairingPanel.classList.toggle("hidden");
+        if (wasHidden) {
+            loadPairingQR();
             startPairingPoll();
         } else {
             stopPairingPoll();
