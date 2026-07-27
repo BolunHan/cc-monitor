@@ -20,9 +20,34 @@
                 <span class="connection-indicator" id="connection-indicator" title="SSE connection status"></span>
                 <span class="connection-label" id="connection-label">connecting</span>
             </div>
+            <button class="btn btn--icon" id="btn-pair" title="Pair Device">⧉</button>
             <button class="btn btn--icon" id="btn-settings" title="Settings">⚙</button>
         </div>
     </header>
+
+    <div class="pairing-panel hidden" id="pairing-panel">
+        <div class="pairing-panel__content">
+            <h3 class="pairing-panel__title">Pair Device</h3>
+            <div class="pairing-panel__row">
+                <div class="pairing-panel__left">
+                    <div class="pairing-panel__col-title">
+                        <span>QR Code</span>
+                        <button class="btn btn--icon btn--small" id="btn-refresh-qr" title="Refresh QR code">⟳</button>
+                    </div>
+                    <div id="pair-qr"></div>
+                    <p class="pairing-hint">Scan with cc-monitor Android app</p>
+                </div>
+                <div class="pairing-panel__sep"></div>
+                <div class="pairing-panel__right">
+                    <h4 class="pairing-requests__title">Pending Requests</h4>
+                    <div id="pairing-requests-list"></div>
+                    <hr class="settings-panel__divider">
+                    <h4 class="pairing-requests__title">Paired Devices</h4>
+                    <div id="paired-devices-list"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="settings-panel hidden" id="settings-panel">
         <div class="settings-panel__content">
@@ -94,6 +119,7 @@
         <span class="footer__version" id="footer-version">cc-monitor v—</span>
     </footer>
 
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script src="./js/app.js"></script>
 </body>
 </html>

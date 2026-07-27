@@ -143,6 +143,7 @@ body {
     border: 1px solid transparent;
     background: transparent;
     border-radius: 6px;
+    font-family: "DejaVu Sans", "Segoe UI Symbol", system-ui, sans-serif;
 }
 
 .btn--icon:hover {
@@ -204,7 +205,7 @@ body {
 }
 
 .settings-panel__content {
-    max-width: 480px;
+    width: 100%;
 }
 
 .settings-panel__title {
@@ -576,4 +577,108 @@ body {
 
 .footer__version {
     opacity: 0.6;
+}
+
+/* ---- Pairing panel ---- */
+.pairing-panel {
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    padding: 20px 24px;
+}
+.pairing-panel.hidden {
+    display: none;
+}
+.pairing-panel__content {
+    width: 100%;
+}
+.pairing-panel__title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 16px;
+}
+.pairing-panel__row {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+}
+.pairing-panel__left {
+    text-align: center;
+    flex-shrink: 0;
+}
+.pairing-panel__col-title {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    margin-bottom: 12px;
+}
+.pairing-panel__left canvas,
+.pairing-panel__left img {
+    border-radius: var(--radius);
+    border: 2px solid var(--color-border);
+}
+.pairing-panel__sep {
+    width: 1px;
+    align-self: stretch;
+    background: var(--color-border);
+    flex-shrink: 0;
+}
+.pairing-panel__right {
+    flex: 1;
+    min-width: 0;
+}
+.btn--small {
+    font-size: 0.85rem;
+    padding: 2px 6px;
+    line-height: 1;
+}
+.pairing-hint {
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+    margin-top: 8px;
+}
+.pairing-error {
+    color: var(--color-danger);
+    font-size: 0.85rem;
+    padding: 12px;
+}
+.pairing-requests__title {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    margin-bottom: 8px;
+}
+.pairing-request {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--color-bg);
+    border-radius: var(--radius);
+    margin-bottom: 4px;
+}
+.pairing-request__name {
+    font-size: 0.85rem;
+}
+.pairing-request__actions {
+    display: flex;
+    gap: 4px;
+}
+.pairing-empty {
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+}
+.btn--tiny {
+    padding: 2px 8px;
+    font-size: 0.8rem;
+    line-height: 1;
+}
+.btn--success {
+    background: var(--color-done);
+    color: #000;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
 }

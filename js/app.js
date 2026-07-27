@@ -522,6 +522,142 @@
         });
     });
 
+    // ---- Device Pairing ----
+
+    const btnPair = document.getElementById("btn-pair");
+    const pairingPanel = document.getElementById("pairing-panel");
+    const btnRefreshQr = document.getElementById("btn-refresh-qr");
+    const pairQr = document.getElementById("pair-qr");
+    const pairingRequestsList = document.getElementById("pairing-requests-list");
+    let qrCodeInstance = null;
+    let pairingPollInterval = null;
+
+    btnPair.addEventListener("click", () => {
+        const wasHidden = pairingPanel.classList.contains("hidden");
+        settingsPanel.classList.add("hidden");
+        pairingPanel.classList.toggle("hidden");
+        if (wasHidden) {
+            loadPairingQR();
+            startPairingPoll();
+            loadPairedDevices();
+        } else {
+            stopPairingPoll();
+        }
+    });
+
+    btnRefreshQr.addEventListener("click", () => {
+        loadPairingQR();
+    });
+
+    async function loadPairingQR() {
+        try {
+            const resp = await fetch(apiUrl("/api/auth/pair/qr"));
+            if (!resp.ok) {
+                pairQr.innerHTML = '<p class="pairing-error">Pairing not available — start server with --host 0.0.0.0</p>';
+                return;
+            }
+            const data = await resp.json();
+            // Use URL format so browsers can offer to open with our app
+            const url = `ccmonitor://pair?t=${encodeURIComponent(data.token)}&h=${encodeURIComponent(data.host)}&p=${encodeURIComponent(data.port)}&c=${encodeURIComponent(data.cert_sha256)}`;
+            pairQr.innerHTML = "";
+            qrCodeInstance = new QRCode(pairQr, {
+                text: url,
+                width: 200,
+                height: 200,
+                colorDark: "#e1e4ed",
+                colorLight: "#1a1d27",
+            });
+        } catch (err) {
+            pairQr.innerHTML = '<p class="pairing-error">Server unreachable or auth not enabled</p>';
+        }
+    }
+
+    function startPairingPoll() {
+        stopPairingPoll();
+        pairingPollInterval = setInterval(pollPairingRequests, 3000);
+        pollPairingRequests();
+    }
+
+    function stopPairingPoll() {
+        if (pairingPollInterval) {
+            clearInterval(pairingPollInterval);
+            pairingPollInterval = null;
+        }
+    }
+
+    async function pollPairingRequests() {
+        try {
+            const resp = await fetch(apiUrl("/api/auth/pair/requests"));
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const requests = data.requests || [];
+            if (requests.length === 0) {
+                pairingRequestsList.innerHTML = '<p class="pairing-empty">No pending requests</p>';
+                return;
+            }
+            pairingRequestsList.innerHTML = requests.map(r => `
+                <div class="pairing-request">
+                    <span class="pairing-request__name">${escHtml(r.device_name)}${r.pairing_code ? `<br><code style="font-size:0.9em">${escHtml(r.pairing_code)}</code>` : ''}</span>
+                    <div class="pairing-request__actions">
+                        <button class="btn btn--success btn--tiny" onclick="window._ccApprovePair('${r.id}')">✓</button>
+                        <button class="btn btn--danger btn--tiny" onclick="window._ccDenyPair('${r.id}')">✗</button>
+                    </div>
+                </div>
+            `).join("");
+        } catch (_) {}
+    }
+
+    window._ccApprovePair = async function(requestId) {
+        try {
+            await fetch(apiUrl(`/api/auth/pair/request/${requestId}/approve`), { method: "POST" });
+            pollPairingRequests();
+            loadPairedDevices();
+            loadPairingQR();
+        } catch (_) {}
+    };
+
+    window._ccDenyPair = async function(requestId) {
+        try {
+            await fetch(apiUrl(`/api/auth/pair/request/${requestId}/deny`), { method: "POST" });
+            pollPairingRequests();
+        } catch (_) {}
+    };
+
+    async function loadPairedDevices() {
+        const list = document.getElementById("paired-devices-list");
+        try {
+            const resp = await fetch(apiUrl("/api/auth/devices"));
+            if (!resp.ok) { list.innerHTML = '<p class="pairing-empty">—</p>'; return; }
+            const data = await resp.json();
+            const devices = data.devices || [];
+            if (devices.length === 0) {
+                list.innerHTML = '<p class="pairing-empty">No paired devices</p>';
+                return;
+            }
+            list.innerHTML = devices.map(d => `
+                <div class="pairing-request">
+                    <span class="pairing-request__name">${escHtml(d.device_name)}<br><code style="font-size:0.85em">${escHtml(d.client_id ? d.client_id.substring(0, 8) : '-')}</code> <small>${d.expired ? 'expired' : 'active'}</small></span>
+                    <div class="pairing-request__actions">
+                        <button class="btn btn--danger btn--tiny" onclick="window._ccRevokeDevice('${d.token_prefix}')" title="Revoke">✕</button>
+                    </div>
+                </div>
+            `).join("");
+        } catch (_) {}
+    }
+
+    window._ccRevokeDevice = async function(tokenPrefix) {
+        try {
+            await fetch(apiUrl(`/api/auth/devices/${encodeURIComponent(tokenPrefix)}`), { method: "DELETE" });
+            loadPairedDevices();
+        } catch (_) {}
+    };
+
+    function escHtml(str) {
+        const div = document.createElement("div");
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
     // ---- Initialise ----
 
     requestNotificationPermission();
