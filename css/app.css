@@ -350,6 +350,12 @@ body {
     border-radius: 10px;
 }
 
+.section__breakdown {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    margin-left: 4px;
+}
+
 .section__body.hidden {
     display: none;
 }
@@ -383,6 +389,36 @@ body {
 
 .session-card:hover {
     border-color: var(--color-text-muted);
+}
+
+/* Card state borders */
+.session-card.card--working {
+    border-color: var(--color-working);
+    animation: card-pulse-blue 3s ease-in-out infinite;
+}
+
+.session-card.card--pending_approval {
+    border-color: var(--color-pending);
+    animation: card-pulse-yellow 1.5s ease-in-out infinite;
+}
+
+.session-card.card--pending_review,
+.session-card.card--all_done {
+    border-color: var(--color-done);
+}
+
+.session-card.card--archived {
+    opacity: 0.65;
+}
+
+@keyframes card-pulse-blue {
+    0%, 100% { border-color: var(--color-working); }
+    50% { border-color: color-mix(in srgb, var(--color-working) 40%, transparent); }
+}
+
+@keyframes card-pulse-yellow {
+    0%, 100% { border-color: var(--color-pending); }
+    50% { border-color: color-mix(in srgb, var(--color-pending) 40%, transparent); }
 }
 
 .session-card__header {
@@ -438,7 +474,8 @@ body {
     animation: pulse 1s ease-in-out infinite;
 }
 
-.badge-all_done {
+.badge-all_done,
+.badge-pending_review {
     background: color-mix(in srgb, var(--color-done) 20%, transparent);
     color: var(--color-done);
 }
