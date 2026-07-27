@@ -205,7 +205,7 @@ body {
 }
 
 .settings-panel__content {
-    max-width: 480px;
+    width: 100%;
 }
 
 .settings-panel__title {
