@@ -119,6 +119,32 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         """Return the cc-monitor server version."""
         return JSONResponse({"version": __version__})
 
+    # ---- Session actions ----
+
+    @app.post("/api/session/{session_id}/archive")
+    async def archive_session(session_id: str):
+        """Archive a session (hide from active/complete views)."""
+        session = await manager.archive(session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return JSONResponse(session.to_dict())
+
+    @app.post("/api/session/{session_id}/unarchive")
+    async def unarchive_session(session_id: str):
+        """Unarchive a session."""
+        session = await manager.unarchive(session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return JSONResponse(session.to_dict())
+
+    @app.post("/api/session/{session_id}/complete")
+    async def mark_complete(session_id: str):
+        """Manually mark a session as all_done."""
+        session = await manager.mark_complete(session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return JSONResponse(session.to_dict())
+
     # ---- Hook installation ----
 
     _hook_event_names: set[str] = set()

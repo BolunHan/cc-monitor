@@ -57,13 +57,13 @@ class TestVersion:
         resp = httpx.get(f"{server}/api/version")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["version"] == "0.3.1"
+        assert data["version"] == "0.4.0"
 
     def test_version_matches_package(self, server):
         from cc_monitor import __version__
         resp = httpx.get(f"{server}/api/version")
         assert resp.json()["version"] == __version__
-        assert __version__ == "0.3.1"
+        assert __version__ == "0.4.0"
 
 
 class TestEventWithSummary:
@@ -147,6 +147,62 @@ class TestEventWithSummary:
         assert resp.json()["summary"] == "Update dependencies"
 
 
+class TestSessionActions:
+    """Archive, unarchive, and mark-complete endpoints."""
+
+    def _create_session(self, server, sid="act-test", **kw):
+        return httpx.post(f"{server}/api/event", json={
+            "session_id": sid,
+            "cwd": "/p",
+            "hook_event_name": "UserPromptSubmit",
+            "prompt": "Test session",
+            **kw,
+        })
+
+    def test_archive_session(self, server):
+        self._create_session(server)
+        resp = httpx.post(f"{server}/api/session/act-test/archive")
+        assert resp.status_code == 200
+        assert resp.json()["archived"] is True
+
+    def test_unarchive_session(self, server):
+        self._create_session(server)
+        httpx.post(f"{server}/api/session/act-test/archive")
+        resp = httpx.post(f"{server}/api/session/act-test/unarchive")
+        assert resp.status_code == 200
+        assert resp.json()["archived"] is False
+
+    def test_mark_complete(self, server):
+        self._create_session(server, sid="complete-me")
+        resp = httpx.post(f"{server}/api/session/complete-me/complete")
+        assert resp.status_code == 200
+        assert resp.json()["state"] == "all_done"
+        assert resp.json()["raw_event"] == "ManualComplete"
+
+    def test_archive_nonexistent_returns_404(self, server):
+        resp = httpx.post(f"{server}/api/session/nope/archive")
+        assert resp.status_code == 404
+
+    def test_complete_nonexistent_returns_404(self, server):
+        resp = httpx.post(f"{server}/api/session/nope/complete")
+        assert resp.status_code == 404
+
+    def test_archived_field_persists_in_status(self, server):
+        self._create_session(server, sid="persist-me")
+        httpx.post(f"{server}/api/session/persist-me/archive")
+        resp = httpx.get(f"{server}/api/status")
+        session = next(s for s in resp.json()["sessions"] if s["session_id"] == "persist-me")
+        assert session["archived"] is True
+
+    def test_default_archived_is_false(self, server):
+        self._create_session(server, sid="fresh")
+        resp = httpx.get(f"{server}/api/status/session/fresh")
+        # The session is in /api/status via the list, get by specific ID
+        resp2 = httpx.get(f"{server}/api/status")
+        session = next(s for s in resp2.json()["sessions"] if s["session_id"] == "fresh")
+        assert session["archived"] is False
+
+
 class TestCors:
     """CORS headers must be present for cross-origin dashboard hosting.
 
@@ -187,7 +243,7 @@ class TestStaticFiles:
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
         assert "cc-monitor" in resp.text
-        assert 'id="session-grid"' in resp.text
+        assert 'id="grid-active"' in resp.text
 
     def test_css_served(self, server):
         resp = httpx.get(f"{server}/static/css/app.css")
@@ -252,6 +308,35 @@ class TestStaticFiles:
         assert 'id="settings-url"' in resp.text
         assert 'id="settings-port"' in resp.text
         assert 'id="btn-save-settings"' in resp.text
+
+    def test_index_has_three_sections(self, server):
+        """Dashboard must have Active, Complete, and Archived sections."""
+        resp = httpx.get(f"{server}/")
+        assert 'id="section-active"' in resp.text
+        assert 'id="section-complete"' in resp.text
+        assert 'id="section-archive"' in resp.text
+        assert "Active" in resp.text
+        assert "Complete" in resp.text
+        assert "Archived" in resp.text
+
+    def test_complete_and_archive_collapsed_by_default(self, server):
+        """Complete and Archive sections must be collapsed on load."""
+        resp = httpx.get(f"{server}/")
+        assert 'section--collapsed' in resp.text or 'hidden' in resp.text
+
+    def test_js_has_archive_complete_actions(self, server):
+        """JS must support archive, unarchive, and mark-complete actions."""
+        resp = httpx.get(f"{server}/js/app.js")
+        assert 'apiUrl(`/api/session/${sessionId}/${action}`)' in resp.text
+        assert '"archive"' in resp.text
+        assert '"complete"' in resp.text
+        assert '"unarchive"' in resp.text
+
+    def test_js_default_url_127_0_0_1(self, server):
+        """JS must default to http://127.0.0.1:9876 for remote dashboards."""
+        resp = httpx.get(f"{server}/js/app.js")
+        assert 'DEFAULT_HOST = "http://127.0.0.1"' in resp.text
+        assert 'DEFAULT_PORT = "9876"' in resp.text
 
 
 class TestSseStream:

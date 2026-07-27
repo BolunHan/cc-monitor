@@ -22,6 +22,7 @@ class SessionState:
     raw_event: str
     raw_detail: str | None
     summary: str | None = None
+    archived: bool = False
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> dict:
@@ -32,6 +33,7 @@ class SessionState:
             "raw_event": self.raw_event,
             "raw_detail": self.raw_detail,
             "summary": self.summary,
+            "archived": self.archived,
             "updated_at": self.updated_at.isoformat(),
         }
 
@@ -66,6 +68,7 @@ class StateManager:
                     raw_event=data["raw_event"],
                     raw_detail=data.get("raw_detail"),
                     summary=data.get("summary"),
+                    archived=data.get("archived", False),
                     updated_at=datetime.fromisoformat(data["updated_at"]),
                 )
                 self._sessions[session.session_id] = session
@@ -153,6 +156,41 @@ class StateManager:
     def get(self, session_id: str) -> SessionState | None:
         """Return a single session by ID, or None."""
         return self._sessions.get(session_id)
+
+    async def archive(self, session_id: str) -> SessionState | None:
+        """Archive a session (hide from active/complete views)."""
+        session = self._sessions.get(session_id)
+        if session is None:
+            return None
+        session.archived = True
+        session.updated_at = datetime.now(timezone.utc)
+        self._write_file(session)
+        await self._broadcast(session)
+        return session
+
+    async def unarchive(self, session_id: str) -> SessionState | None:
+        """Unarchive a session."""
+        session = self._sessions.get(session_id)
+        if session is None:
+            return None
+        session.archived = False
+        session.updated_at = datetime.now(timezone.utc)
+        self._write_file(session)
+        await self._broadcast(session)
+        return session
+
+    async def mark_complete(self, session_id: str) -> SessionState | None:
+        """Manually mark a session as all_done."""
+        session = self._sessions.get(session_id)
+        if session is None:
+            return None
+        session.state = MonitorState.ALL_DONE
+        session.raw_event = "ManualComplete"
+        session.raw_detail = None
+        session.updated_at = datetime.now(timezone.utc)
+        self._write_file(session)
+        await self._broadcast(session)
+        return session
 
     def subscribe(self) -> asyncio.Queue:
         """Register a new SSE subscriber. Returns a queue to iterate on."""
