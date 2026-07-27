@@ -49,7 +49,7 @@ Hook scripts (stdlib-only Python) write `~/.cc-monitor/<session_id>.json` files 
 
 ## Remote Dashboard
 
-**[→ Open Dashboard](https://bolunhan.github.io/cc-monitor/)**
+**[→ Open Dashboard](https://<user>.github.io/cc-monitor/)**
 
 The dashboard is fully static — host it anywhere and point it at your cc-monitor server.
 

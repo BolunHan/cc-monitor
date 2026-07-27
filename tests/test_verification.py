@@ -19,9 +19,8 @@ BASE_URL = f"http://127.0.0.1:{SERVER_PORT}"
 @pytest.fixture(scope="module")
 def server():
     """Start the cc-monitor server as a subprocess, yield, then kill it."""
-    venv = "/home/bolun/Projects/venv_313/bin"
     proc = subprocess.Popen(
-        [f"{venv}/python", "-c",
+        [sys.executable, "-c",
          f"from cc_monitor.server import create_app, main; "
          f"import uvicorn; "
          f"app = create_app(); "
@@ -253,7 +252,7 @@ class TestCors:
     header) correctly omit CORS headers per the spec.
     """
 
-    _ORIGIN = {"Origin": "https://bolunhan.github.io"}
+    _ORIGIN = {"Origin": "https://example.github.io"}
 
     def test_cors_header_on_api(self, server):
         resp = httpx.get(f"{server}/api/version", headers=self._ORIGIN)
@@ -270,7 +269,7 @@ class TestCors:
     def test_cors_preflight(self, server):
         """OPTIONS preflight must return CORS headers."""
         resp = httpx.options(f"{server}/api/version", headers={
-            "Origin": "https://bolunhan.github.io",
+            "Origin": "https://example.github.io",
             "Access-Control-Request-Method": "GET",
         })
         assert resp.status_code == 200

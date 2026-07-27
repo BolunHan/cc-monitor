@@ -73,7 +73,7 @@ cc-monitor/
 ```json
 {
   "session_id": "9db738b8-...",
-  "cwd": "/home/bolun/Projects/foo",
+  "cwd": "/home/user/Projects/foo",
   "state": "working",
   "raw_event": "PreToolUse",
   "raw_detail": "Bash",

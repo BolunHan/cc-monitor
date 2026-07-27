@@ -75,7 +75,7 @@ __version__ = "0.1.0"
 - [ ] **Step 4: Install in dev mode and verify**
 
 ```bash
-cd /home/bolun/Projects/cc-monitor
+cd <repo-root>
 ~/Projects/venv_313/bin/pip install -e ".[dev]"
 ```
 
@@ -1111,7 +1111,7 @@ run_hook("SessionEnd")
 - [ ] **Step 3: Verify hook scripts work standalone**
 
 ```bash
-cd /home/bolun/Projects/cc-monitor
+cd <repo-root>
 echo '{"session_id":"test-123","cwd":"/tmp","hook_event_name":"PreToolUse","tool_name":"Bash"}' | python3 hooks/pre_tool_use.py
 cat ~/.cc-monitor/test-123.json
 ```
@@ -1474,7 +1474,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /home/bolun/Projects/cc-monitor/hooks/pre_tool_use.py",
+            "command": "python3 <repo-root>/hooks/pre_tool_use.py",
             "description": "cc-monitor: mark session as working"
           }
         ]
@@ -1486,7 +1486,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /home/bolun/Projects/cc-monitor/hooks/post_tool_use.py",
+            "command": "python3 <repo-root>/hooks/post_tool_use.py",
             "description": "cc-monitor: mark session as working"
           }
         ]
@@ -1497,7 +1497,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /home/bolun/Projects/cc-monitor/hooks/user_prompt_submit.py",
+            "command": "python3 <repo-root>/hooks/user_prompt_submit.py",
             "description": "cc-monitor: mark session as working"
           }
         ]
@@ -1508,7 +1508,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /home/bolun/Projects/cc-monitor/hooks/stop.py",
+            "command": "python3 <repo-root>/hooks/stop.py",
             "description": "cc-monitor: mark session as idle"
           }
         ]
@@ -1520,7 +1520,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /home/bolun/Projects/cc-monitor/hooks/notification.py",
+            "command": "python3 <repo-root>/hooks/notification.py",
             "description": "cc-monitor: handle notification events"
           }
         ]
@@ -1532,7 +1532,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /home/bolun/Projects/cc-monitor/hooks/permission_request.py",
+            "command": "python3 <repo-root>/hooks/permission_request.py",
             "description": "cc-monitor: mark session as pending approval"
           }
         ]
@@ -1543,7 +1543,7 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /home/bolun/Projects/cc-monitor/hooks/session_end.py",
+            "command": "python3 <repo-root>/hooks/session_end.py",
             "description": "cc-monitor: mark session as all done"
           }
         ]
