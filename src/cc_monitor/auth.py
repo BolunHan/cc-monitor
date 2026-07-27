@@ -469,19 +469,21 @@ class PairingManager:
         )
 
     def get_device_list(self) -> list[dict]:
-        """Return all paired (active) devices with their token info."""
-        devices = []
+        """Return all paired devices, deduplicated by client_id (latest wins)."""
+        seen: dict[str, dict] = {}
         for token, entry in self._token_manager._tokens.items():
             info = self._token_manager._to_info(entry)
-            devices.append({
-                "device_name": info.device_name,
-                "client_id": info.client_id,
-                "created_at": info.created_at.isoformat(),
-                "expires_at": info.expires_at.isoformat(),
-                "expired": info.expired,
-                "token_prefix": token[:12] + "...",
-            })
-        return devices
+            cid = info.client_id or token  # fall back to token if no client_id
+            if cid not in seen or info.created_at > datetime.fromisoformat(seen[cid]["created_at"]):
+                seen[cid] = {
+                    "device_name": info.device_name,
+                    "client_id": info.client_id,
+                    "created_at": info.created_at.isoformat(),
+                    "expires_at": info.expires_at.isoformat(),
+                    "expired": info.expired,
+                    "token_prefix": token[:12] + "...",
+                }
+        return sorted(seen.values(), key=lambda d: d["created_at"], reverse=True)
 
     def revoke_device(self, token_prefix: str) -> bool:
         """Revoke a device by token prefix match."""

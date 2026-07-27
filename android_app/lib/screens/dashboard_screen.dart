@@ -40,7 +40,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           if (provider.loading) {
             return const Center(child: CircularProgressIndicator());
           }
-          return DefaultTabController(
+          final body = DefaultTabController(
             length: 3,
             child: Column(
               children: [
@@ -72,6 +72,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ],
             ),
+          );
+
+          return Column(
+            children: [
+              if (!provider.connected)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  color: Colors.red.shade900,
+                  child: const Row(
+                    children: [
+                      Icon(Icons.cloud_off, color: Colors.white70, size: 16),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Disconnected — token revoked or server unreachable.\nRemove this server from the sidebar.',
+                          style: TextStyle(color: Colors.white70, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              Expanded(child: body),
+            ],
           );
         },
       ),
@@ -171,20 +195,10 @@ class _SessionCard extends StatelessWidget {
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         child: ListTile(
           onTap: onTap,
-          leading: CircleAvatar(
-            backgroundColor: _stateColor(),
-            radius: 6,
-          ),
-          title: Text(
-            session.summary ?? session.cwd,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+          leading: CircleAvatar(backgroundColor: _stateColor(), radius: 6),
+          title: Text(session.summary ?? session.cwd, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text(session.state.replaceAll('_', ' ')),
-          trailing: Text(
-            _formatTime(session.updatedAt),
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
+          trailing: Text(_formatTime(session.updatedAt), style: Theme.of(context).textTheme.bodySmall),
         ),
       ),
     );
@@ -251,8 +265,7 @@ class _ServerDrawerState extends State<_ServerDrawer> {
                     itemCount: _servers.length,
                     itemBuilder: (context, index) {
                       final s = _servers[index];
-                      final isActive = _active != null &&
-                          s.host == _active!.host && s.port == _active!.port;
+                      final isActive = _active != null && s.host == _active!.host && s.port == _active!.port;
                       return ListTile(
                         leading: Icon(
                           isActive ? Icons.check_circle : Icons.circle_outlined,

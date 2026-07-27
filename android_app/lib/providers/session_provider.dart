@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/session.dart';
 import '../services/api_client.dart';
@@ -6,31 +7,41 @@ import '../services/sse_client.dart';
 class SessionProvider extends ChangeNotifier {
   final ApiClient _api;
   SseClient? _sseClient;
+  Timer? _heartbeatTimer;
 
   List<Session> _active = [];
   List<Session> _complete = [];
   List<Session> _archived = [];
   bool _loading = true;
+  bool _connected = false;
 
   List<Session> get active => List.unmodifiable(_active);
   List<Session> get complete => List.unmodifiable(_complete);
   List<Session> get archived => List.unmodifiable(_archived);
   bool get loading => _loading;
+  bool get connected => _connected;
 
   SessionProvider(this._api);
 
   Future<void> loadSessions() async {
+    if (!_api.isConfigured) return;
     _loading = true;
     notifyListeners();
 
     try {
       final resp = await _api.get('/api/status');
-      final sessions = (resp.data['sessions'] as List)
-          .map((j) => Session.fromJson(j as Map<String, dynamic>))
-          .toList();
-      _categorize(sessions);
+      if (resp.statusCode == 200) {
+        final sessions = (resp.data['sessions'] as List)
+            .map((j) => Session.fromJson(j as Map<String, dynamic>))
+            .toList();
+        _categorize(sessions);
+        _connected = true;
+      } else if (resp.statusCode == 401) {
+        _connected = false;
+        _clear();
+      }
     } catch (_) {
-      // Offline or unauthenticated — keep existing data
+      _connected = false;
     }
 
     _loading = false;
@@ -38,15 +49,48 @@ class SessionProvider extends ChangeNotifier {
   }
 
   void connectSse() {
+    if (!_api.isConfigured) return;
     _sseClient = SseClient(_api);
     _sseClient!.connect().listen((event) {
       if (event['_event_type'] == 'state_update') {
         final session = Session.fromJson(event);
         _upsert(session);
       }
+    }, onError: (_) {
+      _connected = false;
+      notifyListeners();
     });
-    // Load initial data once connected
     loadSessions();
+    _startHeartbeat();
+  }
+
+  void _startHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+      if (!_api.isConfigured) return;
+      try {
+        final resp = await _api.get('/api/version');
+        if (resp.statusCode == 401) {
+          _connected = false;
+          _clear();
+          notifyListeners();
+        } else {
+          _connected = true;
+          notifyListeners();
+        }
+      } catch (_) {
+        _connected = false;
+        notifyListeners();
+      }
+    });
+  }
+
+  void _clear() {
+    _active = [];
+    _complete = [];
+    _archived = [];
+    _sseClient?.disconnect();
+    _sseClient = null;
   }
 
   Future<void> archiveSession(String sessionId) async {
@@ -95,6 +139,7 @@ class SessionProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _heartbeatTimer?.cancel();
     _sseClient?.disconnect();
     super.dispose();
   }

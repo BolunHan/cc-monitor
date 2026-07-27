@@ -611,7 +611,8 @@
         try {
             await fetch(apiUrl(`/api/auth/pair/request/${requestId}/approve`), { method: "POST" });
             pollPairingRequests();
-            loadPairingQR(); // refresh QR with new token
+            loadPairedDevices();
+            loadPairingQR();
         } catch (_) {}
     };
 
