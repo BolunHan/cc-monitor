@@ -18,6 +18,7 @@ _STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _SOURCE_HOOKS_PATH = _PROJECT_ROOT / ".claude" / "settings.json"
 _GLOBAL_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
+_BACKUP_PATH = Path.home() / ".claude" / "settings.json.cc-monitor.bak"
 
 
 def create_app(data_dir: Path | None = None) -> FastAPI:
@@ -90,20 +91,15 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
 
     # ---- Hook installation ----
 
-    @app.post("/api/install-hooks")
-    async def install_hooks():
-        """Inject cc-monitor hooks into the global Claude Code settings.
+    _hook_event_names: set[str] = set()
 
-        Reads the project's .claude/settings.json as the hook source,
-        merges hooks into ~/.claude/settings.json, preserving all
-        existing non-cc-monitor settings and hooks.
-        """
+    def _load_source_hooks() -> dict:
+        """Load hook definitions from the project's .claude/settings.json."""
         if not _SOURCE_HOOKS_PATH.exists():
             raise HTTPException(
                 status_code=500,
                 detail=f"Source hooks file not found: {_SOURCE_HOOKS_PATH}",
             )
-
         try:
             source = json.loads(_SOURCE_HOOKS_PATH.read_text())
         except json.JSONDecodeError as exc:
@@ -111,21 +107,73 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
                 status_code=500,
                 detail=f"Invalid JSON in source hooks: {exc}",
             )
-
-        source_hooks = source.get("hooks", {})
-        if not source_hooks:
+        hooks = source.get("hooks", {})
+        if not hooks:
             raise HTTPException(status_code=500, detail="No hooks found in source settings")
+        return hooks
 
-        # Read or init the global settings
-        target: dict = {}
+    def _load_global_settings() -> dict:
+        """Read the global settings file, or return empty dict."""
+        if not _GLOBAL_SETTINGS_PATH.exists():
+            return {}
+        try:
+            return json.loads(_GLOBAL_SETTINGS_PATH.read_text())
+        except json.JSONDecodeError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Invalid JSON in {_GLOBAL_SETTINGS_PATH}: {exc}",
+            )
+
+    def _save_global_settings(settings: dict) -> None:
+        """Write global settings to disk."""
+        _GLOBAL_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _GLOBAL_SETTINGS_PATH.write_text(json.dumps(settings, indent=2))
+
+    # Populate known event names from source at startup
+    try:
+        _hook_event_names = set(_load_source_hooks().keys())
+    except Exception:
+        pass
+
+    @app.get("/api/hooks-status")
+    async def hooks_status():
+        """Check whether cc-monitor hooks are installed globally."""
+        try:
+            global_settings = _load_global_settings()
+        except HTTPException:
+            return JSONResponse({"installed": False, "error": "cannot read global settings"})
+
+        global_hooks = global_settings.get("hooks", {})
+        installed_events = []
+        missing_events = []
+        for event_name in _hook_event_names:
+            if event_name in global_hooks:
+                installed_events.append(event_name)
+            else:
+                missing_events.append(event_name)
+
+        return JSONResponse({
+            "installed": len(missing_events) == 0 and len(installed_events) > 0,
+            "installed_events": installed_events,
+            "missing_events": missing_events,
+            "target": str(_GLOBAL_SETTINGS_PATH),
+        })
+
+    @app.post("/api/install-hooks")
+    async def install_hooks():
+        """Inject cc-monitor hooks into the global Claude Code settings.
+
+        Creates a backup of the existing global settings before modifying.
+        Merges hooks into ~/.claude/settings.json, preserving all
+        existing non-cc-monitor settings and hooks.
+        """
+        source_hooks = _load_source_hooks()
+        target = _load_global_settings()
+
+        # Create backup before modifying
         if _GLOBAL_SETTINGS_PATH.exists():
-            try:
-                target = json.loads(_GLOBAL_SETTINGS_PATH.read_text())
-            except json.JSONDecodeError as exc:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Invalid JSON in {_GLOBAL_SETTINGS_PATH}: {exc}",
-                )
+            _BACKUP_PATH.write_text(json.dumps(target, indent=2))
+            logger.info("Backed up global settings to %s", _BACKUP_PATH)
 
         # Deep-merge: replace cc-monitor hook events, preserve others
         target_hooks = target.get("hooks", {})
@@ -135,10 +183,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
             target_hooks[event_name] = matcher_groups
 
         target["hooks"] = target_hooks
-
-        # Write back
-        _GLOBAL_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        _GLOBAL_SETTINGS_PATH.write_text(json.dumps(target, indent=2))
+        _save_global_settings(target)
 
         logger.info(
             "Installed %d cc-monitor hook events into %s",
@@ -150,6 +195,39 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
             "status": "ok",
             "installed_events": merged_count,
             "target": str(_GLOBAL_SETTINGS_PATH),
+            "backup": str(_BACKUP_PATH) if _BACKUP_PATH.exists() else None,
+        })
+
+    @app.post("/api/uninstall-hooks")
+    async def uninstall_hooks():
+        """Remove cc-monitor hooks from the global Claude Code settings.
+
+        Only removes hook events that match the project's source hooks.
+        All other settings and hooks are preserved.
+        """
+        target = _load_global_settings()
+        target_hooks = target.get("hooks", {})
+
+        removed_count = 0
+        for event_name in _hook_event_names:
+            if event_name in target_hooks:
+                del target_hooks[event_name]
+                removed_count += 1
+
+        target["hooks"] = target_hooks
+        _save_global_settings(target)
+
+        logger.info(
+            "Uninstalled %d cc-monitor hook events from %s",
+            removed_count,
+            _GLOBAL_SETTINGS_PATH,
+        )
+
+        return JSONResponse({
+            "status": "ok",
+            "removed_events": removed_count,
+            "target": str(_GLOBAL_SETTINGS_PATH),
+            "backup_available": _BACKUP_PATH.exists(),
         })
 
     # ---- Static files ----

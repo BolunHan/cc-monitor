@@ -1,5 +1,5 @@
 /**
- * cc-monitor dashboard — SSE client that renders session state cards.
+ * cc-monitor dashboard — SSE client, hooks management, settings panel.
  */
 (() => {
     const grid = document.getElementById("session-grid");
@@ -8,10 +8,14 @@
     const label = document.getElementById("connection-label");
     const cards = new Map(); // session_id -> HTMLElement
 
+    // ---- Connection state ----
+
     function setConnected(state) {
         indicator.classList.toggle("connected", state);
         label.textContent = state ? "connected" : "disconnected";
     }
+
+    // ---- Utilities ----
 
     function relativeTime(isoString) {
         const then = new Date(isoString);
@@ -25,15 +29,38 @@
         return `${hours}h ago`;
     }
 
+    function escapeHtml(str) {
+        const el = document.createElement("span");
+        el.textContent = str;
+        return el.innerHTML;
+    }
+
+    function dirBasename(cwd) {
+        if (!cwd) return null;
+        const trimmed = cwd.endsWith("/") ? cwd.slice(0, -1) : cwd;
+        const idx = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+        return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
+    }
+
+    // ---- Session Cards ----
+
     function createCard(session) {
         const card = document.createElement("div");
         card.className = "session-card";
         card.id = `card-${session.session_id}`;
+
+        const basename = dirBasename(session.cwd);
+        const title = basename || session.session_id.substring(0, 8) + "…";
+        const subtitle = basename ? escapeHtml(session.session_id) : "";
+
         card.innerHTML = `
             <div class="session-card__header">
-                <span class="session-card__id" title="${escapeHtml(session.session_id)}">
-                    ${escapeHtml(session.session_id).substring(0, 8)}...
-                </span>
+                <div>
+                    <div class="session-card__title" title="${escapeHtml(session.cwd || session.session_id)}">
+                        ${escapeHtml(title)}
+                    </div>
+                    ${subtitle ? `<div class="session-card__subtitle" title="${escapeHtml(session.session_id)}">${subtitle.substring(0, 20)}</div>` : ""}
+                </div>
                 <span class="session-card__badge badge-${session.state}">
                     ${session.state.replace("_", " ")}
                 </span>
@@ -48,12 +75,6 @@
         return card;
     }
 
-    function escapeHtml(str) {
-        const el = document.createElement("span");
-        el.textContent = str;
-        return el.innerHTML;
-    }
-
     function updateCard(session) {
         const card = createCard(session);
         const existing = cards.get(session.session_id);
@@ -66,7 +87,9 @@
         cards.set(session.session_id, card);
     }
 
-    function connect() {
+    // ---- SSE Connection ----
+
+    function connectSSE() {
         const es = new EventSource("/api/stream");
 
         es.addEventListener("state_update", (e) => {
@@ -85,9 +108,38 @@
         });
     }
 
-    // ---- Install hooks button ----
+    // ---- Hooks Management ----
+
+    const hooksBanner = document.getElementById("hooks-banner");
     const btnInstall = document.getElementById("btn-install-hooks");
     const installFeedback = document.getElementById("install-feedback");
+    const settingsHookStatus = document.getElementById("settings-hook-status");
+
+    let hooksInstalled = false;
+
+    function updateHookStatusUI(installed) {
+        hooksInstalled = installed;
+        if (installed) {
+            hooksBanner.classList.add("hidden");
+        } else {
+            hooksBanner.classList.remove("hidden");
+        }
+        if (settingsHookStatus) {
+            settingsHookStatus.textContent = installed ? "✓ installed" : "not installed";
+            settingsHookStatus.className = "settings-panel__hook-status " + (installed ? "installed" : "not-installed");
+        }
+    }
+
+    async function checkHooksStatus() {
+        try {
+            const resp = await fetch("/api/hooks-status");
+            const data = await resp.json();
+            updateHookStatusUI(data.installed);
+        } catch (err) {
+            // Server might not be ready yet; retry after SSE connects
+            updateHookStatusUI(false);
+        }
+    }
 
     btnInstall.addEventListener("click", async () => {
         btnInstall.disabled = true;
@@ -97,8 +149,9 @@
             const resp = await fetch("/api/install-hooks", { method: "POST" });
             const data = await resp.json();
             if (resp.ok) {
-                installFeedback.textContent = `✓ installed ${data.installed_events} hooks`;
+                installFeedback.textContent = `✓ ${data.installed_events} hooks installed`;
                 installFeedback.className = "install-feedback success";
+                updateHookStatusUI(true);
             } else {
                 installFeedback.textContent = `✗ ${data.detail}`;
                 installFeedback.className = "install-feedback error";
@@ -116,7 +169,57 @@
         }, 4000);
     });
 
-    // Initial load — fetch existing sessions
+    // ---- Settings Panel ----
+
+    const btnSettings = document.getElementById("btn-settings");
+    const settingsPanel = document.getElementById("settings-panel");
+    const settingsPort = document.getElementById("settings-port");
+    const btnUninstall = document.getElementById("btn-uninstall-hooks");
+    const settingsFeedback = document.getElementById("settings-feedback");
+
+    // Show current port from window.location
+    if (settingsPort) {
+        settingsPort.value = window.location.port || "9876";
+    }
+
+    btnSettings.addEventListener("click", () => {
+        settingsPanel.classList.toggle("hidden");
+        // Refresh hook status when opening settings
+        if (!settingsPanel.classList.contains("hidden")) {
+            checkHooksStatus();
+        }
+    });
+
+    btnUninstall.addEventListener("click", async () => {
+        if (!confirm("Remove cc-monitor hooks from ~/.claude/settings.json?")) return;
+
+        btnUninstall.disabled = true;
+        settingsFeedback.textContent = "removing…";
+        settingsFeedback.className = "settings-panel__feedback";
+        try {
+            const resp = await fetch("/api/uninstall-hooks", { method: "POST" });
+            const data = await resp.json();
+            if (resp.ok) {
+                settingsFeedback.textContent = `✓ ${data.removed_events} hooks removed`;
+                settingsFeedback.className = "settings-panel__feedback success";
+                updateHookStatusUI(false);
+            } else {
+                settingsFeedback.textContent = `✗ ${data.detail}`;
+                settingsFeedback.className = "settings-panel__feedback error";
+            }
+        } catch (err) {
+            settingsFeedback.textContent = "✗ server unreachable";
+            settingsFeedback.className = "settings-panel__feedback error";
+        }
+        btnUninstall.disabled = false;
+        setTimeout(() => {
+            settingsFeedback.textContent = "";
+            settingsFeedback.className = "settings-panel__feedback";
+        }, 4000);
+    });
+
+    // ---- Initialise ----
+
     fetch("/api/status")
         .then(r => r.json())
         .then(data => {
@@ -129,5 +232,6 @@
         })
         .catch(err => { console.error("cc-monitor: failed to load sessions", err); });
 
-    connect();
+    checkHooksStatus();
+    connectSSE();
 })();

@@ -10,16 +10,36 @@
     <header class="header">
         <h1 class="header__title">cc-monitor</h1>
         <div class="header__actions">
-            <button class="btn btn--install" id="btn-install-hooks" title="Inject cc-monitor hooks into ~/.claude/settings.json">
-                Install Hooks
-            </button>
-            <span class="install-feedback" id="install-feedback"></span>
+            <div id="hooks-banner" class="hooks-banner hidden">
+                <span class="hooks-banner__badge">⚠ global hooks not installed</span>
+                <button class="btn btn--warning" id="btn-install-hooks">Install Global Hooks</button>
+                <span class="install-feedback" id="install-feedback"></span>
+            </div>
             <div class="header__status">
                 <span class="connection-indicator" id="connection-indicator" title="SSE connection status"></span>
                 <span class="connection-label" id="connection-label">connecting</span>
             </div>
+            <button class="btn btn--icon" id="btn-settings" title="Settings">⚙</button>
         </div>
     </header>
+
+    <div class="settings-panel hidden" id="settings-panel">
+        <div class="settings-panel__content">
+            <h3 class="settings-panel__title">Settings</h3>
+            <label class="settings-panel__label">
+                Server port
+                <input type="text" class="settings-panel__input" id="settings-port" readonly>
+                <span class="settings-panel__hint">set via <code>--port</code> flag on startup</span>
+            </label>
+            <hr class="settings-panel__divider">
+            <div class="settings-panel__row">
+                <span class="settings-panel__label-text">Global hooks</span>
+                <span class="settings-panel__hook-status" id="settings-hook-status">checking…</span>
+                <button class="btn btn--danger btn--small" id="btn-uninstall-hooks">Uninstall</button>
+            </div>
+            <span class="settings-panel__feedback" id="settings-feedback"></span>
+        </div>
+    </div>
 
     <main class="main">
         <div class="session-grid" id="session-grid">
