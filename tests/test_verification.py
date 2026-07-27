@@ -428,6 +428,16 @@ class TestStaticFiles:
         assert "clearAllCards" not in connectBody, \
             "connectSSE must not clear cards on connect"
 
+    def test_js_null_guards_on_dom_access(self, server):
+        """DOM accessors must null-guard to prevent crashes on missing elements."""
+        resp = httpx.get(f"{server}/js/app.js")
+        assert "if (indicator)" in resp.text or "indicator.classList" in resp.text
+        assert "if (!grid) return" in resp.text
+        assert "if (grid) grid.querySelectorAll" in resp.text
+        assert "if (empty) empty.style" in resp.text
+        assert "const el = getCount(sec);" in resp.text
+        assert "if (el) el.textContent" in resp.text
+
 
 class TestSseStream:
     """Verify SSE endpoint behavior with raw TCP to avoid httpx buffering."""
