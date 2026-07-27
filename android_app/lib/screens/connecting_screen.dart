@@ -1,9 +1,28 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api_client.dart';
 import '../services/secure_store.dart';
+
+/// Create a Dio instance that accepts self-signed certificates.
+/// Only used during the pairing handshake — the real ApiClient enforces
+/// cert pinning after pairing is complete.
+Dio _createPairingDio(String baseUrl) {
+  final dio = Dio(BaseOptions(
+    baseUrl: baseUrl,
+    validateStatus: (_) => true,
+    connectTimeout: const Duration(seconds: 5),
+    receiveTimeout: const Duration(seconds: 10),
+  ));
+  // Bypass cert validation for self-signed cert during pairing
+  (dio.httpClientAdapter as dynamic).onHttpClientCreate = (HttpClient client) {
+    client.badCertificateCallback = (cert, host, port) => true;
+  };
+  return dio;
+}
 
 const _tag = 'cc-monitor:connect';
 
@@ -70,12 +89,7 @@ class _ConnectingScreenState extends State<ConnectingScreen> {
     _addLog('API configured: $configured (baseUrl=${api.dio.options.baseUrl})');
 
     // Confirm the QR token with the server
-    final dio = Dio(BaseOptions(
-      baseUrl: baseUrl,
-      validateStatus: (_) => true,
-      connectTimeout: const Duration(seconds: 5),
-      receiveTimeout: const Duration(seconds: 10),
-    ));
+    final dio = _createPairingDio(baseUrl);
 
     try {
       _addLog('Confirming QR token...');
@@ -104,12 +118,7 @@ class _ConnectingScreenState extends State<ConnectingScreen> {
     _addLog('Mode: approval-based pairing');
     _addLog('Device name: Android');
 
-    final dio = Dio(BaseOptions(
-      baseUrl: baseUrl,
-      validateStatus: (_) => true,
-      connectTimeout: const Duration(seconds: 5),
-      receiveTimeout: const Duration(seconds: 10),
-    ));
+    final dio = _createPairingDio(baseUrl);
 
     try {
       _addLog('Submitting pairing request...');
