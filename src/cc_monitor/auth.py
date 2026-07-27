@@ -199,3 +199,229 @@ class TokenManager:
     def _save(self) -> None:
         path = self._data_dir / _TOKENS_FILE
         path.write_text(json.dumps(self._tokens, indent=2))
+
+
+_QR_TOKEN_TIMEOUT = timedelta(minutes=5)
+_PAIRING_REQUESTS_FILE = "pairing_requests.json"
+
+
+@dataclass
+class PairingRequest:
+    """A pending device pairing request."""
+    id: str
+    device_name: str
+    requested_at: datetime
+    status: str  # "pending", "approved", "denied"
+
+
+class PairingManager:
+    """Manages device pairing via QR tokens and approval requests.
+
+    QR tokens are short-lived (5 min confirmation window) and stored in memory
+    only. Approval requests are persisted to disk.
+    """
+
+    def __init__(
+        self,
+        data_dir: Path,
+        token_manager: TokenManager,
+        ttl_seconds: int = 604800,
+    ):
+        self._data_dir = data_dir
+        self._token_manager = token_manager
+        self._ttl_seconds = ttl_seconds
+        self._data_dir.mkdir(parents=True, exist_ok=True)
+        # In-memory: QR token -> {token, created_at}
+        self._qr_tokens: dict[str, dict] = {}
+        # Disk-backed: request_id -> PairingRequest dict
+        self._requests: dict[str, dict] = self._load_requests()
+
+    # ------------------------------------------------------------------
+    # QR Token pairing
+    # ------------------------------------------------------------------
+
+    def create_qr_token(self) -> tuple[str, datetime]:
+        """Generate a pending QR pairing token.
+
+        The token is NOT yet active -- it must be confirmed via
+        confirm_qr_token() within 5 minutes.
+
+        Returns:
+            Tuple of (token, expires_at).
+        """
+        token = secrets.token_urlsafe(32)
+        now = datetime.now(timezone.utc)
+        expires_at = (
+            _NO_EXPIRY_SENTINEL
+            if self._ttl_seconds == 0
+            else now + timedelta(seconds=self._ttl_seconds)
+        )
+
+        self._qr_tokens[token] = {
+            "created_at": now.isoformat(),
+            "ttl_seconds": self._ttl_seconds,
+            "expires_at": expires_at.isoformat(),
+        }
+        return token, expires_at
+
+    def confirm_qr_token(
+        self, token: str, device_name: str
+    ) -> TokenInfo | None:
+        """Confirm a pending QR token and activate it.
+
+        The QR token itself becomes the active auth token.
+
+        Args:
+            token: The pending QR token.
+            device_name: Human-readable device name.
+
+        Returns:
+            TokenInfo if confirmed, None if token unknown or expired.
+        """
+        pending = self._qr_tokens.pop(token, None)
+        if pending is None:
+            return None
+
+        created_at = datetime.fromisoformat(pending["created_at"])
+        if datetime.now(timezone.utc) - created_at > _QR_TOKEN_TIMEOUT:
+            return None
+
+        now = datetime.now(timezone.utc)
+        ttl = pending["ttl_seconds"]
+        expires_at = (
+            _NO_EXPIRY_SENTINEL
+            if ttl == 0
+            else now + timedelta(seconds=ttl)
+        )
+        entry = {
+            "token": token,
+            "device_name": device_name,
+            "created_at": now.isoformat(),
+            "expires_at": expires_at.isoformat(),
+        }
+        # Register the QR token itself as a valid auth token
+        self._token_manager._tokens[token] = entry
+        self._token_manager._save()
+        return self._token_manager._to_info(entry)
+
+    def expire_stale_qr_tokens(self) -> int:
+        """Remove QR tokens that were never confirmed within the 5-min window."""
+        now = datetime.now(timezone.utc)
+        expired = []
+        for token, entry in self._qr_tokens.items():
+            created_at = datetime.fromisoformat(entry["created_at"])
+            if now - created_at > _QR_TOKEN_TIMEOUT:
+                expired.append(token)
+        for token in expired:
+            del self._qr_tokens[token]
+        if expired:
+            logger.info("Expired %d stale QR tokens", len(expired))
+        return len(expired)
+
+    # ------------------------------------------------------------------
+    # Approval-based pairing
+    # ------------------------------------------------------------------
+
+    def create_request(self, device_name: str) -> str:
+        """Submit a pairing request for manual approval.
+
+        Args:
+            device_name: Human-readable device identifier.
+
+        Returns:
+            The request ID for polling.
+        """
+        request_id = secrets.token_urlsafe(16)
+        now = datetime.now(timezone.utc)
+        self._requests[request_id] = {
+            "id": request_id,
+            "device_name": device_name,
+            "requested_at": now.isoformat(),
+            "status": "pending",
+        }
+        self._save_requests()
+        logger.info("Pairing request '%s' from '%s'", request_id, device_name)
+        return request_id
+
+    def get_request(self, request_id: str) -> PairingRequest | None:
+        """Get a pairing request by ID."""
+        entry = self._requests.get(request_id)
+        if entry is None:
+            return None
+        return PairingRequest(
+            id=entry["id"],
+            device_name=entry["device_name"],
+            requested_at=datetime.fromisoformat(entry["requested_at"]),
+            status=entry["status"],
+        )
+
+    def get_pending(self) -> list[PairingRequest]:
+        """List all pending pairing requests (not yet approved or denied)."""
+        return [
+            self._to_request(e)
+            for e in self._requests.values()
+            if e["status"] == "pending"
+        ]
+
+    def approve_request(self, request_id: str) -> TokenInfo | None:
+        """Approve a pending pairing request and issue a token.
+
+        Args:
+            request_id: The request to approve.
+
+        Returns:
+            TokenInfo with the new token, or None if not found/already resolved.
+        """
+        entry = self._requests.get(request_id)
+        if entry is None or entry["status"] != "pending":
+            return None
+
+        entry["status"] = "approved"
+        self._save_requests()
+        return self._token_manager.create_token(
+            entry["device_name"], ttl_seconds=self._ttl_seconds
+        )
+
+    def deny_request(self, request_id: str) -> bool:
+        """Deny a pending pairing request.
+
+        Args:
+            request_id: The request to deny.
+
+        Returns:
+            True if denied, False if not found/already resolved.
+        """
+        entry = self._requests.get(request_id)
+        if entry is None or entry["status"] != "pending":
+            return False
+
+        entry["status"] = "denied"
+        self._save_requests()
+        logger.info("Denied pairing request '%s'", request_id)
+        return True
+
+    # ------------------------------------------------------------------
+    # Internal
+    # ------------------------------------------------------------------
+
+    def _to_request(self, entry: dict) -> PairingRequest:
+        return PairingRequest(
+            id=entry["id"],
+            device_name=entry["device_name"],
+            requested_at=datetime.fromisoformat(entry["requested_at"]),
+            status=entry["status"],
+        )
+
+    def _load_requests(self) -> dict:
+        path = self._data_dir / _PAIRING_REQUESTS_FILE
+        if not path.exists():
+            return {}
+        try:
+            return json.loads(path.read_text())
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Could not load pairing requests: %s", exc)
+            return {}
+
+    def _save_requests(self) -> None:
+        path = self._data_dir / _PAIRING_REQUESTS_FILE
+        path.write_text(json.dumps(self._requests, indent=2))
