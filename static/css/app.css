@@ -443,6 +443,11 @@ body {
     color: var(--color-done);
 }
 
+.badge-archived {
+    background: color-mix(in srgb, var(--color-text-muted) 15%, transparent);
+    color: var(--color-text-muted);
+}
+
 @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.6; }

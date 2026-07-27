@@ -403,6 +403,18 @@ class TestStaticFiles:
         assert "prevStates.get(sid)" in resp.text
         assert "getSection({archived: s.archived, state: s.state})" in resp.text
 
+    def test_js_archived_badge_overrides_state(self, server):
+        """Archived cards must show 'archived' badge, not the raw state."""
+        resp = httpx.get(f"{server}/js/app.js")
+        assert 'badgeState = isArchived ? "archived" : session.state' in resp.text
+        assert 'badgeLabel = isArchived ? "archived" : session.state.replace("_", " ")' in resp.text
+        assert 'badge-${badgeState}' in resp.text
+
+    def test_css_has_archived_badge_style(self, server):
+        """CSS must define .badge-archived style."""
+        resp = httpx.get(f"{server}/css/app.css")
+        assert ".badge-archived" in resp.text
+
 
 class TestSseStream:
     """Verify SSE endpoint behavior with raw TCP to avoid httpx buffering."""

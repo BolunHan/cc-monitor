@@ -156,6 +156,10 @@
             : "";
 
         const section = getSection(session);
+        const isArchived = section === "archive";
+        const badgeState = isArchived ? "archived" : session.state;
+        const badgeLabel = isArchived ? "archived" : session.state.replace("_", " ");
+
         let actions = "";
         if (section === "active" || section === "complete") {
             actions += `<button class="btn--card btn--card-archive" data-action="archive" data-sid="${escapeHtml(session.session_id)}">Archive</button>`;
@@ -174,8 +178,8 @@
                     </div>
                     ${subtitle ? `<div class="session-card__subtitle" title="${escapeHtml(session.session_id)}">${subtitle.substring(0, 20)}</div>` : ""}
                 </div>
-                <span class="session-card__badge badge-${session.state}">
-                    ${session.state.replace("_", " ")}
+                <span class="session-card__badge badge-${badgeState}">
+                    ${badgeLabel}
                 </span>
             </div>
             ${summary}
