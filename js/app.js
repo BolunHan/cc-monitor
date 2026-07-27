@@ -75,8 +75,8 @@
     // ---- Connection state ----
 
     function setConnected(state) {
-        indicator.classList.toggle("connected", state);
-        label.textContent = state ? "connected" : "disconnected";
+        if (indicator) indicator.classList.toggle("connected", state);
+        if (label) label.textContent = state ? "connected" : "disconnected";
     }
 
     // ---- Utilities ----
@@ -137,7 +137,8 @@
             if (s) counts[getSection({archived: s.archived, state: s.state})]++;
         });
         for (const sec of ["active", "complete", "archive"]) {
-            getCount(sec).textContent = counts[sec];
+            const el = getCount(sec);
+            if (el) el.textContent = counts[sec];
         }
     }
 
@@ -198,6 +199,7 @@
         const section = getSection(session);
         const grid = getGrid(section);
         const empty = getEmpty(section);
+        if (!grid) return;
         const existing = cards.get(session.session_id);
 
         if (existing) {
@@ -210,7 +212,7 @@
         } else {
             grid.appendChild(cardEl);
         }
-        empty.style.display = "none";
+        if (empty) empty.style.display = "none";
         cards.set(session.session_id, {section, element: cardEl});
     }
 
@@ -224,9 +226,12 @@
     function clearAllCards() {
         cards.clear();
         for (const sec of ["active", "complete", "archive"]) {
-            getGrid(sec).querySelectorAll(".session-card").forEach(c => c.remove());
-            getEmpty(sec).style.removeProperty("display");
-            getCount(sec).textContent = "0";
+            const grid = getGrid(sec);
+            if (grid) grid.querySelectorAll(".session-card").forEach(c => c.remove());
+            const empty = getEmpty(sec);
+            if (empty) empty.style.removeProperty("display");
+            const count = getCount(sec);
+            if (count) count.textContent = "0";
         }
     }
 
