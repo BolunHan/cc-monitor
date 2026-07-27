@@ -143,6 +143,7 @@ body {
     border: 1px solid transparent;
     background: transparent;
     border-radius: 6px;
+    font-family: "DejaVu Sans", "Segoe UI Symbol", system-ui, sans-serif;
 }
 
 .btn--icon:hover {
