@@ -3,7 +3,7 @@
 import json
 import logging
 import secrets
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -24,6 +24,7 @@ class TokenInfo:
 
     @property
     def expired(self) -> bool:
+        """Whether the token has passed its expiration time."""
         return datetime.now(timezone.utc) >= self.expires_at
 
 
@@ -106,6 +107,9 @@ class TokenManager:
         if old_info.expired:
             return None
 
+        if old_info.device_name != device_name:
+            return None
+
         # Preserve the original TTL by computing remaining time,
         # or use the old entry's expiry to compute TTL
         old_expires = datetime.fromisoformat(old_entry["expires_at"])
@@ -121,7 +125,6 @@ class TokenManager:
 
         # Create new token with same remaining TTL
         new_info = self.create_token(device_name, ttl_seconds=ttl)
-        self._save()
         logger.info("Rotated token for '%s'", device_name)
         return new_info
 

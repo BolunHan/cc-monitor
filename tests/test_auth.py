@@ -1,6 +1,5 @@
 """Tests for cc_monitor.auth — TokenManager and PairingManager."""
 
-import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -83,6 +82,15 @@ class TestTokenManagerRotate:
 
         assert new is not None
         assert not new.expired
+
+    def test_rotate_with_wrong_device_name_returns_none(self, tmp_path):
+        tm = TokenManager(data_dir=tmp_path)
+        old = tm.create_token("Pixel 8")
+        new = tm.rotate_token(old.token, "Galaxy S25")
+
+        assert new is None
+        # Original token should still be valid
+        assert tm.validate_token(old.token) is not None
 
 
 class TestTokenManagerRevoke:
