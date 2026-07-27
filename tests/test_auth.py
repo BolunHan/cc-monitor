@@ -1,10 +1,14 @@
-"""Tests for cc_monitor.auth — TokenManager and PairingManager."""
+"""Tests for cc_monitor.auth — TokenManager, PairingManager, and auth middleware."""
 
+import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 
 from cc_monitor.auth import TokenManager, TokenInfo, PairingManager, PairingRequest
+from cc_monitor.auth_routes import create_auth_middleware, create_auth_router
+from cc_monitor.tls import CertConfig
 
 
 class TestTokenManagerCreate:
@@ -240,3 +244,92 @@ class TestPairingManagerApproval:
         pending = pm.get_pending()
         assert len(pending) == 1
         assert pending[0].id == r2
+
+
+UNAUTHED_PATHS = {
+    "/api/auth/pair/qr",
+    "/api/auth/pair/request",
+    "/api/auth/pair/request/",
+    "/api/version",
+}
+
+
+def _build_test_app(tmp_path, token_manager=None, pairing_manager=None):
+    """Build a minimal FastAPI app with auth middleware for testing."""
+    from fastapi import FastAPI, Request
+
+    app = FastAPI()
+
+    if token_manager is None:
+        token_manager = TokenManager(data_dir=tmp_path)
+    if pairing_manager is None:
+        pairing_manager = PairingManager(
+            data_dir=tmp_path, token_manager=token_manager
+        )
+
+    cert_config = CertConfig(
+        certfile=tmp_path / "cert.pem",
+        keyfile=tmp_path / "key.pem",
+        fingerprint="sha256:deadbeef",
+    )
+
+    router = create_auth_router(token_manager, pairing_manager, cert_config)
+    app.include_router(router)
+    app.middleware("http")(create_auth_middleware(token_manager))
+
+    # Add a protected test endpoint
+    @app.get("/api/test-protected")
+    async def test_protected():
+        return {"ok": True}
+
+    return app, token_manager, pairing_manager
+
+
+class TestAuthMiddleware:
+    @pytest.mark.asyncio
+    async def test_localhost_bypasses_auth(self, tmp_path):
+        app, _, _ = _build_test_app(tmp_path)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
+            resp = await client.get("/api/test-protected")
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_no_token_returns_401(self, tmp_path):
+        app, _, _ = _build_test_app(tmp_path)
+        transport = ASGITransport(app=app, client=("10.0.0.1", 12345))
+        async with AsyncClient(transport=transport, base_url="http://10.0.0.1") as client:
+            resp = await client.get("/api/test-protected")
+        assert resp.status_code == 401
+        assert resp.json()["error"] == "unauthorized"
+
+    @pytest.mark.asyncio
+    async def test_invalid_token_returns_401(self, tmp_path):
+        app, _, _ = _build_test_app(tmp_path)
+        transport = ASGITransport(app=app, client=("10.0.0.1", 12345))
+        async with AsyncClient(transport=transport, base_url="http://10.0.0.1") as client:
+            resp = await client.get(
+                "/api/test-protected",
+                headers={"Authorization": "Bearer invalid-token"},
+            )
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_valid_token_passes(self, tmp_path):
+        app, tm, _ = _build_test_app(tmp_path)
+        info = tm.create_token("Test Device")
+        transport = ASGITransport(app=app, client=("10.0.0.1", 12345))
+        async with AsyncClient(transport=transport, base_url="http://10.0.0.1") as client:
+            resp = await client.get(
+                "/api/test-protected",
+                headers={"Authorization": f"Bearer {info.token}"},
+            )
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_unauth_paths_skip_auth(self, tmp_path):
+        app, _, _ = _build_test_app(tmp_path)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://10.0.0.1") as client:
+            resp = await client.get("/api/auth/pair/qr")
+        assert resp.status_code == 200  # not 401
