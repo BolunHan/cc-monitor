@@ -72,10 +72,10 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
                     if await request.is_disconnected():
                         break
                     try:
-                        payload = await asyncio.wait_for(queue.get(), timeout=30.0)
+                        payload = await asyncio.wait_for(queue.get(), timeout=15.0)
                         yield f"event: state_update\ndata: {json.dumps(payload)}\n\n"
                     except asyncio.TimeoutError:
-                        yield ": keepalive\n\n"
+                        yield f"event: heartbeat\ndata: {json.dumps({'ts': asyncio.get_event_loop().time()})}\n\n"
             finally:
                 manager.unsubscribe(queue)
 

@@ -128,6 +128,9 @@
 
     // ---- SSE Connection ----
 
+    let lastHeartbeat = 0;
+    const HEARTBEAT_GRACE = 30; // seconds before considering disconnected
+
     function connectSSE() {
         const es = new EventSource("/api/stream");
 
@@ -137,17 +140,29 @@
                 updateCard(session);
                 notify(session);
                 prevStates.set(session.session_id, session.state);
+                setConnected(true); // data flowing = alive
             } catch (err) {
                 console.error("cc-monitor: failed to parse SSE data", err);
             }
         });
 
-        es.addEventListener("open", () => setConnected(true));
+        es.addEventListener("heartbeat", () => {
+            lastHeartbeat = Date.now();
+            setConnected(true);
+        });
+
         es.addEventListener("error", () => {
-            setConnected(false);
-            // EventSource auto-reconnects
+            // EventSource auto-reconnects; don't flip to disconnected
+            // immediately — the watchdog timer handles that.
         });
     }
+
+    // Watchdog: if no heartbeat (or state_update) within grace period, mark disconnected
+    setInterval(() => {
+        if (lastHeartbeat === 0) return; // not yet received first heartbeat
+        const since = (Date.now() - lastHeartbeat) / 1000;
+        setConnected(since < HEARTBEAT_GRACE);
+    }, 5000);
 
     // ---- Hooks Management ----
 
