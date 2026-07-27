@@ -28,8 +28,10 @@ jobs:
         id: meta
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "image=ghcr.io/${{ github.repository_owner }}/cc-monitor" >> $GITHUB_OUTPUT
+          echo "owner=${OWNER}" >> $GITHUB_OUTPUT
+          echo "image=ghcr.io/${OWNER}/cc-monitor" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
@@ -57,8 +59,8 @@ jobs:
 
             ### Docker
             ```bash
-            docker pull ghcr.io/${{ github.repository_owner }}/cc-monitor:${{ steps.meta.outputs.version }}
-            docker run -p 9876:9876 ghcr.io/${{ github.repository_owner }}/cc-monitor:${{ steps.meta.outputs.version }}
+            docker pull ghcr.io/${{ steps.meta.outputs.owner }}/cc-monitor:${{ steps.meta.outputs.version }}
+            docker run -p 9876:9876 ghcr.io/${{ steps.meta.outputs.owner }}/cc-monitor:${{ steps.meta.outputs.version }}
             ```
 
             ### Run

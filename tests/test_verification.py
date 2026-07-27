@@ -56,13 +56,13 @@ class TestVersion:
         resp = httpx.get(f"{server}/api/version")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["version"] == "0.4.0"
+        assert data["version"] == "0.4.1"
 
     def test_version_matches_package(self, server):
         from cc_monitor import __version__
         resp = httpx.get(f"{server}/api/version")
         assert resp.json()["version"] == __version__
-        assert __version__ == "0.4.0"
+        assert __version__ == "0.4.1"
 
 
 class TestEventWithSummary:
