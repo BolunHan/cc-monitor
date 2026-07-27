@@ -366,6 +366,7 @@ body {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
     gap: 16px;
+    align-items: stretch;
 }
 
 .empty-state {
@@ -385,6 +386,8 @@ body {
     padding: 16px;
     box-shadow: var(--shadow);
     transition: border-color 0.2s;
+    display: flex;
+    flex-direction: column;
 }
 
 .session-card:hover {
@@ -514,16 +517,20 @@ body {
     font-weight: 500;
 }
 
+.session-card__body {
+    flex: 1;
+}
+
 .session-card__time {
-    margin-top: 8px;
     font-size: 12px;
     color: var(--color-text-muted);
+    margin-top: 8px;
 }
 
 .session-card__actions {
     display: flex;
     gap: 6px;
-    margin-top: 10px;
+    margin-top: 12px;
     padding-top: 10px;
     border-top: 1px solid var(--color-border);
 }

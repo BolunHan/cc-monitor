@@ -206,24 +206,26 @@
         }
 
         card.innerHTML = `
-            <div class="session-card__header">
-                <div>
-                    <div class="session-card__title" title="${escapeHtml(session.cwd || session.session_id)}">
-                        ${escapeHtml(title)}
+            <div class="session-card__body">
+                <div class="session-card__header">
+                    <div>
+                        <div class="session-card__title" title="${escapeHtml(session.cwd || session.session_id)}">
+                            ${escapeHtml(title)}
+                        </div>
+                        ${subtitle ? `<div class="session-card__subtitle" title="${escapeHtml(session.session_id)}">${subtitle.substring(0, 20)}</div>` : ""}
                     </div>
-                    ${subtitle ? `<div class="session-card__subtitle" title="${escapeHtml(session.session_id)}">${subtitle.substring(0, 20)}</div>` : ""}
+                    <span class="session-card__badge badge-${badgeState}">
+                        ${badgeLabel}
+                    </span>
                 </div>
-                <span class="session-card__badge badge-${badgeState}">
-                    ${badgeLabel}
-                </span>
+                ${summary}
+                <div class="session-card__detail">
+                    <strong>cwd:</strong> ${escapeHtml(session.cwd || "—")}<br>
+                    <strong>event:</strong> ${escapeHtml(session.raw_event || "—")}
+                    ${session.raw_detail ? ` (${escapeHtml(session.raw_detail)})` : ""}
+                </div>
+                <div class="session-card__time">${relativeTime(session.updated_at)}</div>
             </div>
-            ${summary}
-            <div class="session-card__detail">
-                <strong>cwd:</strong> ${escapeHtml(session.cwd || "—")}<br>
-                <strong>event:</strong> ${escapeHtml(session.raw_event || "—")}
-                ${session.raw_detail ? ` (${escapeHtml(session.raw_detail)})` : ""}
-            </div>
-            <div class="session-card__time">${relativeTime(session.updated_at)}</div>
             ${actions ? `<div class="session-card__actions">${actions}</div>` : ""}
         `;
         return card;
