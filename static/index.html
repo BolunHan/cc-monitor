@@ -28,13 +28,16 @@
     <div class="pairing-panel hidden" id="pairing-panel">
         <div class="pairing-panel__content">
             <h3 class="pairing-panel__title">Pair Device</h3>
-            <div class="pairing-qr-wrap">
-                <div id="pair-qr"></div>
-                <p class="pairing-hint">Scan with cc-monitor Android app</p>
-            </div>
-            <div class="pairing-requests" id="pairing-requests">
-                <h4 class="pairing-requests__title">Pending Requests</h4>
-                <div id="pairing-requests-list"></div>
+            <div class="pairing-panel__row">
+                <div class="pairing-panel__left">
+                    <div id="pair-qr"></div>
+                    <p class="pairing-hint">Scan with cc-monitor Android app</p>
+                </div>
+                <div class="pairing-panel__sep"></div>
+                <div class="pairing-panel__right">
+                    <h4 class="pairing-requests__title">Pending Requests</h4>
+                    <div id="pairing-requests-list"></div>
+                </div>
             </div>
         </div>
     </div>
