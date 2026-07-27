@@ -134,13 +134,18 @@
     function connectSSE() {
         const es = new EventSource("/api/stream");
 
+        es.addEventListener("open", () => {
+            lastHeartbeat = Date.now();
+            setConnected(true);
+        });
+
         es.addEventListener("state_update", (e) => {
             try {
                 const session = JSON.parse(e.data);
                 updateCard(session);
                 notify(session);
                 prevStates.set(session.session_id, session.state);
-                setConnected(true); // data flowing = alive
+                lastHeartbeat = Date.now();
             } catch (err) {
                 console.error("cc-monitor: failed to parse SSE data", err);
             }
@@ -148,18 +153,17 @@
 
         es.addEventListener("heartbeat", () => {
             lastHeartbeat = Date.now();
-            setConnected(true);
         });
 
         es.addEventListener("error", () => {
-            // EventSource auto-reconnects; don't flip to disconnected
-            // immediately — the watchdog timer handles that.
+            // EventSource auto-reconnects; the watchdog will mark
+            // disconnected if no heartbeat/data arrives within grace period.
         });
     }
 
-    // Watchdog: if no heartbeat (or state_update) within grace period, mark disconnected
+    // Watchdog: if no data/heartbeat within grace period, mark disconnected
     setInterval(() => {
-        if (lastHeartbeat === 0) return; // not yet received first heartbeat
+        if (lastHeartbeat === 0) return; // not yet received first open event
         const since = (Date.now() - lastHeartbeat) / 1000;
         setConnected(since < HEARTBEAT_GRACE);
     }, 5000);

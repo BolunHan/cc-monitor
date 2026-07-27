@@ -21,6 +21,21 @@ _GLOBAL_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
 _BACKUP_PATH = Path.home() / ".claude" / "settings.json.cc-monitor.bak"
 
 
+def _format_sse_event(event: str, data: str | None = None) -> str:
+    """Format a single SSE event block.
+
+    Args:
+        event: The event type name (e.g. "state_update", "heartbeat").
+        data: Optional JSON string for the data field.
+
+    Returns:
+        An SSE-formatted string ending with \\n\\n.
+    """
+    if data is not None:
+        return f"event: {event}\ndata: {data}\n\n"
+    return f"event: {event}\n\n"
+
+
 def create_app(data_dir: Path | None = None) -> FastAPI:
     """Build the FastAPI app with a given data directory.
 
@@ -73,9 +88,9 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
                         break
                     try:
                         payload = await asyncio.wait_for(queue.get(), timeout=15.0)
-                        yield f"event: state_update\ndata: {json.dumps(payload)}\n\n"
+                        yield _format_sse_event("state_update", json.dumps(payload))
                     except asyncio.TimeoutError:
-                        yield f"event: heartbeat\ndata: {json.dumps({'ts': asyncio.get_event_loop().time()})}\n\n"
+                        yield _format_sse_event("heartbeat", json.dumps({"ts": asyncio.get_event_loop().time()}))
             finally:
                 manager.unsubscribe(queue)
 
