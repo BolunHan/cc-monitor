@@ -1,25 +1,24 @@
 name: Deploy to GitHub Pages
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch:
+    workflow_dispatch:
+    workflow_call:
 
 permissions:
-  contents: write
+    contents: write
 
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    deploy:
+        runs-on: ubuntu-latest
+        steps:
+            -   uses: actions/checkout@v6
 
-      - name: Deploy static/ to gh-pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./static
-          publish_branch: gh-pages
-          commit_message: "deploy: ${{ github.event.head_commit.message }}"
-          user_name: "github-actions[bot]"
-          user_email: "github-actions[bot]@users.noreply.github.com"
+            -   name: Deploy static/ to gh-pages
+                uses: peaceiris/actions-gh-pages@v4
+                with:
+                    github_token: ${{ secrets.GITHUB_TOKEN }}
+                    publish_dir: ./static
+                    publish_branch: gh-pages
+                    commit_message: "deploy: ${{ github.event.head_commit.message }}"
+                    user_name: "github-actions[bot]"
+                    user_email: "github-actions[bot]@users.noreply.github.com"

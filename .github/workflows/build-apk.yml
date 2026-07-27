@@ -46,6 +46,19 @@ jobs:
                 run: |
                     flutter create --platforms=android --org com.ccmonitor --project-name cc_monitor_app .
 
+            -   name: Patch build.gradle for Kotlin plugin
+                working-directory: android_app/android
+                run: |
+                    if ! grep -q 'kotlin-gradle-plugin' build.gradle; then
+                      cat >> build.gradle << 'PATCH'
+                    buildscript {
+                        dependencies {
+                            classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.22"
+                        }
+                    }
+                    PATCH
+                    fi
+
             -   name: Build APK
                 working-directory: android_app
                 run: flutter build apk --release

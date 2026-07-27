@@ -22,6 +22,10 @@ jobs:
             version: ${{ github.ref_name }}
         secrets: inherit
 
+    gh-pages:
+        uses: ./.github/workflows/deploy-gh-pages.yml
+        secrets: inherit
+
     release:
         needs: [docker, apk]
         runs-on: ubuntu-latest
