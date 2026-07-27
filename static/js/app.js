@@ -290,6 +290,15 @@
 
     requestNotificationPermission();
 
+    // Show version
+    fetch("/api/version")
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById("footer-version").textContent =
+                `cc-monitor v${data.version}`;
+        })
+        .catch(() => {});
+
     fetch("/api/status")
         .then(r => r.json())
         .then(data => {

@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from cc_monitor import __version__
 from cc_monitor.state import StateManager
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     Returns:
         A configured FastAPI application.
     """
-    app = FastAPI(title="cc-monitor", version="0.1.0")
+    app = FastAPI(title="cc-monitor", version=__version__)
     manager = StateManager(data_dir=data_dir)
 
     @app.on_event("startup")
@@ -103,6 +104,11 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
                 "X-Accel-Buffering": "no",
             },
         )
+
+    @app.get("/api/version")
+    async def version():
+        """Return the cc-monitor server version."""
+        return JSONResponse({"version": __version__})
 
     # ---- Hook installation ----
 
