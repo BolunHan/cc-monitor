@@ -6,12 +6,11 @@ import json
 import logging
 from pathlib import Path
 
+from cc_monitor import __version__
+from cc_monitor.state import StateManager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-
-from cc_monitor import __version__
-from cc_monitor.state import StateManager
 
 logger = logging.getLogger(__name__)
 
