@@ -378,6 +378,19 @@ body {
     50% { opacity: 0.6; }
 }
 
+.session-card__summary {
+    font-size: 13px;
+    color: var(--color-text);
+    line-height: 1.4;
+    margin-bottom: 8px;
+    padding: 6px 8px;
+    background: color-mix(in srgb, var(--color-text-muted) 8%, transparent);
+    border-radius: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .session-card__detail {
     font-size: 13px;
     color: var(--color-text-muted);

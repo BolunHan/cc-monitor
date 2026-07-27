@@ -87,7 +87,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
                     if await request.is_disconnected():
                         break
                     try:
-                        payload = await asyncio.wait_for(queue.get(), timeout=15.0)
+                        payload = await asyncio.wait_for(queue.get(), timeout=3.0)
                         yield _format_sse_event("state_update", json.dumps(payload))
                     except asyncio.TimeoutError:
                         yield _format_sse_event("heartbeat", json.dumps({"ts": asyncio.get_event_loop().time()}))

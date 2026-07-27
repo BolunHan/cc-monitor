@@ -21,6 +21,7 @@ class SessionState:
     state: MonitorState
     raw_event: str
     raw_detail: str | None
+    summary: str | None = None
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> dict:
@@ -30,6 +31,7 @@ class SessionState:
             "state": str(self.state),
             "raw_event": self.raw_event,
             "raw_detail": self.raw_detail,
+            "summary": self.summary,
             "updated_at": self.updated_at.isoformat(),
         }
 
@@ -63,6 +65,7 @@ class StateManager:
                     state=MonitorState(data["state"]),
                     raw_event=data["raw_event"],
                     raw_detail=data.get("raw_detail"),
+                    summary=data.get("summary"),
                     updated_at=datetime.fromisoformat(data["updated_at"]),
                 )
                 self._sessions[session.session_id] = session
@@ -109,12 +112,25 @@ class StateManager:
             new_state = MonitorState.IDLE
 
         # --- update ---
+        # Capture prompt/assistant message as summary
+        summary = None
+        existing = self._sessions.get(session_id)
+        if hook_event_name == "UserPromptSubmit":
+            prompt = raw.get("prompt", "")
+            summary = prompt.strip() if prompt else None
+        elif hook_event_name == "Stop":
+            msg = raw.get("last_assistant_message", "")
+            summary = msg.strip() if msg else None
+        elif existing:
+            summary = existing.summary
+
         session = SessionState(
             session_id=session_id,
             cwd=raw.get("cwd", ""),
             state=new_state,
             raw_event=hook_event_name,
             raw_detail=tool_name or notification_type,
+            summary=summary,
         )
         self._sessions[session_id] = session
 

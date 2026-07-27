@@ -74,6 +74,10 @@
         return el.innerHTML;
     }
 
+    function truncate(str, maxLen) {
+        return str.length <= maxLen ? str : str.substring(0, maxLen - 1) + "…";
+    }
+
     function dirBasename(cwd) {
         if (!cwd) return null;
         const trimmed = cwd.endsWith("/") ? cwd.slice(0, -1) : cwd;
@@ -91,6 +95,9 @@
         const basename = dirBasename(session.cwd);
         const title = basename || session.session_id.substring(0, 8) + "…";
         const subtitle = basename ? escapeHtml(session.session_id) : "";
+        const summary = session.summary
+            ? `<div class="session-card__summary" title="${escapeHtml(session.summary)}">${escapeHtml(truncate(session.summary, 100))}</div>`
+            : "";
 
         card.innerHTML = `
             <div class="session-card__header">
@@ -104,6 +111,7 @@
                     ${session.state.replace("_", " ")}
                 </span>
             </div>
+            ${summary}
             <div class="session-card__detail">
                 <strong>cwd:</strong> ${escapeHtml(session.cwd || "—")}<br>
                 <strong>event:</strong> ${escapeHtml(session.raw_event || "—")}
@@ -129,7 +137,7 @@
     // ---- SSE Connection ----
 
     let lastHeartbeat = 0;
-    const HEARTBEAT_GRACE = 30; // seconds before considering disconnected
+    const HEARTBEAT_GRACE = 10; // seconds before considering disconnected
 
     function connectSSE() {
         const es = new EventSource("/api/stream");
@@ -166,7 +174,7 @@
         if (lastHeartbeat === 0) return; // not yet received first open event
         const since = (Date.now() - lastHeartbeat) / 1000;
         setConnected(since < HEARTBEAT_GRACE);
-    }, 5000);
+    }, 1000);
 
     // ---- Hooks Management ----
 
