@@ -62,6 +62,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     @app.on_event("startup")
     async def _restore():
         await manager.restore()
+        manager.start_review_timeout()
 
     # ---- API routes ----
 

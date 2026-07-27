@@ -4,12 +4,17 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from cc_monitor.mapping import MonitorState, map_event
 
 logger = logging.getLogger(__name__)
+
+# PENDING_REVIEW sessions auto-transition to IDLE after this duration
+_REVIEW_TIMEOUT = timedelta(hours=24)
+# How often to check for stale PENDING_REVIEW sessions
+_REVIEW_CHECK_INTERVAL = 60  # seconds
 
 
 @dataclass
@@ -50,10 +55,27 @@ class StateManager:
         self._sessions: dict[str, SessionState] = {}
         self._pending_approval: set[str] = set()
         self._queues: list[asyncio.Queue] = []
+        self._review_timeout_task: asyncio.Task | None = None
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def start_review_timeout(self) -> None:
+        """Start a background task that expires stale PENDING_REVIEW sessions."""
+        if self._review_timeout_task is not None:
+            return
+        self._review_timeout_task = asyncio.ensure_future(self._expire_reviews_loop())
+
+    async def stop_review_timeout(self) -> None:
+        """Stop the review timeout background task."""
+        if self._review_timeout_task is not None:
+            self._review_timeout_task.cancel()
+            try:
+                await self._review_timeout_task
+            except asyncio.CancelledError:
+                pass
+            self._review_timeout_task = None
 
     async def restore(self) -> None:
         """Load all state JSON files from data_dir into memory."""
@@ -226,3 +248,22 @@ class StateManager:
                 dead.append(q)
         for q in dead:
             self.unsubscribe(q)
+
+    async def _expire_reviews_loop(self) -> None:
+        """Periodically flip stale PENDING_REVIEW sessions to IDLE."""
+        while True:
+            await asyncio.sleep(_REVIEW_CHECK_INTERVAL)
+            now = datetime.now(timezone.utc)
+            expired = []
+            for sid, session in self._sessions.items():
+                if session.state == MonitorState.PENDING_REVIEW:
+                    if now - session.updated_at >= _REVIEW_TIMEOUT:
+                        expired.append(sid)
+            for sid in expired:
+                session = self._sessions[sid]
+                session.state = MonitorState.IDLE
+                session.raw_event = "ReviewTimeout"
+                session.updated_at = now
+                self._write_file(session)
+                await self._broadcast(session)
+                logger.info("Expired PENDING_REVIEW session %s → IDLE", sid)

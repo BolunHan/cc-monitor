@@ -56,11 +56,14 @@
         if (!notificationsPermitted) return;
         const prev = prevStates.get(session.session_id);
         if (prev && session.state === prev.state) return;
-        if (session.state !== "idle" && session.state !== "pending_approval") return;
+        if (session.state !== "idle" && session.state !== "pending_approval" && session.state !== "pending_review") return;
 
         const basename = dirBasename(session.cwd) || session.session_id.substring(0, 8);
         let title, body;
-        if (session.state === "idle") {
+        if (session.state === "pending_review") {
+            title = `${basename} — Pending Review`;
+            body = "Claude finished responding. Review the output.";
+        } else if (session.state === "idle") {
             title = `${basename} — Task Complete`;
             body = "Claude Code is idle, waiting for your input.";
         } else {
@@ -118,6 +121,19 @@
         return "active";
     }
 
+    function cardStateClass(session) {
+        if (session.archived) return "card--archived";
+        return "card--" + session.state;
+    }
+
+    const STATE_EMOJI = {
+        working: "🔵",            // 🔵
+        idle: "⚪",                      // ⚪
+        pending_approval: "🟡",   // 🟡
+        pending_review: "🟢",     // 🟢
+        all_done: "✅",                  // ✅
+    };
+
     function getGrid(section) {
         return document.getElementById("grid-" + section);
     }
@@ -132,13 +148,31 @@
 
     function updateCounts() {
         let counts = {active: 0, complete: 0, archive: 0};
+        let breakdown = {}; // {section: {state: count}}
+        for (const sec of ["active", "complete", "archive"]) {
+            breakdown[sec] = {};
+        }
         cards.forEach((_, sid) => {
             const s = prevStates.get(sid);
-            if (s) counts[getSection({archived: s.archived, state: s.state})]++;
+            if (!s) return;
+            const section = getSection({archived: s.archived, state: s.state});
+            counts[section]++;
+            breakdown[section][s.state] = (breakdown[section][s.state] || 0) + 1;
         });
         for (const sec of ["active", "complete", "archive"]) {
             const el = getCount(sec);
             if (el) el.textContent = counts[sec];
+        }
+        // Active section emoji breakdown
+        const bd = document.getElementById("breakdown-active");
+        if (bd) {
+            const parts = [];
+            const ab = breakdown["active"] || {};
+            for (const [state, emoji] of Object.entries(STATE_EMOJI)) {
+                const n = ab[state] || 0;
+                if (n > 0) parts.push(`${emoji}${n}`);
+            }
+            bd.textContent = parts.length > 0 ? "| " + parts.join(" ") : "";
         }
     }
 
@@ -146,7 +180,7 @@
 
     function createCard(session) {
         const card = document.createElement("div");
-        card.className = "session-card";
+        card.className = "session-card " + cardStateClass(session);
         card.id = `card-${session.session_id}`;
 
         const basename = dirBasename(session.cwd);

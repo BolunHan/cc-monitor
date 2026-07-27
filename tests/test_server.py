@@ -78,7 +78,7 @@ async def test_get_single_status(test_app, tmp_data_dir):
 
     assert resp.status_code == 200
     assert resp.json()["session_id"] == "s1"
-    assert resp.json()["state"] == "idle"
+    assert resp.json()["state"] == "pending_review"
 
 
 @pytest.mark.asyncio

@@ -99,7 +99,7 @@ class TestEventWithSummary:
         assert resp.status_code == 200
         data = resp.json()
         assert data["summary"] == "I've added 5 unit tests covering all edge cases."
-        assert data["state"] == "idle"
+        assert data["state"] == "pending_review"
 
     def test_summary_persists_between_events(self, server):
         """When a non-summary event fires, the previous summary is kept."""
@@ -420,6 +420,47 @@ class TestStaticFiles:
         """CSS must define .badge-archived style."""
         resp = httpx.get(f"{server}/css/app.css")
         assert ".badge-archived" in resp.text
+
+    def test_css_card_state_borders(self, server):
+        """CSS must define card--working, card--pending_approval, card--all_done, card--archived."""
+        resp = httpx.get(f"{server}/css/app.css")
+        assert ".session-card.card--working" in resp.text
+        assert ".session-card.card--pending_approval" in resp.text
+        assert ".session-card.card--pending_review" in resp.text
+        assert ".session-card.card--all_done" in resp.text
+        assert ".session-card.card--archived" in resp.text
+
+    def test_css_card_pulse_animations(self, server):
+        """Working and pending_approval cards must have pulse animations."""
+        resp = httpx.get(f"{server}/css/app.css")
+        assert "card-pulse-blue" in resp.text
+        assert "card-pulse-yellow" in resp.text
+
+    def test_js_card_state_class(self, server):
+        """createCard must apply cardStateClass to the card element."""
+        resp = httpx.get(f"{server}/js/app.js")
+        assert 'cardStateClass(session)' in resp.text
+        assert 'card--archived' in resp.text
+        assert 'card--" + session.state' in resp.text
+
+    def test_js_emoji_state_map(self, server):
+        """JS must define STATE_EMOJI with emojis for each state."""
+        resp = httpx.get(f"{server}/js/app.js")
+        assert "STATE_EMOJI" in resp.text
+        for state in ["working", "idle", "pending_approval", "pending_review", "all_done"]:
+            assert state in resp.text, f"STATE_EMOJI missing {state}"
+
+    def test_js_breakdown_in_update_counts(self, server):
+        """updateCounts must compute per-state breakdown for active section."""
+        resp = httpx.get(f"{server}/js/app.js")
+        assert "breakdown-active" in resp.text
+        assert "STATE_EMOJI" in resp.text
+        assert "parts.push" in resp.text
+
+    def test_index_has_breakdown_element(self, server):
+        """Active section header must have breakdown span."""
+        resp = httpx.get(f"{server}/")
+        assert 'id="breakdown-active"' in resp.text
 
     def test_js_connect_sse_does_not_clear_cards(self, server):
         """connectSSE must NOT clear cards — only clearAllCards on manual reconnect."""

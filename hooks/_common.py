@@ -23,7 +23,7 @@ def map_event(hook_event_name: str, notification_type: str | None = None) -> str
     if hook_event_name in ("PreToolUse", "PostToolUse", "UserPromptSubmit"):
         return "working"
     if hook_event_name == "Stop":
-        return "idle"
+        return "pending_review"
     if hook_event_name == "Notification":
         if notification_type == "idle_prompt":
             return "idle"

@@ -117,9 +117,9 @@ async def test_sse_broadcast_to_subscribers(test_app, tmp_data_dir):
     payload1 = await asyncio.wait_for(q.get(), timeout=1.0)
     payload2 = await asyncio.wait_for(q2.get(), timeout=1.0)
     assert payload1["session_id"] == "multi-sub"
-    assert payload1["state"] == "idle"
+    assert payload1["state"] == "pending_review"
     assert payload2["session_id"] == "multi-sub"
-    assert payload2["state"] == "idle"
+    assert payload2["state"] == "pending_review"
 
     # Clean up
     manager.unsubscribe(q)

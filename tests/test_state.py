@@ -86,7 +86,7 @@ class TestStateManager:
         await manager.handle_event(self._make_event(hook_event_name="Stop", tool_name=None))
 
         session = manager.get("s1")
-        assert session.state == MonitorState.IDLE
+        assert session.state == MonitorState.PENDING_REVIEW
         assert session.raw_event == "Stop"
 
     @pytest.mark.asyncio
@@ -138,6 +138,12 @@ class TestStateManager:
         assert session is not None
         assert session.state == MonitorState.ALL_DONE
         assert session.cwd == "/old/project"
+
+    @pytest.mark.asyncio
+    async def test_stop_maps_to_pending_review(self, manager):
+        event = self._make_event(hook_event_name="Stop", tool_name=None)
+        session = await manager.handle_event(event)
+        assert session.state == MonitorState.PENDING_REVIEW
 
     @pytest.mark.asyncio
     async def test_restore_skips_invalid_json(self, tmp_dir):

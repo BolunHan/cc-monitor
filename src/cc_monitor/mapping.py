@@ -9,6 +9,7 @@ class MonitorState(enum.StrEnum):
     IDLE = "idle"
     WORKING = "working"
     PENDING_APPROVAL = "pending_approval"
+    PENDING_REVIEW = "pending_review"
     ALL_DONE = "all_done"
 
 
@@ -27,7 +28,7 @@ def map_event(hook_event_name: str, notification_type: str | None = None) -> Mon
         return MonitorState.WORKING
 
     if hook_event_name == "Stop":
-        return MonitorState.IDLE
+        return MonitorState.PENDING_REVIEW
 
     if hook_event_name == "Notification":
         if notification_type == "idle_prompt":
