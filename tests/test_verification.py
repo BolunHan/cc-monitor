@@ -339,10 +339,16 @@ class TestStaticFiles:
         assert 'apiUrl(' in resp.text
         assert 'Save & Reconnect' in resp.text or 'btn-save-settings' in resp.text
 
-    def test_js_clears_cards_on_reconnect(self, server):
-        """connectSSE() must clear cards before reconnecting."""
+    def test_js_loads_sessions_immediately_on_init(self, server):
+        """loadSessions() must be called on page load, not only after SSE open."""
         resp = httpx.get(f"{server}/js/app.js")
-        assert 'clearAllCards' in resp.text
+        assert "loadSessions().then(() => {" in resp.text
+        assert "connectSSE()" in resp.text
+        # loadSessions must appear BEFORE connectSSE in init
+        initSection = resp.text.split("// ---- Initialise ----")[1].split("})();")[0]
+        loadPos = initSection.index("loadSessions()")
+        ssePos = initSection.index("connectSSE()")
+        assert loadPos < ssePos, "loadSessions must be called before connectSSE"
 
     def test_index_has_server_url_settings(self, server):
         """Settings panel must have URL and Port inputs + save button."""
@@ -414,6 +420,13 @@ class TestStaticFiles:
         """CSS must define .badge-archived style."""
         resp = httpx.get(f"{server}/css/app.css")
         assert ".badge-archived" in resp.text
+
+    def test_js_connect_sse_does_not_clear_cards(self, server):
+        """connectSSE must NOT clear cards — only clearAllCards on manual reconnect."""
+        resp = httpx.get(f"{server}/js/app.js")
+        connectBody = resp.text.split("function connectSSE() {")[1].split("setInterval")[0]
+        assert "clearAllCards" not in connectBody, \
+            "connectSSE must not clear cards on connect"
 
 
 class TestSseStream:

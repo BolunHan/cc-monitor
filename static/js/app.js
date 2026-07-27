@@ -261,10 +261,7 @@
 
     function connectSSE() {
         if (currentEventSource) currentEventSource.close();
-        clearAllCards();
-        setConnected(false);
         lastHeartbeat = 0;
-        label.textContent = "connecting";
 
         const es = new EventSource(apiUrl("/api/stream"));
         currentEventSource = es;
@@ -272,6 +269,7 @@
         es.addEventListener("open", () => {
             lastHeartbeat = Date.now();
             setConnected(true);
+            // Refresh in case events were missed while disconnected
             loadSessions();
         });
 
@@ -489,5 +487,12 @@
     populateSettingsInputs();
     loadVersion();
     checkHooksStatus();
+
+    // Fetch sessions immediately via REST — don't wait for SSE to connect.
+    // SSE connects in parallel for live updates; when its 'open' fires,
+    // loadSessions() refreshes any events missed during the handshake.
+    loadSessions().then(() => {
+        if (lastHeartbeat === 0) setConnected(true);
+    });
     connectSSE();
 })();
