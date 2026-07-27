@@ -316,8 +316,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="cc-monitor — Claude Code status monitor")
     parser.add_argument("--port", type=int, default=9876, help="Port to listen on (default: 9876)")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
-    parser.add_argument("--data-dir", type=str, default=None,
-                        help="State file directory (default: ~/.cc-monitor)")
+    parser.add_argument("--data-dir", type=str, default=None, help="State file directory (default: ~/.cc-monitor)")
     args = parser.parse_args()
 
     import uvicorn
