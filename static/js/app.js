@@ -35,7 +35,7 @@
     const indicator = document.getElementById("connection-indicator");
     const label = document.getElementById("connection-label");
     const cards = new Map(); // session_id -> {section, element}
-    const prevStates = new Map();
+    const prevStates = new Map(); // session_id -> {state, archived}
     let notificationsPermitted = false;
     let currentEventSource = null;
 
@@ -55,7 +55,7 @@
     function notify(session) {
         if (!notificationsPermitted) return;
         const prev = prevStates.get(session.session_id);
-        if (session.state === prev) return;
+        if (prev && session.state === prev.state) return;
         if (session.state !== "idle" && session.state !== "pending_approval") return;
 
         const basename = dirBasename(session.cwd) || session.session_id.substring(0, 8);
@@ -234,7 +234,7 @@
             if (resp.ok) {
                 const session = await resp.json();
                 updateCard(session);
-                prevStates.set(session.session_id, session.state);
+                prevStates.set(session.session_id, {state: session.state, archived: session.archived});
             }
         } catch (err) {
             console.error("cc-monitor: action failed", action, err);
@@ -276,7 +276,7 @@
                 const session = JSON.parse(e.data);
                 updateCard(session);
                 notify(session);
-                prevStates.set(session.session_id, session.state);
+                prevStates.set(session.session_id, {state: session.state, archived: session.archived});
                 lastHeartbeat = Date.now();
             } catch (err) {
                 console.error("cc-monitor: failed to parse SSE data", err);
@@ -305,7 +305,7 @@
             if (data.sessions && data.sessions.length > 0) {
                 data.sessions.forEach(s => {
                     updateCard(s);
-                    prevStates.set(s.session_id, s.state);
+                    prevStates.set(s.session_id, {state: s.state, archived: s.archived});
                 });
             }
             updateCounts();

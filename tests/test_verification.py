@@ -202,6 +202,48 @@ class TestSessionActions:
         session = next(s for s in resp2.json()["sessions"] if s["session_id"] == "fresh")
         assert session["archived"] is False
 
+    def test_section_routing_active(self, server):
+        """Active sessions have archived=false and state != all_done."""
+        self._create_session(server, sid="active-1")
+        resp = httpx.get(f"{server}/api/status")
+        s = next(s for s in resp.json()["sessions"] if s["session_id"] == "active-1")
+        assert s["archived"] is False
+        assert s["state"] == "working"
+
+    def test_section_routing_complete(self, server):
+        """Complete sessions have archived=false and state == all_done."""
+        self._create_session(server, sid="done-1")
+        httpx.post(f"{server}/api/session/done-1/complete")
+        resp = httpx.get(f"{server}/api/status")
+        s = next(s for s in resp.json()["sessions"] if s["session_id"] == "done-1")
+        assert s["state"] == "all_done"
+        assert s["archived"] is False
+
+    def test_section_routing_archived(self, server):
+        """Archived sessions have archived=true regardless of state."""
+        self._create_session(server, sid="arch-1")
+        httpx.post(f"{server}/api/session/arch-1/archive")
+        resp = httpx.get(f"{server}/api/status")
+        s = next(s for s in resp.json()["sessions"] if s["session_id"] == "arch-1")
+        assert s["archived"] is True
+
+    def test_archived_session_stays_archived_after_complete(self, server):
+        """Archive + complete — session should remain archived."""
+        self._create_session(server, sid="arch-complete")
+        httpx.post(f"{server}/api/session/arch-complete/archive")
+        httpx.post(f"{server}/api/session/arch-complete/complete")
+        resp = httpx.get(f"{server}/api/status")
+        s = next(s for s in resp.json()["sessions"] if s["session_id"] == "arch-complete")
+        assert s["archived"] is True
+        assert s["state"] == "all_done"
+
+    def test_status_returns_archived_field(self, server):
+        """All sessions in /api/status must include the 'archived' field."""
+        self._create_session(server, sid="field-test")
+        resp = httpx.get(f"{server}/api/status")
+        for s in resp.json()["sessions"]:
+            assert "archived" in s, f"Session {s.get('session_id')} missing 'archived' field"
+
 
 class TestCors:
     """CORS headers must be present for cross-origin dashboard hosting.
@@ -337,6 +379,29 @@ class TestStaticFiles:
         resp = httpx.get(f"{server}/js/app.js")
         assert 'DEFAULT_HOST = "http://127.0.0.1"' in resp.text
         assert 'DEFAULT_PORT = "9876"' in resp.text
+
+    def test_js_prevstates_stores_state_and_archived(self, server):
+        """prevStates.set must store {state, archived} object, not bare string."""
+        resp = httpx.get(f"{server}/js/app.js")
+        assert "prevStates.set(session.session_id, {state: session.state, archived: session.archived})" in resp.text
+        assert "prevStates.set(s.session_id, {state: s.state, archived: s.archived})" in resp.text
+
+    def test_js_notify_uses_prev_state_property(self, server):
+        """notify() must compare session.state with prev.state (not prev directly)."""
+        resp = httpx.get(f"{server}/js/app.js")
+        assert "prev && session.state === prev.state" in resp.text
+
+    def test_js_getsection_routes_archived_first(self, server):
+        """getSection must check archived before state."""
+        resp = httpx.get(f"{server}/js/app.js")
+        assert "if (session.archived) return \"archive\"" in resp.text
+
+    def test_js_updatecounts_iterates_cards(self, server):
+        """updateCounts must iterate cards Map and check prevStates."""
+        resp = httpx.get(f"{server}/js/app.js")
+        assert "cards.forEach" in resp.text
+        assert "prevStates.get(sid)" in resp.text
+        assert "getSection({archived: s.archived, state: s.state})" in resp.text
 
 
 class TestSseStream:
