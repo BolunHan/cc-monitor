@@ -23,3 +23,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+dependency_overrides:
+  path_provider_android: 2.2.22

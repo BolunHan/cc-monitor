@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../services/api_client.dart';
 import '../services/discovery_service.dart';
+import '../services/pairing_service.dart';
 import '../services/secure_store.dart';
 
 class ServerPickerScreen extends StatefulWidget {

@@ -27,34 +27,46 @@ class DiscoveryService {
 
     final servers = <DiscoveredServer>[];
 
-    await for (final ptr in _client!.lookup<PtrResourceRecord>(
-      ResourceRecordQuery.serverPointer('_cc-monitor._tcp.local'),
-    )) {
-      final srv = await _client!.lookup<SrvResourceRecord>(
-        ResourceRecordQuery.service(ptr.domainName),
-      );
-      final txt = await _client!.lookup<TxtResourceRecord>(
-        ResourceRecordQuery.text(ptr.domainName),
-      );
+    try {
+      await for (final ptr in _client!.lookup<PtrResourceRecord>(
+        ResourceRecordQuery.serverPointer('_cc-monitor._tcp.local'),
+      )) {
+        try {
+          final srvList = await _client!
+              .lookup<SrvResourceRecord>(
+                ResourceRecordQuery.service(ptr.domainName),
+              )
+              .toList();
+          final txtList = await _client!
+              .lookup<TxtResourceRecord>(
+                ResourceRecordQuery.text(ptr.domainName),
+              )
+              .toList();
 
-      if (srv.isNotEmpty && txt.isNotEmpty) {
-        final txtMap = <String, String>{};
-        for (final entry in txt.first.text.split('\n')) {
-          final parts = entry.split('=');
-          if (parts.length == 2) {
-            txtMap[parts[0]] = parts[1];
+          if (srvList.isNotEmpty && txtList.isNotEmpty) {
+            final txtMap = <String, String>{};
+            for (final entry in txtList.first.text.split('\n')) {
+              final parts = entry.split('=');
+              if (parts.length == 2) {
+                txtMap[parts[0]] = parts[1];
+              }
+            }
+
+            servers.add(DiscoveredServer(
+              hostname: ptr.domainName.replaceAll('._cc-monitor._tcp.local', ''),
+              host: txtMap['host'] ?? '',
+              port: int.tryParse(txtMap['port'] ?? '') ?? 9876,
+              version: txtMap['version'] ?? '',
+              certSha256: txtMap['cert_sha256'] ?? '',
+              pairingRequired: txtMap['pairing'] == 'required',
+            ));
           }
+        } catch (_) {
+          // Skip servers with incomplete DNS records
         }
-
-        servers.add(DiscoveredServer(
-          hostname: ptr.domainName.replaceAll('._cc-monitor._tcp.local', ''),
-          host: txtMap['host'] ?? '',
-          port: int.tryParse(txtMap['port'] ?? '') ?? 9876,
-          version: txtMap['version'] ?? '',
-          certSha256: txtMap['cert_sha256'] ?? '',
-          pairingRequired: txtMap['pairing'] == 'required',
-        ));
       }
+    } catch (_) {
+      // mDNS discovery failed
     }
 
     _client!.stop();
