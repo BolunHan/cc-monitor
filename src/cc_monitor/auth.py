@@ -72,6 +72,45 @@ class TokenManager:
         logger.info("Created token for '%s' (expires: %s)", device_name, expires_at)
         return self._to_info(entry)
 
+    def register_token(
+        self, token: str, device_name: str, ttl_seconds: int = 0
+    ) -> TokenInfo:
+        """Register a pre-existing token string with TokenManager.
+
+        Unlike create_token, this does not generate a new token -- it
+        registers the given token value directly. Used by PairingManager
+        for QR tokens where the token is pre-generated.
+
+        Args:
+            token: The pre-existing token string to register.
+            device_name: Human-readable device identifier.
+            ttl_seconds: Token lifetime in seconds. 0 means never expires.
+
+        Returns:
+            TokenInfo for the registered token.
+
+        Raises:
+            ValueError: If the token is already registered.
+        """
+        if token in self._tokens:
+            raise ValueError(f"Token already registered")
+        now = datetime.now(timezone.utc)
+        expires_at = (
+            _NO_EXPIRY_SENTINEL
+            if ttl_seconds == 0
+            else now + timedelta(seconds=ttl_seconds)
+        )
+        entry = {
+            "token": token,
+            "device_name": device_name,
+            "created_at": now.isoformat(),
+            "expires_at": expires_at.isoformat(),
+        }
+        self._tokens[token] = entry
+        self._save()
+        logger.info("Registered token for '%s'", device_name)
+        return self._to_info(entry)
+
     def validate_token(self, token: str) -> TokenInfo | None:
         """Check if a token is valid.
 
@@ -260,7 +299,6 @@ class PairingManager:
         self._qr_tokens[token] = {
             "created_at": now.isoformat(),
             "ttl_seconds": self._ttl_seconds,
-            "expires_at": expires_at.isoformat(),
         }
         return token, expires_at
 
@@ -286,23 +324,10 @@ class PairingManager:
         if datetime.now(timezone.utc) - created_at > _QR_TOKEN_TIMEOUT:
             return None
 
-        now = datetime.now(timezone.utc)
-        ttl = pending["ttl_seconds"]
-        expires_at = (
-            _NO_EXPIRY_SENTINEL
-            if ttl == 0
-            else now + timedelta(seconds=ttl)
-        )
-        entry = {
-            "token": token,
-            "device_name": device_name,
-            "created_at": now.isoformat(),
-            "expires_at": expires_at.isoformat(),
-        }
         # Register the QR token itself as a valid auth token
-        self._token_manager._tokens[token] = entry
-        self._token_manager._save()
-        return self._token_manager._to_info(entry)
+        return self._token_manager.register_token(
+            token, device_name, ttl_seconds=pending["ttl_seconds"]
+        )
 
     def expire_stale_qr_tokens(self) -> int:
         """Remove QR tokens that were never confirmed within the 5-min window."""
@@ -348,12 +373,7 @@ class PairingManager:
         entry = self._requests.get(request_id)
         if entry is None:
             return None
-        return PairingRequest(
-            id=entry["id"],
-            device_name=entry["device_name"],
-            requested_at=datetime.fromisoformat(entry["requested_at"]),
-            status=entry["status"],
-        )
+        return self._to_request(entry)
 
     def get_pending(self) -> list[PairingRequest]:
         """List all pending pairing requests (not yet approved or denied)."""
