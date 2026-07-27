@@ -1,6 +1,5 @@
 """Tests for cc_monitor.auth — TokenManager, PairingManager, and auth middleware."""
 
-import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -246,17 +245,9 @@ class TestPairingManagerApproval:
         assert pending[0].id == r2
 
 
-UNAUTHED_PATHS = {
-    "/api/auth/pair/qr",
-    "/api/auth/pair/request",
-    "/api/auth/pair/request/",
-    "/api/version",
-}
-
-
 def _build_test_app(tmp_path, token_manager=None, pairing_manager=None):
     """Build a minimal FastAPI app with auth middleware for testing."""
-    from fastapi import FastAPI, Request
+    from fastapi import FastAPI
 
     app = FastAPI()
 
@@ -301,7 +292,7 @@ class TestAuthMiddleware:
         async with AsyncClient(transport=transport, base_url="http://10.0.0.1") as client:
             resp = await client.get("/api/test-protected")
         assert resp.status_code == 401
-        assert resp.json()["error"] == "unauthorized"
+        assert resp.json()["detail"] == "unauthorized"
 
     @pytest.mark.asyncio
     async def test_invalid_token_returns_401(self, tmp_path):

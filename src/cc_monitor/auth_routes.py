@@ -1,7 +1,7 @@
 """Auth middleware and API routes for cc-monitor."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -51,7 +51,7 @@ def create_auth_middleware(token_manager: TokenManager):
         token = auth_header.removeprefix("Bearer ").strip()
         if not token:
             return JSONResponse(
-                {"error": "unauthorized"},
+                {"detail": "unauthorized"},
                 status_code=401,
                 headers={"X-Token-Expired": "false"},
             )
@@ -61,7 +61,7 @@ def create_auth_middleware(token_manager: TokenManager):
             # Check if it's an expired token vs. invalid
             is_expired = _is_token_expired(token_manager, token)
             return JSONResponse(
-                {"error": "unauthorized"},
+                {"detail": "unauthorized"},
                 status_code=401,
                 headers={"X-Token-Expired": str(is_expired).lower()},
             )
