@@ -45,6 +45,21 @@
                 <span class="settings-panel__hook-status" id="settings-hook-status">checking…</span>
                 <button class="btn btn--danger btn--small" id="btn-uninstall-hooks">Uninstall</button>
             </div>
+            <hr class="settings-panel__divider">
+            <div class="settings-panel__row">
+                <span class="settings-panel__label-text">Device pairing</span>
+                <button class="btn btn--primary btn--small" id="btn-show-pair">Pair New Device</button>
+            </div>
+            <div class="pairing-section hidden" id="pairing-section">
+                <div class="pairing-qr-wrap">
+                    <div id="pair-qr"></div>
+                    <p class="pairing-hint">Scan with cc-monitor Android app</p>
+                </div>
+                <div class="pairing-requests" id="pairing-requests">
+                    <h4 class="pairing-requests__title">Pending Requests</h4>
+                    <div id="pairing-requests-list"></div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -94,6 +109,7 @@
         <span class="footer__version" id="footer-version">cc-monitor v—</span>
     </footer>
 
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script src="./js/app.js"></script>
 </body>
 </html>

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 
 import 'app_theme.dart';
@@ -13,7 +14,15 @@ import 'screens/settings_screen.dart';
 import 'screens/server_picker_screen.dart';
 import 'screens/pairing_screen.dart';
 
+const _tag = 'cc-monitor';
+
 void main() {
+  debugPrint = (message, {wrapWidth}) {
+    // Print to both logcat and console with tag
+    debugPrintSynchronously('[$_tag] $message', wrapWidth: wrapWidth);
+  };
+
+  debugPrint('=== cc-monitor app starting ===');
   WidgetsFlutterBinding.ensureInitialized();
 
   final secureStore = SecureStore();
@@ -104,8 +113,10 @@ class _StartupGateState extends State<_StartupGate> {
   @override
   void initState() {
     super.initState();
-    _configureFuture = widget.apiClient.configureFromStore().then((_) {
-      return widget.apiClient.isConfigured;
+    debugPrint('StartupGate: checking stored pairing...');
+    _configureFuture = widget.apiClient.configureFromStore().then((configured) {
+      debugPrint('StartupGate: stored pairing found=$configured');
+      return configured;
     });
   }
 
@@ -118,6 +129,12 @@ class _StartupGateState extends State<_StartupGate> {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
+        }
+
+        debugPrint('StartupGate build: hasError=${snapshot.hasError} data=${snapshot.data} error=${snapshot.error}');
+
+        if (snapshot.hasError) {
+          debugPrint('StartupGate: error loading pairing — ${snapshot.error}');
         }
 
         if (snapshot.data == true) {

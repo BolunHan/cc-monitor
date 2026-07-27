@@ -1,4 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:multicast_dns/multicast_dns.dart';
+
+const _tag = 'cc-monitor:discovery';
 
 class DiscoveredServer {
   final String hostname;
@@ -22,6 +25,7 @@ class DiscoveryService {
   MDnsClient? _client;
 
   Future<List<DiscoveredServer>> discover() async {
+    debugPrint('[$_tag] Starting mDNS scan for _cc-monitor._tcp...');
     _client = MDnsClient();
     await _client!.start();
 
@@ -31,42 +35,44 @@ class DiscoveryService {
       await for (final ptr in _client!.lookup<PtrResourceRecord>(
         ResourceRecordQuery.serverPointer('_cc-monitor._tcp.local'),
       )) {
+        debugPrint('[$_tag] Found PTR: ${ptr.domainName}');
         try {
-          final srvList = await _client!
+          final srv = await _client!
               .lookup<SrvResourceRecord>(
                 ResourceRecordQuery.service(ptr.domainName),
               )
-              .toList();
-          final txtList = await _client!
+              .first
+              .timeout(const Duration(seconds: 3));
+          final txt = await _client!
               .lookup<TxtResourceRecord>(
                 ResourceRecordQuery.text(ptr.domainName),
               )
-              .toList();
+              .first
+              .timeout(const Duration(seconds: 3));
 
-          if (srvList.isNotEmpty && txtList.isNotEmpty) {
-            final txtMap = <String, String>{};
-            for (final entry in txtList.first.text.split('\n')) {
-              final parts = entry.split('=');
-              if (parts.length == 2) {
-                txtMap[parts[0]] = parts[1];
-              }
+          final txtMap = <String, String>{};
+          for (final entry in txt.text.split('\n')) {
+            final parts = entry.split('=');
+            if (parts.length == 2) {
+              txtMap[parts[0]] = parts[1];
             }
-
-            servers.add(DiscoveredServer(
-              hostname: ptr.domainName.replaceAll('._cc-monitor._tcp.local', ''),
-              host: txtMap['host'] ?? '',
-              port: int.tryParse(txtMap['port'] ?? '') ?? 9876,
-              version: txtMap['version'] ?? '',
-              certSha256: txtMap['cert_sha256'] ?? '',
-              pairingRequired: txtMap['pairing'] == 'required',
-            ));
           }
-        } catch (_) {
-          // Skip servers with incomplete DNS records
+
+          servers.add(DiscoveredServer(
+            hostname: ptr.domainName.replaceAll('._cc-monitor._tcp.local', ''),
+            host: txtMap['host'] ?? '',
+            port: int.tryParse(txtMap['port'] ?? '') ?? 9876,
+            version: txtMap['version'] ?? '',
+            certSha256: txtMap['cert_sha256'] ?? '',
+            pairingRequired: txtMap['pairing'] == 'required',
+          ));
+          debugPrint('[$_tag] Resolved: ${txtMap['host']}:${txtMap['port']}');
+        } catch (e) {
+          debugPrint('[$_tag] Incomplete record: $e');
         }
       }
-    } catch (_) {
-      // mDNS discovery failed
+    } catch (e) {
+      debugPrint('[$_tag] mDNS scan error: $e');
     }
 
     _client!.stop();

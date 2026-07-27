@@ -1,6 +1,9 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import 'secure_store.dart';
+
+const _tag = 'cc-monitor:api';
 
 class ApiClient {
   final SecureStore _store;
@@ -16,6 +19,11 @@ class ApiClient {
     ));
 
     _dio.interceptors.add(AuthInterceptor(this));
+    _dio.interceptors.add(LogInterceptor(
+      logPrint: (o) => debugPrint('[$_tag] $o'),
+      requestBody: false,
+      responseBody: false,
+    ));
   }
 
   Dio get dio => _dio;
@@ -24,13 +32,17 @@ class ApiClient {
 
   Future<bool> configureFromStore() async {
     final pairing = await _store.loadPairing();
-    if (pairing == null) return false;
+    if (pairing == null) {
+      debugPrint('[$_tag] No stored pairing found');
+      return false;
+    }
 
     _token = pairing['token'];
 
     final host = pairing['host']!;
     final port = int.parse(pairing['port']!);
     _dio.options.baseUrl = 'https://$host:$port';
+    debugPrint('[$_tag] Configured: $host:$port (token: ${_token!.substring(0, 8)}...)');
 
     _configured = true;
     return true;

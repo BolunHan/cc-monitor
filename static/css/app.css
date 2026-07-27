@@ -577,3 +577,64 @@ body {
 .footer__version {
     opacity: 0.6;
 }
+
+/* ---- Device pairing ---- */
+.pairing-section {
+    padding: 12px 0;
+}
+.pairing-qr-wrap {
+    text-align: center;
+    margin-bottom: 16px;
+}
+.pairing-qr-wrap canvas,
+.pairing-qr-wrap img {
+    border-radius: var(--radius);
+    border: 2px solid var(--color-border);
+}
+.pairing-hint {
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+    margin-top: 8px;
+}
+.pairing-error {
+    color: var(--color-danger);
+    font-size: 0.85rem;
+    padding: 12px;
+}
+.pairing-requests__title {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    margin-bottom: 8px;
+}
+.pairing-request {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: var(--color-bg);
+    border-radius: var(--radius);
+    margin-bottom: 4px;
+}
+.pairing-request__name {
+    font-size: 0.85rem;
+}
+.pairing-request__actions {
+    display: flex;
+    gap: 4px;
+}
+.pairing-empty {
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+}
+.btn--tiny {
+    padding: 2px 8px;
+    font-size: 0.8rem;
+    line-height: 1;
+}
+.btn--success {
+    background: var(--color-done);
+    color: #000;
+    border: none;
+    border-radius: var(--radius);
+    cursor: pointer;
+}

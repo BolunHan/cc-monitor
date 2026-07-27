@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api_client.dart';
@@ -24,10 +25,13 @@ class _ServerPickerScreenState extends State<ServerPickerScreen> {
   }
 
   Future<void> _scan() async {
+    debugPrint('[cc-monitor:picker] Starting LAN scan...');
     setState(() => _scanning = true);
     try {
       _servers = await _discovery.discover();
-    } catch (_) {
+      debugPrint('[cc-monitor:picker] Scan done: ${_servers.length} servers');
+    } catch (e) {
+      debugPrint('[cc-monitor:picker] Scan error: $e');
       _servers = [];
     }
     setState(() => _scanning = false);

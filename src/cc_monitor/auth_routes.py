@@ -73,11 +73,32 @@ def create_auth_middleware(token_manager: TokenManager):
     return middleware
 
 
+def _get_lan_ip() -> str:
+    """Auto-detect the LAN IP by connecting a UDP socket to known gateways."""
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.1)
+        for gw in ("192.168.1.1", "192.168.0.1", "192.168.3.1", "10.0.0.1"):
+            try:
+                s.connect((gw, 1))
+                ip = s.getsockname()[0]
+                s.close()
+                return ip
+            except OSError:
+                continue
+        s.close()
+    except Exception:
+        pass
+    return "127.0.0.1"
+
+
 def create_auth_router(
     token_manager: TokenManager,
     pairing_manager: PairingManager,
     cert_config: CertConfig,
     ttl_seconds: int = 604800,
+    lan_host: str = "",
 ) -> APIRouter:
     """Create a FastAPI router with all /api/auth/* endpoints.
 
@@ -100,17 +121,13 @@ def create_auth_router(
         POST /api/auth/pair/qr/confirm within 5 minutes.
         """
         token, expires_at = pairing_manager.create_qr_token()
-        host = request.client.host if request.client else "unknown"
-        # Determine the server's LAN address from the Host header or request
-        forwarded_host = request.headers.get("Host", "")
-        if forwarded_host:
-            server_host = forwarded_host.split(":")[0]
-        else:
-            server_host = host
         port = request.url.port or 9876
 
+        # Use the LAN IP passed from main(), or auto-detect
+        host = lan_host if lan_host else _get_lan_ip()
+
         return JSONResponse({
-            "host": server_host,
+            "host": host,
             "port": port,
             "cert_sha256": cert_config.fingerprint,
             "token": token,

@@ -19,6 +19,28 @@ from fastapi.staticfiles import StaticFiles
 
 logger = logging.getLogger(__name__)
 
+
+def _detect_lan_ip() -> str:
+    """Auto-detect the LAN IP by connecting a UDP socket to a known address."""
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.1)
+        # Try common gateway addresses
+        for gw in ("192.168.1.1", "192.168.0.1", "192.168.3.1", "10.0.0.1"):
+            try:
+                s.connect((gw, 1))
+                ip = s.getsockname()[0]
+                s.close()
+                return ip
+            except OSError:
+                continue
+        s.close()
+    except Exception:
+        pass
+    return "127.0.0.1"
+
+
 _STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _SOURCE_HOOKS_PATH = _PROJECT_ROOT / ".claude" / "settings.json"
@@ -48,6 +70,7 @@ def create_app(
     cert_config: CertConfig | None = None,
     pairing_manager: PairingManager | None = None,
     token_manager: TokenManager | None = None,
+    lan_host: str = "",
 ) -> FastAPI:
     """Build the FastAPI app with a given data directory.
 
@@ -107,6 +130,7 @@ def create_app(
 
         auth_router = create_auth_router(
             token_manager, pairing_manager, cert_config, token_ttl,
+            lan_host=lan_host,
         )
         app.include_router(auth_router)
 
@@ -445,6 +469,10 @@ def main() -> None:
 
     # Enable auth when binding to non-localhost
     enable_auth = args.host not in ("127.0.0.1", "localhost", "::1")
+    if enable_auth:
+        logger.info("LAN mode: auth, TLS, and mDNS enabled (host=%s)", args.host)
+    else:
+        logger.info("Local mode: auth and mDNS disabled (localhost only)")
 
     # TLS configuration
     ssl_kwargs: dict[str, str] = {}
@@ -465,11 +493,18 @@ def main() -> None:
         }
         logger.info("TLS enabled, cert fingerprint: %s", fingerprint)
 
+    # Auto-detect LAN IP for QR pairing when binding to 0.0.0.0
+    lan_host = args.host
+    if lan_host in ("0.0.0.0", "::"):
+        lan_host = _detect_lan_ip()
+        logger.info("Detected LAN IP: %s", lan_host)
+
     _app = create_app(
         data_dir=data_dir,
         enable_auth=enable_auth,
         token_ttl=args.token_ttl,
         cert_config=cert_config,
+        lan_host=lan_host,
     )
 
     # Start mDNS advertiser
@@ -483,11 +518,25 @@ def main() -> None:
 
         @_app.on_event("startup")
         async def _start_mdns():
-            await mdns.start()
+            print(f"[mDNS] Starting advertisement for _cc-monitor._tcp on {args.host}:{args.port}")
+            try:
+                await mdns.start()
+                print(f"[mDNS] Now advertising _cc-monitor._tcp on LAN (version={__version__})")
+                logger.info(
+                    "mDNS: advertising _cc-monitor._tcp on %s:%d (version=%s, cert=%s)",
+                    args.host, args.port, __version__, cert_config.fingerprint[:18] + "...",
+                )
+            except Exception as exc:
+                print(f"[mDNS] FAILED to start: {exc}")
+                logger.warning("mDNS: failed to start advertisement: %s", exc)
 
         @_app.on_event("shutdown")
         async def _stop_mdns():
             await mdns.stop()
+    elif enable_auth and args.no_mdns:
+        logger.info("mDNS: disabled via --no-mdns flag")
+    elif enable_auth and not cert_config:
+        logger.warning("mDNS: skipped — no TLS cert configured")
 
     uvicorn_kwargs: dict[str, str | int] = {
         "host": args.host,
@@ -496,6 +545,17 @@ def main() -> None:
     }
     if ssl_kwargs:
         uvicorn_kwargs.update(ssl_kwargs)
+
+    # Startup summary
+    scheme = "https" if ssl_kwargs else "http"
+    print(f"\n  cc-monitor v{__version__}")
+    print(f"  Listening on {scheme}://{args.host}:{args.port}")
+    if enable_auth:
+        print(f"  Auth: enabled (token TTL: {args.token_ttl}s" + (" = never" if args.token_ttl == 0 else "") + ")")
+        print(f"  TLS fingerprint: {cert_config.fingerprint}")
+        print(f"  mDNS: {'advertising _cc-monitor._tcp on LAN' if not args.no_mdns else 'disabled'}")
+        print(f"  Pair devices: open http://127.0.0.1:{args.port} and click 'Pair New Device'")
+    print()
 
     uvicorn.run(_app, **uvicorn_kwargs)
 

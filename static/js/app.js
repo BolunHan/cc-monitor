@@ -522,6 +522,103 @@
         });
     });
 
+    // ---- Device Pairing ----
+
+    const btnShowPair = document.getElementById("btn-show-pair");
+    const pairingSection = document.getElementById("pairing-section");
+    const pairQr = document.getElementById("pair-qr");
+    const pairingRequestsList = document.getElementById("pairing-requests-list");
+    let qrCodeInstance = null;
+    let pairingPollInterval = null;
+
+    btnShowPair.addEventListener("click", async () => {
+        const hidden = pairingSection.classList.toggle("hidden");
+        if (!hidden) {
+            await loadPairingQR();
+            startPairingPoll();
+        } else {
+            stopPairingPoll();
+        }
+    });
+
+    async function loadPairingQR() {
+        try {
+            const resp = await fetch(apiUrl("/api/auth/pair/qr"));
+            if (!resp.ok) {
+                pairQr.innerHTML = '<p class="pairing-error">Pairing not available — start server with --host 0.0.0.0</p>';
+                return;
+            }
+            const data = await resp.json();
+            const payload = JSON.stringify(data);
+            pairQr.innerHTML = "";
+            qrCodeInstance = new QRCode(pairQr, {
+                text: payload,
+                width: 200,
+                height: 200,
+                colorDark: "#e1e4ed",
+                colorLight: "#1a1d27",
+            });
+        } catch (err) {
+            pairQr.innerHTML = '<p class="pairing-error">Server unreachable or auth not enabled</p>';
+        }
+    }
+
+    function startPairingPoll() {
+        stopPairingPoll();
+        pairingPollInterval = setInterval(pollPairingRequests, 3000);
+        pollPairingRequests();
+    }
+
+    function stopPairingPoll() {
+        if (pairingPollInterval) {
+            clearInterval(pairingPollInterval);
+            pairingPollInterval = null;
+        }
+    }
+
+    async function pollPairingRequests() {
+        try {
+            const resp = await fetch(apiUrl("/api/auth/pair/requests"));
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const requests = data.requests || [];
+            if (requests.length === 0) {
+                pairingRequestsList.innerHTML = '<p class="pairing-empty">No pending requests</p>';
+                return;
+            }
+            pairingRequestsList.innerHTML = requests.map(r => `
+                <div class="pairing-request">
+                    <span class="pairing-request__name">${escHtml(r.device_name)}</span>
+                    <div class="pairing-request__actions">
+                        <button class="btn btn--success btn--tiny" onclick="window._ccApprovePair('${r.id}')">✓</button>
+                        <button class="btn btn--danger btn--tiny" onclick="window._ccDenyPair('${r.id}')">✗</button>
+                    </div>
+                </div>
+            `).join("");
+        } catch (_) {}
+    }
+
+    window._ccApprovePair = async function(requestId) {
+        try {
+            await fetch(apiUrl(`/api/auth/pair/request/${requestId}/approve`), { method: "POST" });
+            pollPairingRequests();
+            loadPairingQR(); // refresh QR with new token
+        } catch (_) {}
+    };
+
+    window._ccDenyPair = async function(requestId) {
+        try {
+            await fetch(apiUrl(`/api/auth/pair/request/${requestId}/deny`), { method: "POST" });
+            pollPairingRequests();
+        } catch (_) {}
+    };
+
+    function escHtml(str) {
+        const div = document.createElement("div");
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
     // ---- Initialise ----
 
     requestNotificationPermission();
