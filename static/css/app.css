@@ -589,7 +589,7 @@ body {
     display: none;
 }
 .pairing-panel__content {
-    max-width: 480px;
+    width: 100%;
 }
 .pairing-panel__title {
     font-size: 16px;
