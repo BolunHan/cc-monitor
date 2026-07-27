@@ -7,7 +7,11 @@ import logging
 from pathlib import Path
 
 from cc_monitor import __version__
+from cc_monitor.auth import PairingManager, TokenManager
+from cc_monitor.auth_routes import create_auth_middleware, create_auth_router
+from cc_monitor.mdns import MDNSAdvertiser
 from cc_monitor.state import StateManager
+from cc_monitor.tls import CertConfig, generate_self_signed_cert, get_cert_fingerprint
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
@@ -37,17 +41,35 @@ def _format_sse_event(event: str, data: str | None = None) -> str:
     return f"event: {event}\n\n"
 
 
-def create_app(data_dir: Path | None = None) -> FastAPI:
+def create_app(
+    data_dir: Path | None = None,
+    enable_auth: bool = False,
+    token_ttl: int = 604800,
+    cert_config: CertConfig | None = None,
+    pairing_manager: PairingManager | None = None,
+    token_manager: TokenManager | None = None,
+) -> FastAPI:
     """Build the FastAPI app with a given data directory.
 
     Args:
         data_dir: Where session state files are stored. Defaults to
             ~/.cc-monitor.
+        enable_auth: Enables authentication middleware and auth routes
+            when True. Defaults to False for backward compatibility.
+        token_ttl: Token lifetime in seconds (0 = never expire).
+            Default: 604800 (7 days).
+        cert_config: TLS certificate configuration for QR pairing.
+            Auto-created with placeholder fingerprint if None.
+        pairing_manager: Shared PairingManager instance. Created from
+            token_ttl if None.
+        token_manager: Shared TokenManager instance. Created from
+            data_dir if None.
 
     Returns:
         A configured FastAPI application.
     """
     app = FastAPI(title="cc-monitor", version=__version__)
+    _data_dir = data_dir or Path.home() / ".cc-monitor"
     manager = StateManager(data_dir=data_dir)
 
     # Allow cross-origin requests from any origin (dashboard may be
@@ -63,6 +85,57 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     async def _restore():
         await manager.restore()
         manager.start_review_timeout()
+
+    # Wire auth if enabled
+    if enable_auth:
+        if token_manager is None:
+            token_manager = TokenManager(data_dir=_data_dir)
+        if pairing_manager is None:
+            pairing_manager = PairingManager(
+                data_dir=_data_dir,
+                token_manager=token_manager,
+                ttl_seconds=token_ttl,
+            )
+        if cert_config is None:
+            cert_config = CertConfig(
+                certfile=_data_dir / "cert.pem",
+                keyfile=_data_dir / "key.pem",
+                fingerprint="",
+            )
+
+        app.middleware("http")(create_auth_middleware(token_manager))
+
+        auth_router = create_auth_router(
+            token_manager, pairing_manager, cert_config, token_ttl,
+        )
+        app.include_router(auth_router)
+
+        # Store references on app for lifecycle access
+        app.state.token_manager = token_manager
+        app.state.pairing_manager = pairing_manager
+
+        # Background task to broadcast new pairing requests via SSE
+        @app.on_event("startup")
+        async def _start_pairing_poll():
+            _seen: set[str] = set()
+
+            async def _poll_loop():
+                while True:
+                    try:
+                        for req in pairing_manager.get_pending():
+                            if req.id not in _seen:
+                                _seen.add(req.id)
+                                await manager.broadcast_pairing_request({
+                                    "id": req.id,
+                                    "device_name": req.device_name,
+                                    "requested_at": req.requested_at.isoformat(),
+                                    "status": req.status,
+                                })
+                    except Exception:
+                        logger.exception("Error polling pairing requests")
+                    await asyncio.sleep(1.0)
+
+            asyncio.ensure_future(_poll_loop())
 
     # ---- API routes ----
 
@@ -98,10 +171,31 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
                     if await request.is_disconnected():
                         break
                     try:
-                        payload = await asyncio.wait_for(queue.get(), timeout=3.0)
-                        yield _format_sse_event("state_update", json.dumps(payload))
+                        item = await asyncio.wait_for(queue.get(), timeout=3.0)
+                        if isinstance(item, dict) and "type" in item:
+                            # New-style typed event
+                            if item["type"] == "pairing_request":
+                                yield _format_sse_event(
+                                    "pairing_request", item["data"],
+                                )
+                            elif item["type"] == "state_update":
+                                yield _format_sse_event(
+                                    "state_update", json.dumps(item["data"]),
+                                )
+                            else:
+                                yield _format_sse_event(
+                                    "state_update", json.dumps(item),
+                                )
+                        else:
+                            # Old-style plain dict (_broadcast backward compat)
+                            yield _format_sse_event(
+                                "state_update", json.dumps(item),
+                            )
                     except asyncio.TimeoutError:
-                        yield _format_sse_event("heartbeat", json.dumps({"ts": asyncio.get_event_loop().time()}))
+                        yield _format_sse_event(
+                            "heartbeat",
+                            json.dumps({"ts": asyncio.get_event_loop().time()}),
+                        )
             finally:
                 manager.unsubscribe(queue)
 
@@ -318,14 +412,85 @@ def main() -> None:
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
     parser.add_argument("--data-dir", type=str, default=None,
                         help="State file directory (default: ~/.cc-monitor)")
+    parser.add_argument("--token-ttl", type=int, default=604800,
+                        help="Token lifetime in seconds (0 = never expire, default: 604800)")
+    parser.add_argument("--no-mdns", action="store_true",
+                        help="Disable mDNS LAN advertisement")
+    parser.add_argument("--revoke-all", action="store_true",
+                        help="Revoke all tokens and exit")
+    parser.add_argument("--tls-cert", type=str, default=None,
+                        help="Path to custom TLS certificate")
+    parser.add_argument("--tls-key", type=str, default=None,
+                        help="Path to custom TLS private key")
     args = parser.parse_args()
 
     import uvicorn
 
     data_dir = Path(args.data_dir) if args.data_dir else None
-    _app = create_app(data_dir=data_dir)
+    _data_dir = data_dir or Path.home() / ".cc-monitor"
 
-    uvicorn.run(_app, host=args.host, port=args.port, log_level="info")
+    # Handle --revoke-all
+    if args.revoke_all:
+        tm = TokenManager(data_dir=_data_dir)
+        count = tm.revoke_all()
+        print(f"Revoked {count} token(s).")
+        return
+
+    # Enable auth when binding to non-localhost
+    enable_auth = args.host not in ("127.0.0.1", "localhost", "::1")
+
+    # TLS configuration
+    ssl_kwargs: dict[str, str] = {}
+    cert_config = None
+    if enable_auth:
+        if args.tls_cert and args.tls_key:
+            cert_path = Path(args.tls_cert)
+            key_path = Path(args.tls_key)
+        else:
+            cert_path, key_path = generate_self_signed_cert(_data_dir)
+        fingerprint = get_cert_fingerprint(cert_path)
+        cert_config = CertConfig(
+            certfile=cert_path, keyfile=key_path, fingerprint=fingerprint,
+        )
+        ssl_kwargs = {
+            "ssl_certfile": str(cert_path),
+            "ssl_keyfile": str(key_path),
+        }
+        logger.info("TLS enabled, cert fingerprint: %s", fingerprint)
+
+    _app = create_app(
+        data_dir=data_dir,
+        enable_auth=enable_auth,
+        token_ttl=args.token_ttl,
+        cert_config=cert_config,
+    )
+
+    # Start mDNS advertiser
+    if enable_auth and not args.no_mdns and cert_config:
+        mdns = MDNSAdvertiser(
+            host=args.host,
+            port=args.port,
+            version=__version__,
+            cert_sha256=cert_config.fingerprint,
+        )
+
+        @_app.on_event("startup")
+        async def _start_mdns():
+            await mdns.start()
+
+        @_app.on_event("shutdown")
+        async def _stop_mdns():
+            await mdns.stop()
+
+    uvicorn_kwargs: dict[str, str | int] = {
+        "host": args.host,
+        "port": args.port,
+        "log_level": "info",
+    }
+    if ssl_kwargs:
+        uvicorn_kwargs.update(ssl_kwargs)
+
+    uvicorn.run(_app, **uvicorn_kwargs)
 
 
 if __name__ == "__main__":

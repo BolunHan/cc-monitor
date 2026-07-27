@@ -227,6 +227,22 @@ class StateManager:
         except ValueError:
             pass
 
+    async def broadcast_pairing_request(self, request: dict) -> None:
+        """Broadcast a pairing_request event to all SSE subscribers.
+
+        Args:
+            request: The pairing request dict to broadcast.
+        """
+        payload = json.dumps(request)
+        dead: list[asyncio.Queue] = []
+        for q in self._queues:
+            try:
+                q.put_nowait({"type": "pairing_request", "data": payload})
+            except asyncio.QueueFull:
+                dead.append(q)
+        for q in dead:
+            self.unsubscribe(q)
+
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------

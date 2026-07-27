@@ -108,3 +108,49 @@ async def test_static_files_served(test_app):
 
     assert resp.status_code == 200
     assert "text/css" in resp.headers["content-type"]
+
+
+class TestAuthEnabledServer:
+    """Integration tests for create_app with enable_auth=True."""
+
+    @pytest.fixture
+    def auth_app(self, tmp_path):
+        from cc_monitor.tls import CertConfig, generate_self_signed_cert, get_cert_fingerprint
+
+        cert_path, key_path = generate_self_signed_cert(tmp_path)
+        fingerprint = get_cert_fingerprint(cert_path)
+        cert_config = CertConfig(
+            certfile=cert_path, keyfile=key_path, fingerprint=fingerprint,
+        )
+        return create_app(
+            data_dir=tmp_path,
+            enable_auth=True,
+            cert_config=cert_config,
+            token_ttl=3600,
+        )
+
+    @pytest.mark.asyncio
+    async def test_localhost_access_unauthenticated(self, auth_app):
+        transport = ASGITransport(app=auth_app, client=("127.0.0.1", 12345))
+        async with AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
+            resp = await client.get("/api/status")
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_remote_access_blocked_without_token(self, auth_app):
+        transport = ASGITransport(app=auth_app, client=("10.0.0.1", 12345))
+        async with AsyncClient(transport=transport, base_url="http://10.0.0.1") as client:
+            resp = await client.get("/api/status")
+        assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_remote_access_allowed_with_token(self, auth_app):
+        tm = auth_app.state.token_manager
+        info = tm.create_token("Test Device")
+        transport = ASGITransport(app=auth_app, client=("10.0.0.1", 12345))
+        async with AsyncClient(transport=transport, base_url="http://10.0.0.1") as client:
+            resp = await client.get(
+                "/api/status",
+                headers={"Authorization": f"Bearer {info.token}"},
+            )
+        assert resp.status_code == 200
