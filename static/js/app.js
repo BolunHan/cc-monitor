@@ -1,14 +1,41 @@
 /**
  * cc-monitor dashboard — SSE client, hooks management, settings panel.
+ * Fully static: can be hosted on any HTTP server (gh-pages, nginx, etc.)
+ * and connect to a cc-monitor server running elsewhere.
  */
 (() => {
+    const STORAGE_KEY_URL = "cc-monitor-server-url";
+
+    // ---- Server URL ----
+
+    function getServerUrl() {
+        const stored = localStorage.getItem(STORAGE_KEY_URL);
+        if (stored) return stored.replace(/\/+$/, "");
+        return window.location.origin;
+    }
+
+    function setServerUrl(url) {
+        localStorage.setItem(STORAGE_KEY_URL, url.replace(/\/+$/, ""));
+    }
+
+    function clearServerUrl() {
+        localStorage.removeItem(STORAGE_KEY_URL);
+    }
+
+    function apiUrl(path) {
+        return getServerUrl() + path;
+    }
+
+    // ---- Globals ----
+
     const grid = document.getElementById("session-grid");
     const emptyState = document.getElementById("empty-state");
     const indicator = document.getElementById("connection-indicator");
     const label = document.getElementById("connection-label");
-    const cards = new Map(); // session_id -> HTMLElement
-    const prevStates = new Map(); // session_id -> state string
+    const cards = new Map();
+    const prevStates = new Map();
     let notificationsPermitted = false;
+    let currentEventSource = null;
 
     // ---- Browser Notifications ----
 
@@ -25,14 +52,11 @@
 
     function notify(session) {
         if (!notificationsPermitted) return;
-
         const prev = prevStates.get(session.session_id);
-        // Only notify on transition to these states
         if (session.state === prev) return;
         if (session.state !== "idle" && session.state !== "pending_approval") return;
 
         const basename = dirBasename(session.cwd) || session.session_id.substring(0, 8);
-
         let title, body;
         if (session.state === "idle") {
             title = `${basename} — Task Complete`;
@@ -41,9 +65,8 @@
             title = `${basename} — Pending Approval`;
             body = "Claude Code needs permission to proceed.";
         }
-
         try {
-            new Notification(title, { body, icon: "/static/favicon.ico", tag: session.session_id });
+            new Notification(title, { body, tag: session.session_id });
         } catch (_) { /* ignore */ }
     }
 
@@ -134,17 +157,33 @@
         cards.set(session.session_id, card);
     }
 
+    function clearAllCards() {
+        cards.clear();
+        grid.querySelectorAll(".session-card").forEach(c => c.remove());
+        emptyState.style.removeProperty("display");
+    }
+
     // ---- SSE Connection ----
 
     let lastHeartbeat = 0;
-    const HEARTBEAT_GRACE = 10; // seconds before considering disconnected
+    const HEARTBEAT_GRACE = 10;
 
     function connectSSE() {
-        const es = new EventSource("/api/stream");
+        if (currentEventSource) {
+            currentEventSource.close();
+        }
+        clearAllCards();
+        setConnected(false);
+        lastHeartbeat = 0;
+        label.textContent = "connecting";
+
+        const es = new EventSource(apiUrl("/api/stream"));
+        currentEventSource = es;
 
         es.addEventListener("open", () => {
             lastHeartbeat = Date.now();
             setConnected(true);
+            loadSessions();
         });
 
         es.addEventListener("state_update", (e) => {
@@ -164,17 +203,44 @@
         });
 
         es.addEventListener("error", () => {
-            // EventSource auto-reconnects; the watchdog will mark
-            // disconnected if no heartbeat/data arrives within grace period.
+            // EventSource auto-reconnects; watchdog handles disconnect detection
         });
     }
 
-    // Watchdog: if no data/heartbeat within grace period, mark disconnected
     setInterval(() => {
-        if (lastHeartbeat === 0) return; // not yet received first open event
+        if (lastHeartbeat === 0) return;
         const since = (Date.now() - lastHeartbeat) / 1000;
         setConnected(since < HEARTBEAT_GRACE);
     }, 1000);
+
+    // ---- Data fetching ----
+
+    async function loadSessions() {
+        try {
+            const resp = await fetch(apiUrl("/api/status"));
+            const data = await resp.json();
+            if (data.sessions && data.sessions.length > 0) {
+                data.sessions.forEach(s => {
+                    updateCard(s);
+                    prevStates.set(s.session_id, s.state);
+                });
+            }
+            if (cards.size === 0) {
+                emptyState.style.removeProperty("display");
+            }
+        } catch (err) {
+            console.error("cc-monitor: failed to load sessions", err);
+        }
+    }
+
+    async function loadVersion() {
+        try {
+            const resp = await fetch(apiUrl("/api/version"));
+            const data = await resp.json();
+            document.getElementById("footer-version").textContent =
+                `cc-monitor v${data.version}`;
+        } catch (_) {}
+    }
 
     // ---- Hooks Management ----
 
@@ -183,10 +249,7 @@
     const installFeedback = document.getElementById("install-feedback");
     const settingsHookStatus = document.getElementById("settings-hook-status");
 
-    let hooksInstalled = false;
-
     function updateHookStatusUI(installed) {
-        hooksInstalled = installed;
         if (installed) {
             hooksBanner.classList.add("hidden");
         } else {
@@ -200,11 +263,10 @@
 
     async function checkHooksStatus() {
         try {
-            const resp = await fetch("/api/hooks-status");
+            const resp = await fetch(apiUrl("/api/hooks-status"));
             const data = await resp.json();
             updateHookStatusUI(data.installed);
         } catch (err) {
-            // Server might not be ready yet; retry after SSE connects
             updateHookStatusUI(false);
         }
     }
@@ -214,7 +276,7 @@
         installFeedback.textContent = "installing…";
         installFeedback.className = "install-feedback";
         try {
-            const resp = await fetch("/api/install-hooks", { method: "POST" });
+            const resp = await fetch(apiUrl("/api/install-hooks"), { method: "POST" });
             const data = await resp.json();
             if (resp.ok) {
                 installFeedback.textContent = `✓ ${data.installed_events} hooks installed`;
@@ -241,21 +303,56 @@
 
     const btnSettings = document.getElementById("btn-settings");
     const settingsPanel = document.getElementById("settings-panel");
+    const settingsUrl = document.getElementById("settings-url");
     const settingsPort = document.getElementById("settings-port");
+    const btnSaveSettings = document.getElementById("btn-save-settings");
     const btnUninstall = document.getElementById("btn-uninstall-hooks");
     const settingsFeedback = document.getElementById("settings-feedback");
 
-    // Show current port from window.location
-    if (settingsPort) {
-        settingsPort.value = window.location.port || "9876";
+    function populateSettingsInputs() {
+        const url = getServerUrl();
+        // Parse URL into host and port
+        try {
+            const u = new URL(url);
+            settingsUrl.value = u.protocol + "//" + u.hostname;
+            settingsPort.value = u.port || "9876";
+        } catch (_) {
+            settingsUrl.value = url;
+            settingsPort.value = "";
+        }
     }
 
     btnSettings.addEventListener("click", () => {
         settingsPanel.classList.toggle("hidden");
-        // Refresh hook status when opening settings
         if (!settingsPanel.classList.contains("hidden")) {
+            populateSettingsInputs();
             checkHooksStatus();
         }
+    });
+
+    btnSaveSettings.addEventListener("click", () => {
+        const host = settingsUrl.value.trim().replace(/\/+$/, "");
+        const port = settingsPort.value.trim();
+        if (!host) {
+            settingsFeedback.textContent = "✗ Server URL is required";
+            settingsFeedback.className = "settings-panel__feedback error";
+            return;
+        }
+
+        let fullUrl = host;
+        if (port) fullUrl = host + ":" + port;
+
+        setServerUrl(fullUrl);
+        settingsFeedback.textContent = "✓ saved, reconnecting…";
+        settingsFeedback.className = "settings-panel__feedback success";
+        setTimeout(() => {
+            settingsFeedback.textContent = "";
+            settingsFeedback.className = "settings-panel__feedback";
+        }, 2000);
+
+        connectSSE();
+        loadVersion();
+        checkHooksStatus();
     });
 
     btnUninstall.addEventListener("click", async () => {
@@ -265,7 +362,7 @@
         settingsFeedback.textContent = "removing…";
         settingsFeedback.className = "settings-panel__feedback";
         try {
-            const resp = await fetch("/api/uninstall-hooks", { method: "POST" });
+            const resp = await fetch(apiUrl("/api/uninstall-hooks"), { method: "POST" });
             const data = await resp.json();
             if (resp.ok) {
                 settingsFeedback.textContent = `✓ ${data.removed_events} hooks removed`;
@@ -289,31 +386,8 @@
     // ---- Initialise ----
 
     requestNotificationPermission();
-
-    // Show version
-    fetch("/api/version")
-        .then(r => r.json())
-        .then(data => {
-            document.getElementById("footer-version").textContent =
-                `cc-monitor v${data.version}`;
-        })
-        .catch(() => {});
-
-    fetch("/api/status")
-        .then(r => r.json())
-        .then(data => {
-            if (data.sessions && data.sessions.length > 0) {
-                data.sessions.forEach(s => {
-                    updateCard(s);
-                    prevStates.set(s.session_id, s.state);
-                });
-            }
-            if (cards.size === 0) {
-                emptyState.style.removeProperty("display");
-            }
-        })
-        .catch(err => { console.error("cc-monitor: failed to load sessions", err); });
-
+    populateSettingsInputs();
+    loadVersion();
     checkHooksStatus();
     connectSSE();
 })();

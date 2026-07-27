@@ -252,10 +252,10 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         })
 
     # ---- Static files ----
+    # Serve at /static (absolute paths) and at /css, /js (relative paths for gh-pages compat)
 
     @app.get("/", response_class=HTMLResponse)
     async def index():
-        """Serve the dashboard."""
         index_path = _STATIC_DIR / "index.html"
         if not index_path.exists():
             return HTMLResponse("<h1>cc-monitor</h1><p>static/index.html not found.</p>")
@@ -263,6 +263,10 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
 
     if _STATIC_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+    if (_STATIC_DIR / "css").is_dir():
+        app.mount("/css", StaticFiles(directory=str(_STATIC_DIR / "css")), name="css")
+    if (_STATIC_DIR / "js").is_dir():
+        app.mount("/js", StaticFiles(directory=str(_STATIC_DIR / "js")), name="js")
 
     return app
 

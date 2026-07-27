@@ -53,16 +53,17 @@ def server():
 class TestVersion:
     """Verify version endpoint and __version__ consistency."""
 
-    def test_version_endpoint_returns_020(self, server):
+    def test_version_endpoint_returns_030(self, server):
         resp = httpx.get(f"{server}/api/version")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["version"] == "0.2.0"
+        assert data["version"] == "0.3.0"
 
     def test_version_matches_package(self, server):
         from cc_monitor import __version__
         resp = httpx.get(f"{server}/api/version")
         assert resp.json()["version"] == __version__
+        assert __version__ == "0.3.0"
 
 
 class TestEventWithSummary:
@@ -178,7 +179,47 @@ class TestStaticFiles:
     def test_js_fetches_version(self, server):
         """The JS must fetch /api/version on init."""
         resp = httpx.get(f"{server}/static/js/app.js")
-        assert 'fetch("/api/version")' in resp.text
+        assert 'apiUrl("/api/version")' in resp.text
+
+    def test_css_served_at_css_path(self, server):
+        """CSS must be accessible at /css/app.css (relative path compat)."""
+        resp = httpx.get(f"{server}/css/app.css")
+        assert resp.status_code == 200
+        assert "text/css" in resp.headers["content-type"]
+
+    def test_js_served_at_js_path(self, server):
+        """JS must be accessible at /js/app.js (relative path compat)."""
+        resp = httpx.get(f"{server}/js/app.js")
+        assert resp.status_code == 200
+        assert "text/javascript" in resp.headers["content-type"] or \
+               "application/javascript" in resp.headers["content-type"]
+
+    def test_index_uses_relative_paths(self, server):
+        """index.html must use relative paths for gh-pages compatibility."""
+        resp = httpx.get(f"{server}/")
+        assert './css/app.css' in resp.text
+        assert './js/app.js' in resp.text
+
+    def test_js_has_configurable_server_url(self, server):
+        """JS must support localStorage-based server URL configuration."""
+        resp = httpx.get(f"{server}/js/app.js")
+        assert 'cc-monitor-server-url' in resp.text
+        assert 'localStorage.getItem' in resp.text
+        assert 'getServerUrl' in resp.text
+        assert 'apiUrl(' in resp.text
+        assert 'Save & Reconnect' in resp.text or 'btn-save-settings' in resp.text
+
+    def test_js_clears_cards_on_reconnect(self, server):
+        """connectSSE() must clear cards before reconnecting."""
+        resp = httpx.get(f"{server}/js/app.js")
+        assert 'clearAllCards' in resp.text
+
+    def test_index_has_server_url_settings(self, server):
+        """Settings panel must have URL and Port inputs + save button."""
+        resp = httpx.get(f"{server}/")
+        assert 'id="settings-url"' in resp.text
+        assert 'id="settings-port"' in resp.text
+        assert 'id="btn-save-settings"' in resp.text
 
 
 class TestSseStream:

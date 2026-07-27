@@ -150,6 +150,16 @@ body {
     border-color: var(--color-border);
 }
 
+.btn--primary {
+    border-color: var(--color-working);
+    background: color-mix(in srgb, var(--color-working) 20%, transparent);
+    color: var(--color-working);
+}
+
+.btn--primary:hover {
+    background: color-mix(in srgb, var(--color-working) 35%, transparent);
+}
+
 .btn--danger {
     border-color: var(--color-danger);
     color: var(--color-danger);
@@ -203,12 +213,19 @@ body {
     margin-bottom: 16px;
 }
 
+.settings-panel__fields {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
 .settings-panel__label {
     display: flex;
     flex-direction: column;
     gap: 4px;
     font-size: 13px;
     color: var(--color-text-muted);
+    flex: 1;
 }
 
 .settings-panel__input {
@@ -219,7 +236,11 @@ body {
     color: var(--color-text);
     font-size: 13px;
     font-family: "SF Mono", "Fira Code", monospace;
-    width: 120px;
+}
+
+.settings-panel__input--short {
+    max-width: 100px;
+    flex: 1;
 }
 
 .settings-panel__hint {
