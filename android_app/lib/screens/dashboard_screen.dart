@@ -266,10 +266,13 @@ class _ServerDrawerState extends State<_ServerDrawer> {
                     itemBuilder: (context, index) {
                       final s = _servers[index];
                       final isActive = _active != null && s.host == _active!.host && s.port == _active!.port;
+                      final connected = context.read<SessionProvider>().connected;
                       return ListTile(
                         leading: Icon(
-                          isActive ? Icons.check_circle : Icons.circle_outlined,
-                          color: isActive ? Colors.green : Colors.grey,
+                          isActive
+                              ? (connected ? Icons.check_circle : Icons.warning_amber_rounded)
+                              : Icons.circle_outlined,
+                          color: isActive ? (connected ? Colors.green : Colors.orange) : Colors.grey,
                         ),
                         title: Text('${s.host}:${s.port}',
                             style: TextStyle(fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
