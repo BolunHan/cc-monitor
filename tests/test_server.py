@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -17,8 +16,8 @@ def tmp_data_dir(tmp_path):
 
 @pytest.fixture
 def test_app(tmp_data_dir):
-    app = create_app(data_dir=tmp_data_dir)
-    return app
+    _app = create_app(data_dir=tmp_data_dir)
+    return _app
 
 
 @pytest.mark.asyncio
