@@ -95,7 +95,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
             return HTMLResponse("<h1>cc-monitor</h1><p>static/index.html not found.</p>")
         return HTMLResponse(index_path.read_text())
 
-    if _STATIC_DIR.exists():
+    if _STATIC_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
     return app

@@ -14,7 +14,7 @@ pip install -e ".[dev]"
 **1. Start the server:**
 
 ```bash
-cc-monitor server --port 9876
+cc-monitor --port 9876
 ```
 
 **2. Open the dashboard:**

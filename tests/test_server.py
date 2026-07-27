@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from cc_monitor.server import app, create_app
+from cc_monitor.server import create_app
 
 
 @pytest.fixture

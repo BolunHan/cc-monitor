@@ -114,7 +114,7 @@ class StateManager:
             cwd=raw.get("cwd", ""),
             state=new_state,
             raw_event=hook_event_name,
-            raw_detail=tool_name,
+            raw_detail=tool_name or notification_type,
         )
         self._sessions[session_id] = session
 
