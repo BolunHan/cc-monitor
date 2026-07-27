@@ -41,6 +41,56 @@ body {
     font-weight: 600;
 }
 
+.header__actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.btn {
+    padding: 6px 14px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.btn:hover {
+    background: color-mix(in srgb, var(--color-working) 15%, var(--color-surface));
+    border-color: var(--color-working);
+}
+
+.btn:active {
+    background: color-mix(in srgb, var(--color-working) 25%, var(--color-surface));
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn--install {
+    white-space: nowrap;
+}
+
+.install-feedback {
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.install-feedback.success {
+    color: var(--color-done);
+}
+
+.install-feedback.error {
+    color: var(--color-disconnected);
+}
+
 .header__status {
     display: flex;
     align-items: center;

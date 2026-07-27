@@ -15,6 +15,9 @@ from cc_monitor.state import StateManager
 logger = logging.getLogger(__name__)
 
 _STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_SOURCE_HOOKS_PATH = _PROJECT_ROOT / ".claude" / "settings.json"
+_GLOBAL_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
 
 
 def create_app(data_dir: Path | None = None) -> FastAPI:
@@ -84,6 +87,70 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
                 "X-Accel-Buffering": "no",
             },
         )
+
+    # ---- Hook installation ----
+
+    @app.post("/api/install-hooks")
+    async def install_hooks():
+        """Inject cc-monitor hooks into the global Claude Code settings.
+
+        Reads the project's .claude/settings.json as the hook source,
+        merges hooks into ~/.claude/settings.json, preserving all
+        existing non-cc-monitor settings and hooks.
+        """
+        if not _SOURCE_HOOKS_PATH.exists():
+            raise HTTPException(
+                status_code=500,
+                detail=f"Source hooks file not found: {_SOURCE_HOOKS_PATH}",
+            )
+
+        try:
+            source = json.loads(_SOURCE_HOOKS_PATH.read_text())
+        except json.JSONDecodeError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Invalid JSON in source hooks: {exc}",
+            )
+
+        source_hooks = source.get("hooks", {})
+        if not source_hooks:
+            raise HTTPException(status_code=500, detail="No hooks found in source settings")
+
+        # Read or init the global settings
+        target: dict = {}
+        if _GLOBAL_SETTINGS_PATH.exists():
+            try:
+                target = json.loads(_GLOBAL_SETTINGS_PATH.read_text())
+            except json.JSONDecodeError as exc:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Invalid JSON in {_GLOBAL_SETTINGS_PATH}: {exc}",
+                )
+
+        # Deep-merge: replace cc-monitor hook events, preserve others
+        target_hooks = target.get("hooks", {})
+        merged_count = 0
+        for event_name, matcher_groups in source_hooks.items():
+            merged_count += 1
+            target_hooks[event_name] = matcher_groups
+
+        target["hooks"] = target_hooks
+
+        # Write back
+        _GLOBAL_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _GLOBAL_SETTINGS_PATH.write_text(json.dumps(target, indent=2))
+
+        logger.info(
+            "Installed %d cc-monitor hook events into %s",
+            merged_count,
+            _GLOBAL_SETTINGS_PATH,
+        )
+
+        return JSONResponse({
+            "status": "ok",
+            "installed_events": merged_count,
+            "target": str(_GLOBAL_SETTINGS_PATH),
+        })
 
     # ---- Static files ----
 

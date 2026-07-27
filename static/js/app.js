@@ -85,6 +85,37 @@
         });
     }
 
+    // ---- Install hooks button ----
+    const btnInstall = document.getElementById("btn-install-hooks");
+    const installFeedback = document.getElementById("install-feedback");
+
+    btnInstall.addEventListener("click", async () => {
+        btnInstall.disabled = true;
+        installFeedback.textContent = "installing…";
+        installFeedback.className = "install-feedback";
+        try {
+            const resp = await fetch("/api/install-hooks", { method: "POST" });
+            const data = await resp.json();
+            if (resp.ok) {
+                installFeedback.textContent = `✓ installed ${data.installed_events} hooks`;
+                installFeedback.className = "install-feedback success";
+            } else {
+                installFeedback.textContent = `✗ ${data.detail}`;
+                installFeedback.className = "install-feedback error";
+            }
+        } catch (err) {
+            installFeedback.textContent = "✗ server unreachable";
+            installFeedback.className = "install-feedback error";
+        }
+        btnInstall.disabled = false;
+        setTimeout(() => {
+            if (installFeedback.textContent.startsWith("✓")) {
+                installFeedback.textContent = "";
+                installFeedback.className = "install-feedback";
+            }
+        }, 4000);
+    });
+
     // Initial load — fetch existing sessions
     fetch("/api/status")
         .then(r => r.json())

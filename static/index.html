@@ -9,9 +9,15 @@
 <body>
     <header class="header">
         <h1 class="header__title">cc-monitor</h1>
-        <div class="header__status">
-            <span class="connection-indicator" id="connection-indicator" title="SSE connection status"></span>
-            <span class="connection-label" id="connection-label">connecting</span>
+        <div class="header__actions">
+            <button class="btn btn--install" id="btn-install-hooks" title="Inject cc-monitor hooks into ~/.claude/settings.json">
+                Install Hooks
+            </button>
+            <span class="install-feedback" id="install-feedback"></span>
+            <div class="header__status">
+                <span class="connection-indicator" id="connection-indicator" title="SSE connection status"></span>
+                <span class="connection-label" id="connection-label">connecting</span>
+            </div>
         </div>
     </header>
 
