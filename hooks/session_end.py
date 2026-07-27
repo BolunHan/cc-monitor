@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
 """Hook for SessionEnd — marks session as all_done."""
 from _common import run_hook
-run_hook("SessionEnd")
+
+if __name__ == '__main__':
+    run_hook("SessionEnd")
