@@ -556,10 +556,11 @@
                 return;
             }
             const data = await resp.json();
-            const payload = JSON.stringify(data);
+            // Use URL format so browsers can offer to open with our app
+            const url = `ccmonitor://pair?t=${encodeURIComponent(data.token)}&h=${encodeURIComponent(data.host)}&p=${encodeURIComponent(data.port)}&c=${encodeURIComponent(data.cert_sha256)}`;
             pairQr.innerHTML = "";
             qrCodeInstance = new QRCode(pairQr, {
-                text: payload,
+                text: url,
                 width: 200,
                 height: 200,
                 colorDark: "#e1e4ed",

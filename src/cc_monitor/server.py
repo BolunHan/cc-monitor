@@ -510,7 +510,7 @@ def main() -> None:
     # Start mDNS advertiser
     if enable_auth and not args.no_mdns and cert_config:
         mdns = MDNSAdvertiser(
-            host=args.host,
+            host=lan_host,
             port=args.port,
             version=__version__,
             cert_sha256=cert_config.fingerprint,
@@ -518,7 +518,7 @@ def main() -> None:
 
         @_app.on_event("startup")
         async def _start_mdns():
-            print(f"[mDNS] Starting advertisement for _cc-monitor._tcp on {args.host}:{args.port}")
+            print(f"[mDNS] Starting advertisement for _cc-monitor._tcp on {lan_host}:{args.port}")
             try:
                 await mdns.start()
                 print(f"[mDNS] Now advertising _cc-monitor._tcp on LAN (version={__version__})")

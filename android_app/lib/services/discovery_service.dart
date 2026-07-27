@@ -77,9 +77,11 @@ class DiscoveryService {
 
     _client!.stop();
 
-    // Deduplicate by host+port (server may advertise on multiple interfaces)
+    // Deduplicate: hash of identifying fields
     final seen = <String>{};
-    final unique = servers.where((s) => seen.add('${s.host}:${s.port}')).toList();
+    final unique = servers.where((s) {
+      return seen.add('${s.hostname}|${s.host}|${s.port}|${s.version}|${s.certSha256}');
+    }).toList();
     debugPrint('[$_tag] Scan done: ${servers.length} raw, ${unique.length} unique');
     return unique;
   }
