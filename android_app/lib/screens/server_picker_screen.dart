@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/api_client.dart';
 import '../services/discovery_service.dart';
-import '../services/pairing_service.dart';
 import '../services/secure_store.dart';
+import 'connecting_screen.dart';
 
 class ServerPickerScreen extends StatefulWidget {
   const ServerPickerScreen({super.key});
@@ -116,42 +116,16 @@ class _ServerPickerScreenState extends State<ServerPickerScreen> {
     );
   }
 
-  void _pairWithServer(String host, int port) async {
-    // Navigate to QR/approval flow with this server selected
-    final pairingService = context.read<PairingService>();
-    // Submit pairing request for approval
-    final requestId = await pairingService.submitPairingRequest(
-      host: host,
-      port: port,
-      deviceName: 'Android',
+  void _pairWithServer(String host, int port) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ConnectingScreen(
+          host: host,
+          port: port,
+        ),
+      ),
     );
-    if (requestId != null && mounted) {
-      _pollApproval(host, port, requestId);
-    }
-  }
-
-  void _pollApproval(String host, int port, String requestId) async {
-    final pairingService = context.read<PairingService>();
-    while (mounted) {
-      await Future.delayed(const Duration(seconds: 2));
-      final status = await pairingService.pollRequestStatus(
-        host: host, port: port, requestId: requestId,
-      );
-      if (status?['status'] == 'approved' || status?['approved'] == true) {
-        if (mounted) {
-          Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
-        }
-        return;
-      }
-      if (status?['status'] == 'denied') {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Pairing denied')),
-          );
-        }
-        return;
-      }
-    }
   }
 
   void _showManualEntry() {

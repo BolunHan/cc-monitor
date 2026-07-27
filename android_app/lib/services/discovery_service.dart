@@ -76,7 +76,12 @@ class DiscoveryService {
     }
 
     _client!.stop();
-    return servers;
+
+    // Deduplicate by host+port (server may advertise on multiple interfaces)
+    final seen = <String>{};
+    final unique = servers.where((s) => seen.add('${s.host}:${s.port}')).toList();
+    debugPrint('[$_tag] Scan done: ${servers.length} raw, ${unique.length} unique');
+    return unique;
   }
 
   void stop() {

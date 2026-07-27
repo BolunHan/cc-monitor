@@ -1,9 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:provider/provider.dart';
 import 'dart:convert';
-import '../services/secure_store.dart';
-import '../services/api_client.dart';
+import 'connecting_screen.dart';
 
 class PairingScreen extends StatefulWidget {
   const PairingScreen({super.key});
@@ -14,7 +13,7 @@ class PairingScreen extends StatefulWidget {
 
 class _PairingScreenState extends State<PairingScreen> {
   MobileScannerController? _controller;
-  bool _paired = false;
+  bool _navigating = false;
 
   @override
   void initState() {
@@ -29,46 +28,39 @@ class _PairingScreenState extends State<PairingScreen> {
   }
 
   void _onDetect(BarcodeCapture capture) {
-    if (_paired) return;
+    if (_navigating) return;
     final barcode = capture.barcodes.firstOrNull;
     if (barcode?.rawValue == null) return;
 
     try {
       final data = jsonDecode(barcode!.rawValue!) as Map<String, dynamic>;
-      _handleQrData(data);
-    } catch (_) {}
-  }
+      final token = data['token'] as String?;
+      final host = data['host'] as String?;
+      final port = data['port'] as int?;
+      final certSha256 = data['cert_sha256'] as String?;
 
-  Future<void> _handleQrData(Map<String, dynamic> data) async {
-    final token = data['token'] as String?;
-    final host = data['host'] as String?;
-    final port = data['port'] as int?;
-    final certSha256 = data['cert_sha256'] as String?;
+      if (token == null || host == null || port == null) {
+        debugPrint('[cc-monitor:qr] Incomplete QR data: $data');
+        return;
+      }
 
-    if (token == null || host == null || port == null) return;
+      debugPrint('[cc-monitor:qr] QR scanned: $host:$port token=${token.substring(0, 12)}...');
+      setState(() => _navigating = true);
+      _controller?.stop();
 
-    setState(() => _paired = true);
-
-    final store = context.read<SecureStore>();
-    await store.savePairing(
-      token: token,
-      host: host,
-      port: port,
-      certSha256: certSha256 ?? '',
-    );
-
-    final api = context.read<ApiClient>();
-    await api.configureFromStore();
-
-    // Confirm the QR token
-    final dio = api.dio;
-    await dio.post(
-      '/api/auth/pair/qr/confirm',
-      data: {'token': token, 'device_name': 'Android'},
-    );
-
-    if (mounted) {
-      Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ConnectingScreen(
+            host: host,
+            port: port,
+            qrToken: token,
+            certSha256: certSha256,
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[cc-monitor:qr] Scan error: $e');
     }
   }
 
