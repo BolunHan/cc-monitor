@@ -31,8 +31,8 @@
         card.id = `card-${session.session_id}`;
         card.innerHTML = `
             <div class="session-card__header">
-                <span class="session-card__id" title="${session.session_id}">
-                    ${session.session_id.substring(0, 8)}...
+                <span class="session-card__id" title="${escapeHtml(session.session_id)}">
+                    ${escapeHtml(session.session_id).substring(0, 8)}...
                 </span>
                 <span class="session-card__badge badge-${session.state}">
                     ${session.state.replace("_", " ")}
@@ -92,8 +92,11 @@
             if (data.sessions && data.sessions.length > 0) {
                 data.sessions.forEach(updateCard);
             }
+            if (cards.size === 0) {
+                emptyState.style.removeProperty("display");
+            }
         })
-        .catch(() => {});
+        .catch(err => { console.error("cc-monitor: failed to load sessions", err); });
 
     connect();
 })();
