@@ -540,9 +540,26 @@ def main() -> None:
 
     # Handle --revoke-all
     if args.revoke_all:
-        tm = TokenManager(data_dir=_data_dir)
-        count = tm.revoke_all()
-        print(f"Revoked {count} token(s).")
+        import ssl as _ssl
+        import urllib.request as _ur
+        import urllib.parse as _up
+        ctx = _ssl._create_unverified_context()
+        base = f"https://127.0.0.1:{args.port}"
+        try:
+            req = _ur.Request(f"{base}/api/auth/devices")
+            resp = _ur.urlopen(req, timeout=5, context=ctx)
+            devices = json.loads(resp.read().decode())["devices"]
+            for d in devices:
+                cid = d.get("client_id", "")
+                if cid:
+                    req2 = _ur.Request(
+                        f"{base}/api/auth/devices/{_up.quote(cid, safe='')}",
+                        method="DELETE",
+                    )
+                    _ur.urlopen(req2, timeout=5, context=ctx)
+            print(f"Revoked {len(devices)} device(s).")
+        except Exception as e:
+            print(f"Failed: {e}")
         return
 
     # Handle --approve <code>

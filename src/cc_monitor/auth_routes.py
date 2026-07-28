@@ -341,7 +341,9 @@ def create_auth_router(
 
     @router.get("/api/auth/devices")
     async def list_devices():
-        """List all paired devices."""
+        """List all paired devices (reloads tokens from disk)."""
+        # Reload to pick up CLI changes
+        token_manager._tokens = token_manager._load()
         devices = pairing_manager.get_device_list()
         return JSONResponse({"devices": devices})
 

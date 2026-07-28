@@ -840,7 +840,7 @@
                 body: JSON.stringify({
                     device_name: "Web Dashboard",
                     pairing_code: pairingCode,
-                    client_id: "web-" + crypto.randomUUID(),
+                    client_id: "web-dashboard",
                 }),
             });
             const data = await resp.json();
@@ -951,7 +951,7 @@
                 body: JSON.stringify({
                     device_name: "Web Dashboard",
                     pairing_code: pairingCode,
-                    client_id: "web-" + crypto.randomUUID(),
+                    client_id: "web-dashboard",
                 }),
             });
             const data = await resp.json();
