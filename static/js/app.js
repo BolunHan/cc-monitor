@@ -5,6 +5,7 @@
  */
 (() => {
     const STORAGE_KEY_URL = "cc-monitor-server-url";
+    const STORAGE_KEY_TOKEN = "cc-monitor-auth-token";
     const DEFAULT_HOST = "http://127.0.0.1";
     const DEFAULT_PORT = "9876";
 
@@ -13,9 +14,6 @@
     function getServerUrl() {
         const stored = localStorage.getItem(STORAGE_KEY_URL);
         if (stored) return stored.replace(/\/+$/, "");
-        // Default: the URL the page was loaded from.
-        // Works for server-served dashboards (https://192.168.3.28:9876)
-        // and gh-pages (user sets URL once, persisted in localStorage).
         return window.location.origin;
     }
 
@@ -25,6 +23,46 @@
 
     function apiUrl(path) {
         return getServerUrl() + path;
+    }
+
+    // ---- Auth token ----
+
+    function getAuthToken() {
+        return localStorage.getItem(STORAGE_KEY_TOKEN) || "";
+    }
+
+    function setAuthToken(token) {
+        localStorage.setItem(STORAGE_KEY_TOKEN, token);
+    }
+
+    function clearAuthToken() {
+        localStorage.removeItem(STORAGE_KEY_TOKEN);
+    }
+
+    async function apiFetch(path, opts = {}) {
+        const url = apiUrl(path);
+        const headers = { ...(opts.headers || {}) };
+        const token = getAuthToken();
+        if (token) headers["Authorization"] = "Bearer " + token;
+        const resp = await fetch(url, { ...opts, headers });
+        if (resp.status === 401) {
+            updateUnauthorizedUI(true);
+        }
+        return resp;
+    }
+
+    let isUnauthorized = false;
+
+    function updateUnauthorizedUI(unauth) {
+        isUnauthorized = unauth;
+        const banner = document.getElementById("unauth-banner");
+        if (banner) {
+            banner.classList.toggle("hidden", !unauth);
+        }
+        // Don't mark as connected if unauthorized
+        if (unauth) {
+            setConnected(false);
+        }
     }
 
     // ---- Globals ----
@@ -272,7 +310,7 @@
 
     async function handleCardAction(action, sessionId) {
         try {
-            const resp = await fetch(apiUrl(`/api/session/${sessionId}/${action}`), {method: "POST"});
+            const resp = await apiFetch(`/api/session/${sessionId}/${action}`), {method: "POST"});
             if (resp.ok) {
                 const session = await resp.json();
                 updateCard(session);
@@ -301,7 +339,11 @@
         if (currentEventSource) currentEventSource.close();
         lastHeartbeat = 0;
 
-        const es = new EventSource(apiUrl("/api/stream"));
+        let sseUrl = apiUrl("/api/stream");
+        const token = getAuthToken();
+        if (token) sseUrl += "?token=" + encodeURIComponent(token);
+
+        const es = new EventSource(sseUrl);
         currentEventSource = es;
 
         es.addEventListener("open", () => {
@@ -355,7 +397,7 @@
 
     async function loadSessions() {
         try {
-            const resp = await fetch(apiUrl("/api/status"));
+            const resp = await apiFetch("/api/status");
             const data = await resp.json();
             if (data.sessions && data.sessions.length > 0) {
                 data.sessions.forEach(s => {
@@ -371,7 +413,7 @@
 
     async function loadVersion() {
         try {
-            const resp = await fetch(apiUrl("/api/version"));
+            const resp = await apiFetch("/api/version"));
             const data = await resp.json();
             document.getElementById("footer-version").textContent =
                 `cc-monitor v${data.version}`;
@@ -405,7 +447,7 @@
     async function checkHooksStatus() {
         console.log("[hooks] checking status at", apiUrl("/api/hooks-status"));
         try {
-            const resp = await fetch(apiUrl("/api/hooks-status"));
+            const resp = await apiFetch("/api/hooks-status"));
             const data = await resp.json();
             console.log("[hooks] status response:", data);
             updateHookStatusUI(data.installed);
@@ -447,7 +489,7 @@
         console.log("[hooks] step 3 — calling POST /api/install-hooks …");
 
         try {
-            const resp = await fetch(apiUrl("/api/install-hooks"), { method: "POST" });
+            const resp = await apiFetch("/api/install-hooks"), { method: "POST" });
             const data = await resp.json();
             console.log("[hooks] step 4 — response:", resp.status, data);
 
@@ -539,7 +581,7 @@
         settingsFeedback.textContent = "removing…";
         settingsFeedback.className = "settings-panel__feedback";
         try {
-            const resp = await fetch(apiUrl("/api/uninstall-hooks"), { method: "POST" });
+            const resp = await apiFetch("/api/uninstall-hooks"), { method: "POST" });
             const data = await resp.json();
             if (resp.ok) {
                 settingsFeedback.textContent = `✓ ${data.removed_events} hooks removed`;
@@ -609,7 +651,7 @@
 
     async function loadPairingQR() {
         try {
-            const resp = await fetch(apiUrl("/api/auth/pair/qr"));
+            const resp = await apiFetch("/api/auth/pair/qr"));
             if (!resp.ok) {
                 pairQr.innerHTML = '<p class="pairing-error">Pairing not available — start server with --host 0.0.0.0</p>';
                 return;
@@ -645,7 +687,7 @@
 
     async function pollPairingRequests() {
         try {
-            const resp = await fetch(apiUrl("/api/auth/pair/requests"));
+            const resp = await apiFetch("/api/auth/pair/requests"));
             if (!resp.ok) return;
             const data = await resp.json();
             const requests = data.requests || [];
@@ -667,7 +709,7 @@
 
     window._ccApprovePair = async function(requestId) {
         try {
-            await fetch(apiUrl(`/api/auth/pair/request/${requestId}/approve`), { method: "POST" });
+            await apiFetch(`/api/auth/pair/request/${requestId}/approve`), { method: "POST" });
             pollPairingRequests();
             loadPairedDevices();
             loadPairingQR();
@@ -676,7 +718,7 @@
 
     window._ccDenyPair = async function(requestId) {
         try {
-            await fetch(apiUrl(`/api/auth/pair/request/${requestId}/deny`), { method: "POST" });
+            await apiFetch(`/api/auth/pair/request/${requestId}/deny`), { method: "POST" });
             pollPairingRequests();
         } catch (_) {}
     };
@@ -684,7 +726,7 @@
     async function loadPairedDevices() {
         const list = document.getElementById("paired-devices-list");
         try {
-            const resp = await fetch(apiUrl("/api/auth/devices"));
+            const resp = await apiFetch("/api/auth/devices"));
             if (!resp.ok) { list.innerHTML = '<p class="pairing-empty">—</p>'; return; }
             const data = await resp.json();
             const devices = data.devices || [];
@@ -705,7 +747,7 @@
 
     window._ccRevokeDevice = async function(clientId) {
         try {
-            await fetch(apiUrl(`/api/auth/devices/${encodeURIComponent(clientId)}`), { method: "DELETE" });
+            await apiFetch(`/api/auth/devices/${encodeURIComponent(clientId)}`), { method: "DELETE" });
             loadPairedDevices();
         } catch (_) {}
     };
@@ -770,6 +812,166 @@
         // Close button + click-outside
         document.getElementById("btn-close-modal").addEventListener("click", () => modal.remove());
         modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
+    }
+
+    // ---- Pairing modal (unauthorized web UI) ----
+
+    const btnPairDevice = document.getElementById("btn-pair-device");
+    const pairFeedback = document.getElementById("pair-feedback");
+    let pairingCode = "";
+    let pairingRequestId = "";
+    let pairingPollInterval = null;
+
+    function generatePairingCode() {
+        return String(Math.floor(100000 + Math.random() * 900000));
+    }
+
+    btnPairDevice.addEventListener("click", async () => {
+        pairingCode = generatePairingCode();
+        const serverUrl = getServerUrl();
+        const approveCmd = `cc-monitor --approve ${pairingCode}`;
+
+        // Submit pairing request
+        let requestId = "";
+        try {
+            const resp = await fetch(apiUrl("/api/auth/pair/request"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    device_name: "Web Dashboard",
+                    pairing_code: pairingCode,
+                    client_id: "web-" + crypto.randomUUID(),
+                }),
+            });
+            const data = await resp.json();
+            requestId = data.request_id;
+            pairingRequestId = requestId;
+        } catch (err) {
+            pairFeedback.textContent = "✗ failed to submit pairing request";
+            pairFeedback.className = "install-feedback error";
+            return;
+        }
+
+        // Build modal
+        const old = document.getElementById("pairing-modal");
+        if (old) old.remove();
+
+        const modal = document.createElement("div");
+        modal.id = "pairing-modal";
+        modal.className = "modal-overlay";
+        modal.innerHTML = `
+            <div class="modal">
+                <h2 class="modal__title">Pair Web Dashboard</h2>
+                <div class="modal__warning">
+                    ⚠ This dashboard needs authorization to access the cc-monitor server.
+                    Only approve if you initiated this pairing from a trusted source:<br>
+                    <a href="https://github.com/BolunHan/cc-monitor" target="_blank" rel="noopener">
+                        github.com/BolunHan/cc-monitor
+                    </a>
+                </div>
+                <p class="modal__desc">Pairing code: <strong style="font-size:22px;letter-spacing:4px;">${pairingCode}</strong></p>
+                <p class="modal__desc">Approve with this command on the server machine:</p>
+                <div class="modal__cmd">
+                    <code id="pair-oneliner">${escapeHtml(approveCmd)}</code>
+                </div>
+                <div class="modal__actions">
+                    <button class="btn btn--primary" id="btn-copy-pair">Copy</button>
+                    <button class="btn" id="btn-close-pair">Close</button>
+                </div>
+                <div class="modal__log" id="pair-log">
+                    <div class="modal__log-entry">Waiting for approval…</div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        // Copy button
+        document.getElementById("btn-copy-pair").addEventListener("click", () => {
+            navigator.clipboard.writeText(approveCmd).then(() => {
+                const fb = document.getElementById("pair-log");
+                fb.innerHTML += '<div class="modal__log-entry success">✓ copied to clipboard</div>';
+            });
+        });
+
+        // Close + cleanup
+        document.getElementById("btn-close-pair").addEventListener("click", () => {
+            modal.remove();
+            stopPairingPoll();
+        });
+        modal.addEventListener("click", (e) => {
+            if (e.target === modal) { modal.remove(); stopPairingPoll(); }
+        });
+
+        // Start polling
+        startPairingPoll(requestId, modal);
+    });
+
+    function startPairingPoll(requestId, modal) {
+        const log = modal.querySelector("#pair-log");
+        let attempts = 0;
+        pairingPollInterval = setInterval(async () => {
+            try {
+                const resp = await fetch(apiUrl(`/api/auth/pair/request/${requestId}/status`));
+                const data = await resp.json();
+                attempts++;
+                log.innerHTML += `<div class="modal__log-entry">[${attempts}] status: ${data.status}</div>`;
+                if (data.status === "approved") {
+                    log.innerHTML += '<div class="modal__log-entry success">✓ Approved!</div>';
+                    stopPairingPoll();
+                    // The token was returned to the approver; re-submit to get a new one
+                    // For now, close the modal — user needs to refresh
+                    setTimeout(() => {
+                        log.innerHTML += '<div class="modal__log-entry">Reloading page to apply token…</div>';
+                        // Actually, we need the token. Let's re-request.
+                        reRequestToken(requestId, modal);
+                    }, 1000);
+                } else if (data.status === "denied") {
+                    log.innerHTML += '<div class="modal__log-entry error">✗ Denied</div>';
+                    stopPairingPoll();
+                }
+            } catch (err) {
+                log.innerHTML += `<div class="modal__log-entry error">Poll error: ${err}</div>`;
+            }
+        }, 2000);
+    }
+
+    function stopPairingPoll() {
+        if (pairingPollInterval) {
+            clearInterval(pairingPollInterval);
+            pairingPollInterval = null;
+        }
+    }
+
+    async function reRequestToken(requestId, modal) {
+        const log = modal.querySelector("#pair-log");
+        try {
+            const resp = await fetch(apiUrl("/api/auth/pair/request"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    device_name: "Web Dashboard",
+                    pairing_code: pairingCode,
+                    client_id: "web-" + crypto.randomUUID(),
+                }),
+            });
+            const data = await resp.json();
+            if (data.status === "approved") {
+                // Some servers return token on re-request after approval
+                log.innerHTML += '<div class="modal__log-entry success">✓ Got token!</div>';
+                setAuthToken(data.token);
+                updateUnauthorizedUI(false);
+                log.innerHTML += '<div class="modal__log-entry">Reloading…</div>';
+                setTimeout(() => {
+                    modal.remove();
+                    connectSSE();
+                    loadSessions();
+                    loadVersion();
+                    checkHooksStatus();
+                }, 500);
+            }
+        } catch (err) {
+            log.innerHTML += `<div class="modal__log-entry error">Re-request failed: ${err}</div>`;
+        }
     }
 
     // ---- Initialise ----

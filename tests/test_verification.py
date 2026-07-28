@@ -308,7 +308,7 @@ class TestStaticFiles:
     def test_js_fetches_version(self, server):
         """The JS must fetch /api/version on init."""
         resp = httpx.get(f"{server}/static/js/app.js")
-        assert 'apiUrl("/api/version")' in resp.text
+        assert 'apiFetch("/api/version")' in resp.text
 
     def test_css_served_at_css_path(self, server):
         """CSS must be accessible at /css/app.css (relative path compat)."""
@@ -374,7 +374,7 @@ class TestStaticFiles:
     def test_js_has_archive_complete_actions(self, server):
         """JS must support archive, unarchive, and mark-complete actions."""
         resp = httpx.get(f"{server}/js/app.js")
-        assert 'apiUrl(`/api/session/${sessionId}/${action}`)' in resp.text
+        assert 'apiFetch(`/api/session/${sessionId}/${action}`' in resp.text
         assert '"archive"' in resp.text
         assert '"complete"' in resp.text
         assert '"unarchive"' in resp.text

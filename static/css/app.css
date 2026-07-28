@@ -664,6 +664,31 @@ body {
     color: var(--color-done);
 }
 
+.modal__log {
+    margin-top: 16px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 12px;
+    max-height: 200px;
+    overflow-y: auto;
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.modal__log-entry {
+    color: var(--color-text-muted);
+}
+
+.modal__log-entry.success {
+    color: var(--color-done);
+}
+
+.modal__log-entry.error {
+    color: var(--color-disconnected);
+}
+
 /* ---- Footer ---- */
 
 .footer {

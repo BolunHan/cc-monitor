@@ -518,6 +518,8 @@ def main() -> None:
                         help="Path to custom TLS certificate")
     parser.add_argument("--tls-key", type=str, default=None,
                         help="Path to custom TLS private key")
+    parser.add_argument("--approve", type=str, default=None, metavar="CODE",
+                        help="Approve a pairing request by 6-digit code")
     args = parser.parse_args()
 
     import uvicorn
@@ -530,6 +532,26 @@ def main() -> None:
         tm = TokenManager(data_dir=_data_dir)
         count = tm.revoke_all()
         print(f"Revoked {count} token(s).")
+        return
+
+    # Handle approve <pairing_code>
+    if args.approve:
+        tm = TokenManager(data_dir=_data_dir)
+        pm = PairingManager(data_dir=_data_dir, token_manager=tm)
+        code = args.approve.strip()
+        pending = pm.get_pending()
+        match = next((r for r in pending if r.pairing_code == code), None)
+        if match is None:
+            print(f"No pending pairing request with code '{code}'")
+            print(f"Pending codes: {[r.pairing_code for r in pending]}")
+            return
+        info = pm.approve_request(match.id)
+        if info is None:
+            print(f"Failed to approve request '{match.id}'")
+            return
+        print(f"Approved pairing request '{match.id}'")
+        print(f"Device: {match.device_name}")
+        print(f"Token: {info.token}")
         return
 
     # Enable auth when binding to non-localhost

@@ -46,9 +46,11 @@ def create_auth_middleware(token_manager: TokenManager):
         if request.url.path.startswith(_UNAUTHED_PREFIXES):
             return await call_next(request)
 
-        # Check Bearer token
+        # Check Bearer token (header or query param for EventSource)
         auth_header = request.headers.get("Authorization", "")
         token = auth_header.removeprefix("Bearer ").strip()
+        if not token:
+            token = request.query_params.get("token", "").strip()
         if not token:
             return JSONResponse(
                 {"detail": "unauthorized"},
