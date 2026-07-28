@@ -186,6 +186,7 @@ def create_auth_router(
         device_name = body.get("device_name", "Unknown Device")
         pairing_code = body.get("pairing_code", "")
         client_id = body.get("client_id", "")
+        device_meta = body.get("device_meta", None)
 
         # Check if a request with this code was already approved
         pairing_manager._requests = pairing_manager._load_requests()
@@ -205,6 +206,7 @@ def create_auth_router(
                 # Re-claim: create a new token for this client
                 token_info = token_manager.create_token(
                     device_name, ttl_seconds=ttl_seconds, client_id=client_id,
+                    meta=device_meta,
                 )
                 return JSONResponse({
                     "status": "approved",

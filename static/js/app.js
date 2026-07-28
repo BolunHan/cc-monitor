@@ -742,14 +742,29 @@
                 list.innerHTML = '<p class="pairing-empty">No paired devices</p>';
                 return;
             }
-            list.innerHTML = devices.map(d => `
-                <div class="pairing-request">
-                    <span class="pairing-request__name">${escHtml(d.device_name)}<br><code style="font-size:0.85em">${escHtml(d.client_id ? d.client_id.substring(0, 8) : '-')}</code> <small>${d.expired ? 'expired' : 'active'}</small></span>
+            const myId = getClientId();
+            list.innerHTML = devices.map(d => {
+                const isSelf = d.client_id === myId;
+                const meta = d.meta || {};
+                const info = [
+                    isSelf ? '<span style="color:#ef4444;font-weight:600">◀ SELF</span>' : '',
+                    meta.browser || '',
+                    meta.platform || '',
+                ].filter(Boolean).join(' · ');
+                return `
+                <div class="pairing-request${isSelf ? ' pairing-request--self' : ''}">
+                    <span class="pairing-request__name">
+                        ${escHtml(d.device_name)}
+                        ${info ? `<br><small style="color:var(--color-text-muted)">${info}</small>` : ''}
+                        <br><code style="font-size:0.85em">${escHtml(d.client_id ? d.client_id.substring(0, 8) : '-')}</code>
+                        <small>${d.expired ? 'expired' : 'active'}</small>
+                    </span>
                     <div class="pairing-request__actions">
                         <button class="btn btn--danger btn--tiny" onclick="window._ccRevokeDevice('${d.client_id}')" title="Revoke">✕</button>
                     </div>
                 </div>
-            `).join("");
+                `;
+            }).join("");
         } catch (_) {}
     }
 
@@ -849,6 +864,12 @@
                     device_name: "Web Dashboard",
                     pairing_code: pairingCode,
                     client_id: getClientId(),
+                    device_meta: {
+                        browser: navigator.userAgent.includes("Firefox") ? "Firefox" :
+                                 navigator.userAgent.includes("Chrome") ? "Chrome" :
+                                 navigator.userAgent.includes("Safari") ? "Safari" : "Unknown",
+                        platform: navigator.platform || "Unknown",
+                    },
                 }),
             });
             const data = await resp.json();
@@ -960,6 +981,12 @@
                     device_name: "Web Dashboard",
                     pairing_code: pairingCode,
                     client_id: getClientId(),
+                    device_meta: {
+                        browser: navigator.userAgent.includes("Firefox") ? "Firefox" :
+                                 navigator.userAgent.includes("Chrome") ? "Chrome" :
+                                 navigator.userAgent.includes("Safari") ? "Safari" : "Unknown",
+                        platform: navigator.platform || "Unknown",
+                    },
                 }),
             });
             const data = await resp.json();

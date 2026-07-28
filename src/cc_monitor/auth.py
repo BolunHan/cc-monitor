@@ -22,6 +22,7 @@ class TokenInfo:
     client_id: str
     created_at: datetime
     expires_at: datetime
+    meta: dict | None = None
 
     @property
     def expired(self) -> bool:
@@ -46,6 +47,7 @@ class TokenManager:
 
     def create_token(
         self, device_name: str, ttl_seconds: int = 0, client_id: str = "",
+        meta: dict | None = None,
     ) -> TokenInfo:
         """Generate a new token for a device.
 
@@ -71,6 +73,7 @@ class TokenManager:
             "client_id": client_id,
             "created_at": now.isoformat(),
             "expires_at": expires_at.isoformat(),
+            "meta": meta or {},
         }
         self._tokens[token] = entry
         self._save()
@@ -79,7 +82,7 @@ class TokenManager:
 
     def register_token(
         self, token: str, device_name: str, ttl_seconds: int = 0,
-        client_id: str = "",
+        client_id: str = "", meta: dict | None = None,
     ) -> TokenInfo:
         """Register a pre-existing token string with TokenManager.
 
@@ -113,6 +116,7 @@ class TokenManager:
             "client_id": client_id,
             "created_at": now.isoformat(),
             "expires_at": expires_at.isoformat(),
+            "meta": meta or {},
         }
         self._tokens[token] = entry
         self._save()
@@ -239,6 +243,7 @@ class TokenManager:
             client_id=entry.get("client_id", ""),
             created_at=datetime.fromisoformat(entry["created_at"]),
             expires_at=datetime.fromisoformat(entry["expires_at"]),
+            meta=entry.get("meta"),
         )
 
     def _find_token(self, token: str) -> dict | None:
@@ -482,6 +487,7 @@ class PairingManager:
                     "expires_at": info.expires_at.isoformat(),
                     "expired": info.expired,
                     "token_prefix": token[:12] + "...",
+                    "meta": info.meta or {},
                 }
         return sorted(seen.values(), key=lambda d: d["created_at"], reverse=True)
 
