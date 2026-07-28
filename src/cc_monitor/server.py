@@ -21,25 +21,57 @@ logger = logging.getLogger(__name__)
 
 
 def _detect_lan_ip() -> str:
-    """Auto-detect the LAN IP via the default route interface.
+    """Auto-detect the LAN IP address (no internet required).
 
-    Opens a UDP socket and connects to a public DNS server.  The
-    socket is never used to send data — connect() just binds the
-    local address to the interface that the kernel routes to that
-    destination.  This is the standard way to find your LAN IP
-    without hardcoding gateway addresses.
+    Uses the UDP-connect trick: opens a datagram socket and
+    "connects" to 10.254.254.254 (TEST-NET-2, RFC 5737 — guaranteed
+    non-routable).  The kernel never sends a packet; it just binds
+    the local address to whichever interface has the default route.
+    This returns the LAN IP that other devices on the network can
+    reach.
+
+    If no default route exists (isolated network with static IP),
+    falls back to iterating network interfaces via if_nameindex()
+    and picks the first non-loopback IPv4 address.
+
+    In the worst case returns "127.0.0.1" — the user can always
+    pass an explicit --host flag.
     """
+    import socket
+
+    # Tier 1 — UDP connect (works with or without internet, but needs a route)
     try:
-        import socket
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.settimeout(0.5)
-        # 1.1.1.1 (Cloudflare DNS) — universally reachable, UDP port 53
-        s.connect(("1.1.1.1", 53))
-        ip = s.getsockname()[0]
+        s.settimeout(0.1)
+        s.connect(("10.254.254.254", 1))
+        ip: str = s.getsockname()[0]
         s.close()
-        return ip
+        if ip != "127.0.0.1":
+            return ip
+    except OSError:
+        pass
+
+    # Tier 2 — interface walk (no route / no gateway needed)
+    try:
+        for if_name, _ in socket.if_nameindex():
+            if if_name.startswith("lo"):
+                continue
+            try:
+                addrlist = socket.getaddrinfo(
+                    socket.gethostname(),
+                    None,
+                    family=socket.AF_INET,
+                )
+                for _fam, _typ, _proto, _cn, sa in addrlist:
+                    ip = sa[0]
+                    if not ip.startswith("127."):
+                        return ip
+            except Exception:
+                continue
     except Exception:
-        return "127.0.0.1"
+        pass
+
+    return "127.0.0.1"
 
 
 _STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
