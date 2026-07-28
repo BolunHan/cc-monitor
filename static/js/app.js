@@ -571,9 +571,9 @@
 
     btnUninstall.addEventListener("click", async () => {
         if (!isLocalhost()) {
-            settingsFeedback.textContent = "✗ Cannot uninstall from remote — run: rm -rf ~/.cc-monitor/hooks";
-            settingsFeedback.className = "settings-panel__feedback error";
-            setTimeout(() => { settingsFeedback.textContent = ""; settingsFeedback.className = "settings-panel__feedback"; }, 6000);
+            const serverUrl = getServerUrl();
+            const oneLiner = `curl -skSL ${serverUrl}/static/uninstall-hooks.sh | bash`;
+            showInstallModal(oneLiner);
             return;
         }
         if (!confirm("Remove cc-monitor hooks from ~/.claude/settings.json?")) return;

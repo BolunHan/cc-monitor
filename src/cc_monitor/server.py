@@ -373,23 +373,34 @@ def create_app(
 
     @app.get("/api/hooks-status")
     async def hooks_status():
-        """Check whether cc-monitor hooks are installed globally."""
-        try:
-            global_settings = _load_global_settings()
-        except HTTPException:
-            return JSONResponse({"installed": False, "error": "cannot read global settings"})
+        """Check whether cc-monitor hooks are installed globally.
 
-        global_hooks = global_settings.get("hooks", {})
+        Checks:
+        1. Marker file (~/.cc-monitor/.hooks-installed) — set by install-hooks.sh
+        2. Global settings (~/.claude/settings.json) — for non-Docker localhost
+        """
+        marker = (manager._data_dir / ".hooks-installed").exists()
+
         installed_events = []
         missing_events = []
-        for event_name in _hook_event_names:
-            if event_name in global_hooks:
-                installed_events.append(event_name)
-            else:
-                missing_events.append(event_name)
+        try:
+            global_settings = _load_global_settings()
+            global_hooks = global_settings.get("hooks", {})
+            for event_name in _hook_event_names:
+                if event_name in global_hooks:
+                    installed_events.append(event_name)
+                else:
+                    missing_events.append(event_name)
+        except Exception:
+            pass
+
+        installed = marker or (
+            len(missing_events) == 0 and len(installed_events) > 0
+        )
 
         return JSONResponse({
-            "installed": len(missing_events) == 0 and len(installed_events) > 0,
+            "installed": installed,
+            "marker": marker,
             "installed_events": installed_events,
             "missing_events": missing_events,
             "target": str(_GLOBAL_SETTINGS_PATH),

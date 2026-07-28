@@ -54,6 +54,47 @@ Copy the hook entries from `.claude/settings.json` in this repo, adjusting paths
 
 Hook scripts (stdlib-only Python) write `~/.cc-monitor/<session_id>.json` files and POST to the server. The FastAPI server holds in-memory state, broadcasts changes via SSE, and restores state from disk on startup.
 
+## Docker
+
+Pre-built image or build from source:
+
+```bash
+# Build
+docker build --build-arg HTTP_PROXY=$HTTP_PROXY -t cc-monitor .
+
+# Run (host network + persistent volume required)
+docker run -d --name cc-monitor --network=host \
+    -v ~/.cc-monitor:/root/.cc-monitor \
+    --restart unless-stopped cc-monitor
+```
+
+Or use docker-compose:
+
+```bash
+docker compose up -d
+```
+
+**Important:** The `~/.cc-monitor` volume mount is **required**. It stores:
+- Session state files (persisted across restarts)
+- `.hooks-installed` marker file (for hooks status detection)
+
+## Hook Installation
+
+Install hook scripts so Claude Code reports its state to cc-monitor:
+
+```bash
+curl -skSL https://<server>:9876/static/install-hooks.sh | SERVER_URL=https://<server>:9876 bash
+```
+
+This downloads hook scripts to `~/.cc-monitor/hooks/` and injects them into `~/.claude/settings.json`.
+The installer creates a `.hooks-installed` marker file so the server (even in Docker) knows hooks are active.
+
+To uninstall:
+
+```bash
+curl -skSL https://<server>:9876/static/uninstall-hooks.sh | bash
+```
+
 ## Remote Dashboard
 
 The dashboard is fully static — host it anywhere and point it at your cc-monitor server.

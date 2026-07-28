@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  cc-monitor:
+    image: cc-monitor:latest
+    container_name: cc-monitor
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      # Required: session state + hooks marker file
+      - ~/.cc-monitor:/root/.cc-monitor
+    # Build from source if image not already built:
+    # build:
+    #   context: .
+    #   args:
+    #     HTTP_PROXY: ${HTTP_PROXY}
+    #     HTTPS_PROXY: ${HTTPS_PROXY}

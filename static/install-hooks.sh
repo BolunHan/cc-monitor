@@ -146,7 +146,10 @@ settings_file.write_text(json.dumps(target, indent=2))
 print(f'  Injected {merged} hook events into {settings_file}')
 PYEOF
 
+# Write marker file for Docker-based status detection
+touch "${HOME}/.cc-monitor/.hooks-installed"
+
 echo ""
 echo "=== Done ==="
 echo "cc-monitor hooks installed. Restart Claude Code to use them."
-echo "To uninstall: rm -rf ${HOOKS_DIR} && cp ${BACKUP_FILE} ${SETTINGS_FILE} (if backup exists)"
+echo "To uninstall: curl -sSL ${SERVER_URL}/static/uninstall-hooks.sh | bash"
