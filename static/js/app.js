@@ -433,12 +433,11 @@
             console.log("[hooks]   Provide a one-liner for the user to run on the host machine.");
 
             const serverUrl = getServerUrl();
-            const oneLiner = `curl -sSL ${serverUrl}/static/install-hooks.sh | SERVER_URL=${serverUrl} bash`;
+            const oneLiner = `curl -skSL ${serverUrl}/static/install-hooks.sh | SERVER_URL=${serverUrl} bash`;
             console.log("[hooks] step 3 — one-liner command:");
             console.log("  %c" + oneLiner, "font-weight:bold;color:#22c55e;font-size:14px;");
 
-            installFeedback.innerHTML = `Remote server — run this on the host:<br><code style="font-size:11px;word-break:break-all;">${escapeHtml(oneLiner)}</code>`;
-            installFeedback.className = "install-feedback";
+            showInstallModal(oneLiner);
             btnInstall.disabled = false;
             return;
         }
@@ -715,6 +714,62 @@
         const div = document.createElement("div");
         div.textContent = str;
         return div.innerHTML;
+    }
+
+    // ---- Install modal (remote / Docker) ----
+
+    function showInstallModal(oneLiner) {
+        // Remove any existing modal
+        const old = document.getElementById("install-modal");
+        if (old) old.remove();
+
+        const modal = document.createElement("div");
+        modal.id = "install-modal";
+        modal.className = "modal-overlay";
+        modal.innerHTML = `
+            <div class="modal">
+                <h2 class="modal__title">Install cc-monitor Hooks</h2>
+                <div class="modal__warning">
+                    ⚠ This script modifies <code>~/.claude/settings.json</code> directly.
+                    Only run installers from the trusted cc-monitor repository:<br>
+                    <a href="https://github.com/BolunHan/cc-monitor" target="_blank" rel="noopener">
+                        github.com/BolunHan/cc-monitor
+                    </a>
+                </div>
+                <p class="modal__desc">Run this command on the machine where Claude Code runs:</p>
+                <div class="modal__cmd">
+                    <code id="install-oneliner">${escapeHtml(oneLiner)}</code>
+                </div>
+                <div class="modal__actions">
+                    <button class="btn btn--primary" id="btn-copy-oneliner">Copy</button>
+                    <button class="btn" id="btn-close-modal">Close</button>
+                </div>
+                <span class="modal__feedback" id="modal-feedback"></span>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        // Copy button
+        document.getElementById("btn-copy-oneliner").addEventListener("click", () => {
+            navigator.clipboard.writeText(oneLiner).then(() => {
+                const fb = document.getElementById("modal-feedback");
+                fb.textContent = "✓ copied";
+                fb.className = "modal__feedback success";
+                setTimeout(() => { fb.textContent = ""; fb.className = "modal__feedback"; }, 2000);
+            }).catch(() => {
+                // Fallback: select the text
+                const el = document.getElementById("install-oneliner");
+                const range = document.createRange();
+                range.selectNodeContents(el);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+            });
+        });
+
+        // Close button + click-outside
+        document.getElementById("btn-close-modal").addEventListener("click", () => modal.remove());
+        modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
     }
 
     // ---- Initialise ----

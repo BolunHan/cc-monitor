@@ -573,6 +573,97 @@ body {
     color: var(--color-working);
 }
 
+/* ---- Install Modal ---- */
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 580px;
+    width: 90%;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.modal__title {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 16px;
+}
+
+.modal__warning {
+    font-size: 13px;
+    color: var(--color-warning);
+    background: var(--color-warning-bg);
+    border: 1px solid var(--color-warning-border);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 16px;
+    line-height: 1.5;
+}
+
+.modal__warning a {
+    color: var(--color-working);
+    text-decoration: underline;
+}
+
+.modal__warning code {
+    font-family: "SF Mono", "Fira Code", monospace;
+    background: rgba(0,0,0,0.2);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.modal__desc {
+    font-size: 13px;
+    color: var(--color-text-muted);
+    margin-bottom: 12px;
+}
+
+.modal__cmd {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 14px;
+    margin-bottom: 16px;
+    overflow-x: auto;
+}
+
+.modal__cmd code {
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 13px;
+    color: var(--color-done);
+    word-break: break-all;
+    white-space: pre-wrap;
+}
+
+.modal__actions {
+    display: flex;
+    gap: 8px;
+}
+
+.modal__feedback {
+    display: block;
+    margin-top: 10px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.modal__feedback.success {
+    color: var(--color-done);
+}
+
 /* ---- Footer ---- */
 
 .footer {
