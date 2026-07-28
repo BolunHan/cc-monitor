@@ -19,7 +19,7 @@
 # ============================================================================
 set -euo pipefail
 
-SERVER_URL="${SERVER_URL:-http://127.0.0.1:9876}"
+SERVER_URL="${SERVER_URL:-https://127.0.0.1:9876}"
 HOOKS_DIR="${HOME}/.cc-monitor/hooks"
 SETTINGS_FILE="${HOME}/.claude/settings.json"
 BACKUP_FILE="${HOME}/.claude/settings.json.cc-monitor.bak"
@@ -65,11 +65,18 @@ echo "[2/4] Downloading hook scripts..."
 mkdir -p "$HOOKS_DIR"
 
 for hook in "${HOOKS[@]}"; do
-    # Try HTTPS first (server may have TLS enabled), then HTTP
-    if curl -fsk -o "${HOOKS_DIR}/${hook}" "${SERVER_URL}/static/hooks/${hook}" 2>/dev/null; then
-        echo "  ✓ ${hook}"
-        chmod +x "${HOOKS_DIR}/${hook}" 2>/dev/null || true
-    else
+    downloaded=false
+    # Try HTTPS first, then HTTP (server may have TLS or not)
+    for proto in https http; do
+        if curl -fsk -o "${HOOKS_DIR}/${hook}" \
+            "${proto}://$(echo "${SERVER_URL}" | sed 's|https\?://||')/hooks/${hook}" 2>/dev/null; then
+            echo "  ✓ ${hook} (${proto})"
+            chmod +x "${HOOKS_DIR}/${hook}" 2>/dev/null || true
+            downloaded=true
+            break
+        fi
+    done
+    if ! $downloaded; then
         echo "  ✗ ${hook} — download failed. Is the server reachable at ${SERVER_URL}?"
         echo "    Continuing with remaining hooks..."
     fi
@@ -91,14 +98,13 @@ fi
 # 4. Inject hook configuration
 # ------------------------------------------------------------------
 echo "[4/4] Injecting hook configuration..."
-"$PYTHON" -c "
-import json, sys
+SETTINGS="$SETTINGS_FILE" HOOKS="$HOOKS_DIR" "$PYTHON" << 'PYEOF'
+import json, os, sys
 from pathlib import Path
 
-settings_file = Path('${SETTINGS_FILE}')
-hooks_dir = Path('${HOOKS_DIR}')
+settings_file = Path(os.environ['SETTINGS'])
+hooks_dir = Path(os.environ['HOOKS'])
 
-# Event → hook script mapping (must match .claude/settings.json structure)
 hook_events = {
     'PreToolUse':        {'matcher': '*', 'script': 'pre_tool_use.py'},
     'PostToolUse':       {'matcher': '*', 'script': 'post_tool_use.py'},
@@ -109,14 +115,13 @@ hook_events = {
     'SessionEnd':        {'matcher': '',   'script': 'session_end.py'},
 }
 
-# Build hook config
 hooks_config = {}
 for event_name, cfg in hook_events.items():
     script_path = str(hooks_dir / cfg['script'])
     entry = {
         'hooks': [{
             'type': 'command',
-            'command': f'${script_path}',
+            'command': script_path,
             'description': f'cc-monitor: {event_name}',
         }]
     }
@@ -124,12 +129,10 @@ for event_name, cfg in hook_events.items():
         entry['matcher'] = cfg['matcher']
     hooks_config[event_name] = [entry]
 
-# Read or init target settings
 target = {}
 if settings_file.exists():
     target = json.loads(settings_file.read_text())
 
-# Merge hooks (preserve non-cc-monitor settings & hooks)
 target_hooks = target.get('hooks', {})
 merged = 0
 for event_name, matcher_groups in hooks_config.items():
@@ -138,11 +141,10 @@ for event_name, matcher_groups in hooks_config.items():
 
 target['hooks'] = target_hooks
 
-# Write
 settings_file.parent.mkdir(parents=True, exist_ok=True)
 settings_file.write_text(json.dumps(target, indent=2))
 print(f'  Injected {merged} hook events into {settings_file}')
-"
+PYEOF
 
 echo ""
 echo "=== Done ==="
