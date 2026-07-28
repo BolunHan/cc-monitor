@@ -747,7 +747,7 @@
                 const isSelf = d.client_id === myId;
                 const meta = d.meta || {};
                 const info = [
-                    isSelf ? '<span style="color:#ef4444;font-weight:600">◀ SELF</span>' : '',
+                    isSelf ? '<span style="color:#ef4444;font-weight:600">SELF</span>' : '',
                     meta.browser || '',
                     meta.platform || '',
                 ].filter(Boolean).join(' · ');

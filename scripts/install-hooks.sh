@@ -135,15 +135,39 @@ if settings_file.exists():
 
 target_hooks = target.get('hooks', {})
 merged = 0
-for event_name, matcher_groups in hooks_config.items():
-    target_hooks[event_name] = matcher_groups
+skipped = 0
+our_commands = set()  # track our script paths to detect duplicates
+
+for event_name, new_groups in hooks_config.items():
+    # Collect our command strings for this event
+    our_cmds = set()
+    for g in new_groups:
+        for h in g.get('hooks', []):
+            our_cmds.add(h.get('command', ''))
+
+    existing_groups = target_hooks.get(event_name, [])
+
+    # Check if our commands are already registered under this event
+    already_there = False
+    for eg in existing_groups:
+        for eh in eg.get('hooks', []):
+            if eh.get('command', '') in our_cmds:
+                already_there = True
+                break
+
+    if already_there:
+        skipped += 1
+        continue
+
+    # Append our groups to existing (don't replace other hooks)
+    target_hooks[event_name] = existing_groups + new_groups
     merged += 1
 
 target['hooks'] = target_hooks
 
 settings_file.parent.mkdir(parents=True, exist_ok=True)
 settings_file.write_text(json.dumps(target, indent=2))
-print(f'  Injected {merged} hook events into {settings_file}')
+print(f'  Injected {merged} events, skipped {skipped} already present')
 PYEOF
 
 # Write marker file for Docker-based status detection
