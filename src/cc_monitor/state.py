@@ -217,14 +217,14 @@ class StateManager:
     async def broadcast_event(self, event_type: str, data: dict) -> None:
         """Broadcast an arbitrary event to all SSE subscribers.
 
-        Used by auth/device management to push pairing and device
-        state changes to connected clients in real time.
+        Uses the 'type' envelope format that the SSE generator understands
+        natively (no _event key that can get lost).
 
         Args:
-            event_type: SSE event name (e.g. "pairing_update", "device_update").
-            data: JSON-serializable payload.
+            event_type: SSE event name (e.g. "device_update", "pairing_resolved").
+            data: JSON-serializable payload dict.
         """
-        payload = {"_event": event_type, **data}
+        payload = {"type": event_type, "data": data}
         dead: list[asyncio.Queue] = []
         for q in self._queues:
             try:
