@@ -379,11 +379,10 @@ class TestStaticFiles:
         assert '"complete"' in resp.text
         assert '"unarchive"' in resp.text
 
-    def test_js_default_url_127_0_0_1(self, server):
-        """JS must default to http://127.0.0.1:9876 for remote dashboards."""
+    def test_js_default_url_is_page_origin(self, server):
+        """JS must default to window.location.origin (the page's own URL)."""
         resp = httpx.get(f"{server}/js/app.js")
-        assert 'DEFAULT_HOST = "http://127.0.0.1"' in resp.text
-        assert 'DEFAULT_PORT = "9876"' in resp.text
+        assert "window.location.origin" in resp.text
 
     def test_js_prevstates_stores_state_and_archived(self, server):
         """prevStates.set must store {state, archived} object, not bare string."""

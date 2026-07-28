@@ -13,13 +13,10 @@
     function getServerUrl() {
         const stored = localStorage.getItem(STORAGE_KEY_URL);
         if (stored) return stored.replace(/\/+$/, "");
-        // If served from localhost, use current origin (server knows its port)
-        const hostname = window.location.hostname;
-        if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]") {
-            return window.location.origin;
-        }
-        // Default for remote dashboards (gh-pages, etc.)
-        return DEFAULT_HOST + ":" + DEFAULT_PORT;
+        // Default: the URL the page was loaded from.
+        // Works for server-served dashboards (https://192.168.3.28:9876)
+        // and gh-pages (user sets URL once, persisted in localStorage).
+        return window.location.origin;
     }
 
     function setServerUrl(url) {
@@ -494,7 +491,7 @@
         try {
             const u = new URL(url);
             settingsUrl.value = u.protocol + "//" + u.hostname;
-            settingsPort.value = u.port || DEFAULT_PORT;
+            settingsPort.value = u.port || window.location.port || DEFAULT_PORT;
         } catch (_) {
             settingsUrl.value = url;
             settingsPort.value = "";
