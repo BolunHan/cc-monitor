@@ -14,31 +14,32 @@ from cc_monitor.state import StateManager
 from cc_monitor.tls import CertConfig, generate_self_signed_cert, get_cert_fingerprint
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 logger = logging.getLogger(__name__)
 
 
 def _detect_lan_ip() -> str:
-    """Auto-detect the LAN IP by connecting a UDP socket to a known address."""
+    """Auto-detect the LAN IP via the default route interface.
+
+    Opens a UDP socket and connects to a public DNS server.  The
+    socket is never used to send data — connect() just binds the
+    local address to the interface that the kernel routes to that
+    destination.  This is the standard way to find your LAN IP
+    without hardcoding gateway addresses.
+    """
     try:
         import socket
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.settimeout(0.1)
-        # Try common gateway addresses
-        for gw in ("192.168.1.1", "192.168.0.1", "192.168.3.1", "10.0.0.1"):
-            try:
-                s.connect((gw, 1))
-                ip = s.getsockname()[0]
-                s.close()
-                return ip
-            except OSError:
-                continue
+        s.settimeout(0.5)
+        # 1.1.1.1 (Cloudflare DNS) — universally reachable, UDP port 53
+        s.connect(("1.1.1.1", 53))
+        ip = s.getsockname()[0]
         s.close()
+        return ip
     except Exception:
-        pass
-    return "127.0.0.1"
+        return "127.0.0.1"
 
 
 _STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
@@ -416,6 +417,14 @@ def create_app(
 
     # ---- Static files ----
     # Serve at /static (absolute paths) and at /css, /js (relative paths for gh-pages compat)
+
+    @app.get("/favicon.svg")
+    async def favicon():
+        """Serve the favicon at root level (HTML uses relative ./favicon.svg)."""
+        path = _STATIC_DIR / "favicon.svg"
+        if path.exists():
+            return FileResponse(path, media_type="image/svg+xml")
+        raise HTTPException(status_code=404)
 
     @app.get("/", response_class=HTMLResponse)
     async def index():
