@@ -6,8 +6,16 @@
 (() => {
     const STORAGE_KEY_URL = "cc-monitor-server-url";
     const STORAGE_KEY_TOKEN = "cc-monitor-auth-token";
-    const DEFAULT_HOST = "http://127.0.0.1";
-    const DEFAULT_PORT = "9876";
+    const STORAGE_KEY_CLIENT_ID = "cc-monitor-client-id";
+
+    function getClientId() {
+        let cid = localStorage.getItem(STORAGE_KEY_CLIENT_ID);
+        if (!cid) {
+            cid = "web-" + crypto.randomUUID();
+            localStorage.setItem(STORAGE_KEY_CLIENT_ID, cid);
+        }
+        return cid;
+    }
 
     // ---- Server URL ----
 
@@ -840,7 +848,7 @@
                 body: JSON.stringify({
                     device_name: "Web Dashboard",
                     pairing_code: pairingCode,
-                    client_id: "web-dashboard",
+                    client_id: getClientId(),
                 }),
             });
             const data = await resp.json();
@@ -951,7 +959,7 @@
                 body: JSON.stringify({
                     device_name: "Web Dashboard",
                     pairing_code: pairingCode,
-                    client_id: "web-dashboard",
+                    client_id: getClientId(),
                 }),
             });
             const data = await resp.json();
