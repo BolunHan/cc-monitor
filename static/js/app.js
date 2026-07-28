@@ -896,17 +896,17 @@
         // Close + cleanup
         document.getElementById("btn-close-pair").addEventListener("click", () => {
             modal.remove();
-            stopPairingPoll();
+            stopPairStatusPoll();
         });
         modal.addEventListener("click", (e) => {
-            if (e.target === modal) { modal.remove(); stopPairingPoll(); }
+            if (e.target === modal) { modal.remove(); stopPairStatusPoll(); }
         });
 
         // Start polling
-        startPairingPoll(requestId, modal);
+        startPairStatusPoll(requestId, modal);
     });
 
-    function startPairingPoll(requestId, modal) {
+    function startPairStatusPoll(requestId, modal) {
         const log = modal.querySelector("#pair-log");
         let attempts = 0;
         _pairPollTimer = setInterval(async () => {
@@ -917,7 +917,7 @@
                 log.innerHTML += `<div class="modal__log-entry">[${attempts}] status: ${data.status}</div>`;
                 if (data.status === "approved") {
                     log.innerHTML += '<div class="modal__log-entry success">✓ Approved!</div>';
-                    stopPairingPoll();
+                    stopPairStatusPoll();
                     // The token was returned to the approver; re-submit to get a new one
                     // For now, close the modal — user needs to refresh
                     setTimeout(() => {
@@ -927,7 +927,7 @@
                     }, 1000);
                 } else if (data.status === "denied") {
                     log.innerHTML += '<div class="modal__log-entry error">✗ Denied</div>';
-                    stopPairingPoll();
+                    stopPairStatusPoll();
                 }
             } catch (err) {
                 log.innerHTML += `<div class="modal__log-entry error">Poll error: ${err}</div>`;
@@ -935,7 +935,7 @@
         }, 2000);
     }
 
-    function stopPairingPoll() {
+    function stopPairStatusPoll() {
         if (_pairPollTimer) {
             clearInterval(_pairPollTimer);
             _pairPollTimer = null;
