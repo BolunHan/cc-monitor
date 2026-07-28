@@ -94,7 +94,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ],
                   ),
                 ),
-              // Debug status bar
               _DebugBar(provider: provider),
               Expanded(child: body),
             ],
@@ -240,9 +239,81 @@ class _ServerDrawerState extends State<_ServerDrawer> {
     setState(() { _servers = servers; _active = active; });
   }
 
-// ---------------------------------------------------------------------------
-// Debug status bar — shows SSE heartbeat & event log
-// ---------------------------------------------------------------------------
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      child: Column(
+        children: [
+          const DrawerHeader(
+            decoration: BoxDecoration(color: Colors.indigo),
+            child: SizedBox(
+              width: double.infinity,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Icon(Icons.dns, color: Colors.white70, size: 32),
+                  SizedBox(height: 8),
+                  Text('Servers', style: TextStyle(color: Colors.white, fontSize: 18)),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: _servers.isEmpty
+                ? const Center(child: Text('No servers paired', style: TextStyle(color: Colors.grey)))
+                : ListView.builder(
+                    itemCount: _servers.length,
+                    itemBuilder: (context, index) {
+                      final s = _servers[index];
+                      final isActive = _active != null && s.host == _active!.host && s.port == _active!.port;
+                      final connected = context.read<SessionProvider>().connected;
+                      return ListTile(
+                        leading: Icon(
+                          isActive
+                              ? (connected ? Icons.check_circle : Icons.warning_amber_rounded)
+                              : Icons.circle_outlined,
+                          color: isActive ? (connected ? Colors.green : Colors.orange) : Colors.grey,
+                        ),
+                        title: Text('${s.host}:${s.port}',
+                            style: TextStyle(fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
+                        subtitle: Text(s.displayId, style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline, size: 18),
+                          onPressed: () async {
+                            await widget.store.removeServer(s.host, s.port);
+                            _load();
+                          },
+                        ),
+                        onTap: () async {
+                          await widget.store.setActive(s.host, s.port);
+                          final api = context.read<ApiClient>();
+                          await api.configureFromStore();
+                          context.read<SessionProvider>().loadSessions();
+                          Navigator.pop(context);
+                        },
+                      );
+                    },
+                  ),
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.add),
+            title: const Text('Add Server'),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.pushNamed(context, '/servers');
+            },
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+}
+
+// ---- Debug status bar ----
+
 class _DebugBar extends StatelessWidget {
   final SessionProvider provider;
   const _DebugBar({required this.provider});
@@ -250,7 +321,6 @@ class _DebugBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final log = provider.eventLog;
-    final lastHeartbeat = log.where((e) => e.type == 'heartbeat').firstOrNull;
     final lastEvent = log.firstOrNull;
 
     return GestureDetector(
@@ -362,77 +432,6 @@ class _DebugLogSheet extends StatelessWidget {
                     },
                   ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ServerDrawer extends StatefulWidget {
-      child: Column(
-        children: [
-          const DrawerHeader(
-            decoration: BoxDecoration(color: Colors.indigo),
-            child: SizedBox(
-              width: double.infinity,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Icon(Icons.dns, color: Colors.white70, size: 32),
-                  SizedBox(height: 8),
-                  Text('Servers', style: TextStyle(color: Colors.white, fontSize: 18)),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            child: _servers.isEmpty
-                ? const Center(child: Text('No servers paired', style: TextStyle(color: Colors.grey)))
-                : ListView.builder(
-                    itemCount: _servers.length,
-                    itemBuilder: (context, index) {
-                      final s = _servers[index];
-                      final isActive = _active != null && s.host == _active!.host && s.port == _active!.port;
-                      final connected = context.read<SessionProvider>().connected;
-                      return ListTile(
-                        leading: Icon(
-                          isActive
-                              ? (connected ? Icons.check_circle : Icons.warning_amber_rounded)
-                              : Icons.circle_outlined,
-                          color: isActive ? (connected ? Colors.green : Colors.orange) : Colors.grey,
-                        ),
-                        title: Text('${s.host}:${s.port}',
-                            style: TextStyle(fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
-                        subtitle: Text(s.displayId, style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline, size: 18),
-                          onPressed: () async {
-                            await widget.store.removeServer(s.host, s.port);
-                            _load();
-                          },
-                        ),
-                        onTap: () async {
-                          await widget.store.setActive(s.host, s.port);
-                          final api = context.read<ApiClient>();
-                          await api.configureFromStore();
-                          context.read<SessionProvider>().loadSessions();
-                          Navigator.pop(context);
-                        },
-                      );
-                    },
-                  ),
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.add),
-            title: const Text('Add Server'),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.pushNamed(context, '/servers');
-            },
-          ),
-          const SizedBox(height: 16),
         ],
       ),
     );
