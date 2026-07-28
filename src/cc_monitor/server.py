@@ -205,8 +205,9 @@ def create_app(
                     try:
                         item = await asyncio.wait_for(queue.get(), timeout=3.0)
                         if isinstance(item, dict) and "type" in item:
-                            # New-style typed event
+                            # New-style typed event (pairing_request, etc.)
                             if item["type"] == "pairing_request":
+                                # item["data"] is already a JSON string
                                 yield _format_sse_event(
                                     "pairing_request", item["data"],
                                 )
@@ -218,6 +219,10 @@ def create_app(
                                 yield _format_sse_event(
                                     "state_update", json.dumps(item),
                                 )
+                        elif isinstance(item, dict) and "_event" in item:
+                            # Broadcast event from auth/device management
+                            event_type = item.pop("_event")
+                            yield _format_sse_event(event_type, json.dumps(item))
                         else:
                             # Old-style plain dict (_broadcast backward compat)
                             yield _format_sse_event(
