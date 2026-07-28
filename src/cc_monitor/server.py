@@ -534,24 +534,37 @@ def main() -> None:
         print(f"Revoked {count} token(s).")
         return
 
-    # Handle approve <pairing_code>
+    # Handle --approve <code>
     if args.approve:
-        tm = TokenManager(data_dir=_data_dir)
-        pm = PairingManager(data_dir=_data_dir, token_manager=tm)
+        import ssl
+        import urllib.request
         code = args.approve.strip()
-        pending = pm.get_pending()
-        match = next((r for r in pending if r.pairing_code == code), None)
-        if match is None:
-            print(f"No pending pairing request with code '{code}'")
-            print(f"Pending codes: {[r.pairing_code for r in pending]}")
-            return
-        info = pm.approve_request(match.id)
-        if info is None:
-            print(f"Failed to approve request '{match.id}'")
-            return
-        print(f"Approved pairing request '{match.id}'")
-        print(f"Device: {match.device_name}")
-        print(f"Token: {info.token}")
+        ctx = ssl._create_unverified_context()
+        base = f"https://127.0.0.1:{args.port}"
+        try:
+            # List pending requests
+            req = urllib.request.Request(f"{base}/api/auth/pair/requests")
+            resp = urllib.request.urlopen(req, timeout=5, context=ctx)
+            pending = json.loads(resp.read().decode())["requests"]
+            match = next((r for r in pending if r.get("pairing_code") == code), None)
+            if match is None:
+                print(f"No pending pairing request with code '{code}'")
+                codes = [r.get("pairing_code", "") for r in pending]
+                print(f"Pending codes: {codes}")
+                return
+            # Approve via API
+            req2 = urllib.request.Request(
+                f"{base}/api/auth/pair/request/{match['id']}/approve",
+                method="POST",
+            )
+            resp2 = urllib.request.urlopen(req2, timeout=5, context=ctx)
+            result = json.loads(resp2.read().decode())
+            print(f"Approved pairing request '{match['id']}'")
+            print(f"Device: {match['device_name']}")
+            print(f"Token: {result['token']}")
+        except Exception as e:
+            print(f"Failed to approve: {e}")
+            print("Is the cc-monitor server running?")
         return
 
     # Enable auth when binding to non-localhost

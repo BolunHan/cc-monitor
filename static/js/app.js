@@ -955,12 +955,10 @@
                 }),
             });
             const data = await resp.json();
-            if (data.status === "approved") {
-                // Some servers return token on re-request after approval
-                log.innerHTML += '<div class="modal__log-entry success">✓ Got token!</div>';
+            if (data.token) {
+                log.innerHTML += '<div class="modal__log-entry success">✓ Paired! Token saved.</div>';
                 setAuthToken(data.token);
                 updateUnauthorizedUI(false);
-                log.innerHTML += '<div class="modal__log-entry">Reloading…</div>';
                 setTimeout(() => {
                     modal.remove();
                     connectSSE();

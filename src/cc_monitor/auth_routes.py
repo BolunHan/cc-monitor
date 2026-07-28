@@ -179,13 +179,40 @@ def create_auth_router(
     async def submit_pairing_request(request: Request):
         """Submit a pairing request for manual approval.
 
-        The request can be approved via CLI, web dashboard, or
-        an already-authorized Android app.
+        If a request with the same pairing_code was already approved,
+        returns the token directly (claim flow after CLI approval).
         """
         body = await request.json()
         device_name = body.get("device_name", "Unknown Device")
         pairing_code = body.get("pairing_code", "")
         client_id = body.get("client_id", "")
+
+        # Check if a request with this code was already approved
+        pairing_manager._requests = pairing_manager._load_requests()
+        pending = pairing_manager.get_pending()
+        for req in pending:
+            if req.pairing_code == pairing_code:
+                # Still pending — duplicate submit, return existing request_id
+                return JSONResponse({
+                    "request_id": req.id,
+                    "status": "pending",
+                    "pairing_code": pairing_code,
+                })
+
+        # Check if any resolved request with this code was approved
+        for entry in pairing_manager._requests.values():
+            if entry.get("pairing_code") == pairing_code and entry["status"] == "approved":
+                # Re-claim: create a new token for this client
+                token_info = token_manager.create_token(
+                    device_name, ttl_seconds=ttl_seconds, client_id=client_id,
+                )
+                return JSONResponse({
+                    "status": "approved",
+                    "token": token_info.token,
+                    "expires_at": token_info.expires_at.isoformat(),
+                })
+
+        # New request
         request_id = pairing_manager.create_request(device_name, pairing_code, client_id)
 
         await _broadcast("pairing_request", request_id=request_id,
@@ -201,6 +228,8 @@ def create_auth_router(
     @router.get("/api/auth/pair/request/{request_id}/status")
     async def get_pairing_request_status(request_id: str):
         """Poll the status of a pairing request."""
+        # Reload from disk to pick up CLI approvals
+        pairing_manager._requests = pairing_manager._load_requests()
         req = pairing_manager.get_request(request_id)
         if req is None:
             raise HTTPException(status_code=404, detail="Request not found")
@@ -210,10 +239,6 @@ def create_auth_router(
             "status": req.status,
         }
         if req.status == "approved":
-            # The requester needs to know — re-issue the token lookup.
-            # For simplicity, the token is NOT returned via polling;
-            # the client should re-submit the request on approval.
-            # Instead, include a flag.
             response["approved"] = True
 
         return JSONResponse(response)
