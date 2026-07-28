@@ -16,3 +16,4 @@ android_app/pubspec.lock
 # Docker env files (proxy settings)
 .env
 env
+PROJECT-KNOWLEDGE.md

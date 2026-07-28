@@ -485,12 +485,14 @@ class PairingManager:
                 }
         return sorted(seen.values(), key=lambda d: d["created_at"], reverse=True)
 
-    def revoke_device(self, token_prefix: str) -> bool:
-        """Revoke a device by token prefix match."""
-        for token in list(self._token_manager._tokens.keys()):
-            if token.startswith(token_prefix.rstrip(".")):
-                return self._token_manager.revoke_token(token)
-        return False
+    def revoke_device(self, client_id: str) -> int:
+        """Revoke all tokens for a given client_id."""
+        revoked = 0
+        for token, entry in list(self._token_manager._tokens.items()):
+            if entry.get("client_id", "") == client_id:
+                if self._token_manager.revoke_token(token):
+                    revoked += 1
+        return revoked
 
     def _load_requests(self) -> dict:
         path = self._data_dir / _PAIRING_REQUESTS_FILE

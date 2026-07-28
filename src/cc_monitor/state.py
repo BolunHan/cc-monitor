@@ -214,6 +214,26 @@ class StateManager:
         await self._broadcast(session)
         return session
 
+    async def broadcast_event(self, event_type: str, data: dict) -> None:
+        """Broadcast an arbitrary event to all SSE subscribers.
+
+        Used by auth/device management to push pairing and device
+        state changes to connected clients in real time.
+
+        Args:
+            event_type: SSE event name (e.g. "pairing_update", "device_update").
+            data: JSON-serializable payload.
+        """
+        payload = {"_event": event_type, **data}
+        dead: list[asyncio.Queue] = []
+        for q in self._queues:
+            try:
+                q.put_nowait(payload)
+            except asyncio.QueueFull:
+                dead.append(q)
+        for q in dead:
+            self.unsubscribe(q)
+
     def subscribe(self) -> asyncio.Queue:
         """Register a new SSE subscriber. Returns a queue to iterate on."""
         q: asyncio.Queue = asyncio.Queue()

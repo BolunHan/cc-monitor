@@ -66,7 +66,7 @@ class SessionProvider extends ChangeNotifier {
 
   void _startHeartbeat() {
     _heartbeatTimer?.cancel();
-    _heartbeatTimer = Timer.periodic(const Duration(seconds: 15), (_) async {
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
       if (!_api.isConfigured) return;
       try {
         final resp = await _api.get('/api/version');
@@ -91,6 +91,8 @@ class SessionProvider extends ChangeNotifier {
     _archived = [];
     _sseClient?.disconnect();
     _sseClient = null;
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
   }
 
   Future<void> archiveSession(String sessionId) async {

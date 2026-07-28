@@ -131,6 +131,7 @@ def create_app(
         auth_router = create_auth_router(
             token_manager, pairing_manager, cert_config, token_ttl,
             lan_host=lan_host,
+            broadcast_callback=manager.broadcast_event,
         )
         app.include_router(auth_router)
 

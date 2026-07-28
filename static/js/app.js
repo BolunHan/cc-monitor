@@ -330,6 +330,21 @@
             lastHeartbeat = Date.now();
         });
 
+        // Pairing/device push events — refresh relevant sections in real time
+        es.addEventListener("pairing_request", () => {
+            pollPairingRequests();
+        });
+
+        es.addEventListener("pairing_resolved", () => {
+            pollPairingRequests();
+        });
+
+        es.addEventListener("device_update", () => {
+            loadPairedDevices();
+            // Also refresh QR pairing payload (new device may need new QR)
+            if (typeof loadPairingQR === "function") loadPairingQR();
+        });
+
         es.addEventListener("error", () => {});
     }
 
@@ -638,16 +653,16 @@
                 <div class="pairing-request">
                     <span class="pairing-request__name">${escHtml(d.device_name)}<br><code style="font-size:0.85em">${escHtml(d.client_id ? d.client_id.substring(0, 8) : '-')}</code> <small>${d.expired ? 'expired' : 'active'}</small></span>
                     <div class="pairing-request__actions">
-                        <button class="btn btn--danger btn--tiny" onclick="window._ccRevokeDevice('${d.token_prefix}')" title="Revoke">✕</button>
+                        <button class="btn btn--danger btn--tiny" onclick="window._ccRevokeDevice('${d.client_id}')" title="Revoke">✕</button>
                     </div>
                 </div>
             `).join("");
         } catch (_) {}
     }
 
-    window._ccRevokeDevice = async function(tokenPrefix) {
+    window._ccRevokeDevice = async function(clientId) {
         try {
-            await fetch(apiUrl(`/api/auth/devices/${encodeURIComponent(tokenPrefix)}`), { method: "DELETE" });
+            await fetch(apiUrl(`/api/auth/devices/${encodeURIComponent(clientId)}`), { method: "DELETE" });
             loadPairedDevices();
         } catch (_) {}
     };

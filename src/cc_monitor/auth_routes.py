@@ -99,6 +99,7 @@ def create_auth_router(
     cert_config: CertConfig,
     ttl_seconds: int = 604800,
     lan_host: str = "",
+    broadcast_callback=None,
 ) -> APIRouter:
     """Create a FastAPI router with all /api/auth/* endpoints.
 
@@ -107,11 +108,23 @@ def create_auth_router(
         pairing_manager: Pairing request manager.
         cert_config: TLS certificate configuration.
         ttl_seconds: Default token TTL for info responses.
+        broadcast_callback: Optional async callable(event_type, data)
+            called after state-changing operations to push SSE updates
+            to connected clients.
+        lan_host: LAN IP for QR pairing payload.
 
     Returns:
         A FastAPI APIRouter with auth endpoints.
     """
     router = APIRouter()
+
+    async def _broadcast(event_type: str, **data):
+        """Push a pairing/device event to all SSE subscribers."""
+        if broadcast_callback:
+            try:
+                await broadcast_callback(event_type, data)
+            except Exception:
+                pass
 
     @router.get("/api/auth/pair/qr")
     async def get_qr_pairing_payload(request: Request):
@@ -153,6 +166,7 @@ def create_auth_router(
                 detail="Invalid or expired QR token. Re-scan the QR code.",
             )
 
+        await _broadcast("device_update")
         return JSONResponse({
             "status": "paired",
             "token": info.token,
@@ -171,6 +185,10 @@ def create_auth_router(
         pairing_code = body.get("pairing_code", "")
         client_id = body.get("client_id", "")
         request_id = pairing_manager.create_request(device_name, pairing_code, client_id)
+
+        await _broadcast("pairing_request", request_id=request_id,
+                         device_name=device_name, pairing_code=pairing_code,
+                         status="pending")
 
         return JSONResponse({
             "request_id": request_id,
@@ -225,6 +243,9 @@ def create_auth_router(
                 detail="Request not found or already resolved",
             )
 
+        await _broadcast("pairing_resolved", request_id=request_id, status="approved")
+        await _broadcast("device_update")
+
         return JSONResponse({
             "status": "approved",
             "token": info.token,
@@ -239,6 +260,7 @@ def create_auth_router(
                 status_code=404,
                 detail="Request not found or already resolved",
             )
+        await _broadcast("pairing_resolved", request_id=request_id, status="denied")
         return JSONResponse({"status": "denied"})
 
     @router.post("/api/auth/token/rotate")
@@ -269,6 +291,7 @@ def create_auth_router(
         token = auth_header.removeprefix("Bearer ").strip()
 
         if token_manager.revoke_token(token):
+            await _broadcast("device_update")
             return JSONResponse({"status": "revoked"})
         raise HTTPException(status_code=404, detail="Token not found")
 
@@ -295,11 +318,13 @@ def create_auth_router(
         devices = pairing_manager.get_device_list()
         return JSONResponse({"devices": devices})
 
-    @router.delete("/api/auth/devices/{token_prefix}")
-    async def revoke_device(token_prefix: str):
-        """Revoke a paired device by token prefix."""
-        if pairing_manager.revoke_device(token_prefix):
-            return JSONResponse({"status": "revoked"})
+    @router.delete("/api/auth/devices/{client_id}")
+    async def revoke_device(client_id: str):
+        """Revoke all tokens for a device by client_id."""
+        count = pairing_manager.revoke_device(client_id)
+        if count > 0:
+            await _broadcast("device_update")
+            return JSONResponse({"status": "revoked", "count": count})
         raise HTTPException(status_code=404, detail="Device not found")
 
     return router

@@ -461,6 +461,23 @@ class TestStaticFiles:
         resp = httpx.get(f"{server}/")
         assert 'id="breakdown-active"' in resp.text
 
+    def test_js_sse_listens_for_pairing_events(self, server):
+        """SSE must listen for pairing_request, pairing_resolved, device_update."""
+        resp = httpx.get(f"{server}/js/app.js")
+        assert 'addEventListener("pairing_request"' in resp.text
+        assert 'addEventListener("pairing_resolved"' in resp.text
+        assert 'addEventListener("device_update"' in resp.text
+
+    def test_js_device_update_refreshes_devices(self, server):
+        """SSE device_update must trigger loadPairedDevices()."""
+        resp = httpx.get(f"{server}/js/app.js")
+        assert "loadPairedDevices()" in resp.text
+
+    def test_js_pairing_request_triggers_poll(self, server):
+        """SSE pairing_request must trigger pollPairingRequests()."""
+        resp = httpx.get(f"{server}/js/app.js")
+        assert "pollPairingRequests()" in resp.text
+
     def test_js_connect_sse_does_not_clear_cards(self, server):
         """connectSSE must NOT clear cards — only clearAllCards on manual reconnect."""
         resp = httpx.get(f"{server}/js/app.js")
