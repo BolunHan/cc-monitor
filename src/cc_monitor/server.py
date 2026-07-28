@@ -533,8 +533,10 @@ def main() -> None:
                     args.host, args.port, __version__, cert_config.fingerprint[:18] + "...",
                 )
             except Exception as exc:
-                print(f"[mDNS] FAILED to start: {exc}")
-                logger.warning("mDNS: failed to start advertisement: %s", exc)
+                import traceback
+                print(f"[mDNS] FAILED to start: {type(exc).__name__}: {exc}")
+                traceback.print_exc()
+                logger.warning("mDNS: failed to start advertisement: %s", exc, exc_info=True)
 
         @_app.on_event("shutdown")
         async def _stop_mdns():

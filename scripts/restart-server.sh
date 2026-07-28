@@ -20,8 +20,11 @@ echo "    venv: $VENV"
 
 # 1. Kill existing server
 echo "--- killing existing server ---"
+# Kill by port first (most reliable)
+fuser -k ${PORT}/tcp 2>/dev/null || true
+# Also try pattern matching
 pkill -f "cc-monitor" 2>/dev/null || true
-pkill -f "uvicorn.*cc_monitor" 2>/dev/null || true
+pkill -f "cc_monitor" 2>/dev/null || true
 sleep 1
 echo "    done"
 
