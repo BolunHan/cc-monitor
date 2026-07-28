@@ -310,7 +310,7 @@
 
     async function handleCardAction(action, sessionId) {
         try {
-            const resp = await apiFetch(`/api/session/${sessionId}/${action}`), {method: "POST"});
+            const resp = await apiFetch(`/api/session/${sessionId}/${action}`, {method: "POST"});
             if (resp.ok) {
                 const session = await resp.json();
                 updateCard(session);
@@ -489,7 +489,7 @@
         console.log("[hooks] step 3 — calling POST /api/install-hooks …");
 
         try {
-            const resp = await apiFetch("/api/install-hooks"), { method: "POST" });
+            const resp = await apiFetch("/api/install-hooks", { method: "POST" });
             const data = await resp.json();
             console.log("[hooks] step 4 — response:", resp.status, data);
 
@@ -581,7 +581,7 @@
         settingsFeedback.textContent = "removing…";
         settingsFeedback.className = "settings-panel__feedback";
         try {
-            const resp = await apiFetch("/api/uninstall-hooks"), { method: "POST" });
+            const resp = await apiFetch("/api/uninstall-hooks", { method: "POST" });
             const data = await resp.json();
             if (resp.ok) {
                 settingsFeedback.textContent = `✓ ${data.removed_events} hooks removed`;
@@ -709,7 +709,7 @@
 
     window._ccApprovePair = async function(requestId) {
         try {
-            await apiFetch(`/api/auth/pair/request/${requestId}/approve`), { method: "POST" });
+            await apiFetch(`/api/auth/pair/request/${requestId}/approve`, { method: "POST" });
             pollPairingRequests();
             loadPairedDevices();
             loadPairingQR();
@@ -718,7 +718,7 @@
 
     window._ccDenyPair = async function(requestId) {
         try {
-            await apiFetch(`/api/auth/pair/request/${requestId}/deny`), { method: "POST" });
+            await apiFetch(`/api/auth/pair/request/${requestId}/deny`, { method: "POST" });
             pollPairingRequests();
         } catch (_) {}
     };
@@ -747,7 +747,7 @@
 
     window._ccRevokeDevice = async function(clientId) {
         try {
-            await apiFetch(`/api/auth/devices/${encodeURIComponent(clientId)}`), { method: "DELETE" });
+            await apiFetch(`/api/auth/devices/${encodeURIComponent(clientId)}`, { method: "DELETE" });
             loadPairedDevices();
         } catch (_) {}
     };
@@ -834,7 +834,7 @@
         // Submit pairing request
         let requestId = "";
         try {
-            const resp = await apiFetch("/api/auth/pair/request"), {
+            const resp = await apiFetch("/api/auth/pair/request", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -945,7 +945,7 @@
     async function reRequestToken(requestId, modal) {
         const log = modal.querySelector("#pair-log");
         try {
-            const resp = await apiFetch("/api/auth/pair/request"), {
+            const resp = await apiFetch("/api/auth/pair/request", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
