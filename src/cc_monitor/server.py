@@ -221,7 +221,7 @@ def create_app(
                                 )
                         elif isinstance(item, dict) and "_event" in item:
                             # Broadcast event from auth/device management
-                            event_type = item.pop("_event")
+                            event_type = str(item.pop("_event"))
                             yield _format_sse_event(event_type, json.dumps(item))
                         else:
                             # Old-style plain dict (_broadcast backward compat)
