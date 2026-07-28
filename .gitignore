@@ -17,3 +17,4 @@ android_app/pubspec.lock
 .env
 env
 PROJECT-KNOWLEDGE.md
+server.log

@@ -55,8 +55,16 @@ RUN mkdir -p $ANDROID_HOME/cmdline-tools \
 
 ENV PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
 
-RUN yes | sdkmanager --licenses > /dev/null \
-    && sdkmanager --install \
+# Propagate build-time proxy to sdkmanager via Gradle/Java conventions
+RUN if [ -n "$HTTP_PROXY" ]; then \
+      HOST=$(echo "$HTTP_PROXY" | sed 's|.*://||;s|:.*||'); \
+      PORT=$(echo "$HTTP_PROXY" | sed 's|.*:||'); \
+      SDK_FLAGS="--proxy=http --proxy_host=$HOST --proxy_port=$PORT"; \
+    else \
+      SDK_FLAGS=""; \
+    fi \
+    && yes | sdkmanager $SDK_FLAGS --licenses > /dev/null \
+    && sdkmanager $SDK_FLAGS --install \
          "platform-tools" \
          "build-tools;34.0.0" \
          "platforms;android-34"
