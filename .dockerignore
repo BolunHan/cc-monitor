@@ -5,8 +5,6 @@ __pycache__/
 *.egg-info/
 tests/
 docs/
-hooks/
-static/
 .claude/
 .superpowers/
 venv/

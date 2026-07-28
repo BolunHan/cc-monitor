@@ -74,8 +74,27 @@ def _detect_lan_ip() -> str:
     return "127.0.0.1"
 
 
-_STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+def _resolve_root() -> Path:
+    """Find the project root containing static/ and hooks/ directories.
+
+    When installed via pip, __file__ points into site-packages and
+    the static/hooks directories are elsewhere.  Check:
+    1. CC_MONITOR_ROOT env var (Docker / custom deployments)
+    2. Relative to __file__ (editable install / dev)
+    3. /app (Docker container default)
+    """
+    import os
+    if (env := os.environ.get("CC_MONITOR_ROOT")):
+        return Path(env)
+    candidate = Path(__file__).resolve().parent.parent.parent
+    if (candidate / "static").is_dir():
+        return candidate
+    if (Path("/app/static")).is_dir():
+        return Path("/app")
+    return candidate  # fallback
+
+_PROJECT_ROOT = _resolve_root()
+_STATIC_DIR = _PROJECT_ROOT / "static"
 _SOURCE_HOOKS_PATH = _PROJECT_ROOT / ".claude" / "settings.json"
 _GLOBAL_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
 _BACKUP_PATH = Path.home() / ".claude" / "settings.json.cc-monitor.bak"
