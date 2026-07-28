@@ -444,17 +444,7 @@
         }
     }
 
-    const HOOKS_DISMISSED_KEY = "cc-monitor-hooks-dismissed";
-
     async function checkHooksStatus() {
-        // Remote server (Docker) cannot access host ~/.claude/.
-        // Show the install one-liner; user can dismiss permanently.
-        if (!isLocalhost()) {
-            const dismissed = localStorage.getItem(HOOKS_DISMISSED_KEY);
-            updateHookStatusUI(!!dismissed);
-            return;
-        }
-
         console.log("[hooks] checking status at", apiUrl("/api/hooks-status"));
         try {
             const resp = await apiFetch("/api/hooks-status");
@@ -491,9 +481,6 @@
 
             showInstallModal(oneLiner);
             btnInstall.disabled = false;
-            // Offer to dismiss the banner permanently
-            localStorage.setItem(HOOKS_DISMISSED_KEY, "1");
-            updateHookStatusUI(true);
             return;
         }
 
