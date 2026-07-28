@@ -413,7 +413,7 @@
 
     async function loadVersion() {
         try {
-            const resp = await apiFetch("/api/version"));
+            const resp = await apiFetch("/api/version");
             const data = await resp.json();
             document.getElementById("footer-version").textContent =
                 `cc-monitor v${data.version}`;
@@ -447,7 +447,7 @@
     async function checkHooksStatus() {
         console.log("[hooks] checking status at", apiUrl("/api/hooks-status"));
         try {
-            const resp = await apiFetch("/api/hooks-status"));
+            const resp = await apiFetch("/api/hooks-status");
             const data = await resp.json();
             console.log("[hooks] status response:", data);
             updateHookStatusUI(data.installed);
@@ -651,7 +651,7 @@
 
     async function loadPairingQR() {
         try {
-            const resp = await apiFetch("/api/auth/pair/qr"));
+            const resp = await apiFetch("/api/auth/pair/qr");
             if (!resp.ok) {
                 pairQr.innerHTML = '<p class="pairing-error">Pairing not available — start server with --host 0.0.0.0</p>';
                 return;
@@ -687,7 +687,7 @@
 
     async function pollPairingRequests() {
         try {
-            const resp = await apiFetch("/api/auth/pair/requests"));
+            const resp = await apiFetch("/api/auth/pair/requests");
             if (!resp.ok) return;
             const data = await resp.json();
             const requests = data.requests || [];
@@ -726,7 +726,7 @@
     async function loadPairedDevices() {
         const list = document.getElementById("paired-devices-list");
         try {
-            const resp = await apiFetch("/api/auth/devices"));
+            const resp = await apiFetch("/api/auth/devices");
             if (!resp.ok) { list.innerHTML = '<p class="pairing-empty">—</p>'; return; }
             const data = await resp.json();
             const devices = data.devices || [];
@@ -834,7 +834,7 @@
         // Submit pairing request
         let requestId = "";
         try {
-            const resp = await fetch(apiUrl("/api/auth/pair/request"), {
+            const resp = await apiFetch("/api/auth/pair/request"), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -911,7 +911,7 @@
         let attempts = 0;
         pairingPollInterval = setInterval(async () => {
             try {
-                const resp = await fetch(apiUrl(`/api/auth/pair/request/${requestId}/status`));
+                const resp = await apiFetch(`/api/auth/pair/request/${requestId}/status`);
                 const data = await resp.json();
                 attempts++;
                 log.innerHTML += `<div class="modal__log-entry">[${attempts}] status: ${data.status}</div>`;
@@ -945,7 +945,7 @@
     async function reRequestToken(requestId, modal) {
         const log = modal.querySelector("#pair-log");
         try {
-            const resp = await fetch(apiUrl("/api/auth/pair/request"), {
+            const resp = await apiFetch("/api/auth/pair/request"), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
