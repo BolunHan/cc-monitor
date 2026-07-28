@@ -388,6 +388,11 @@
     const installFeedback = document.getElementById("install-feedback");
     const settingsHookStatus = document.getElementById("settings-hook-status");
 
+    function isLocalhost() {
+        const hostname = window.location.hostname;
+        return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+    }
+
     function updateHookStatusUI(installed) {
         if (installed) {
             hooksBanner.classList.add("hidden");
@@ -401,11 +406,14 @@
     }
 
     async function checkHooksStatus() {
+        console.log("[hooks] checking status at", apiUrl("/api/hooks-status"));
         try {
             const resp = await fetch(apiUrl("/api/hooks-status"));
             const data = await resp.json();
+            console.log("[hooks] status response:", data);
             updateHookStatusUI(data.installed);
         } catch (err) {
+            console.warn("[hooks] status check failed:", err);
             updateHookStatusUI(false);
         }
     }
@@ -414,18 +422,51 @@
         btnInstall.disabled = true;
         installFeedback.textContent = "installing…";
         installFeedback.className = "install-feedback";
+
+        // ---- Step 1: Determine if server is local or remote ----
+        const local = isLocalhost();
+        console.log("[hooks] step 1 — server location:",
+            local ? "LOCAL (same machine)" : "REMOTE (different machine / container)");
+        console.log("[hooks]   window.location:", window.location.hostname, "server URL:", getServerUrl());
+
+        if (!local) {
+            // ---- Remote / Docker: cannot inject from browser ----
+            console.log("[hooks] step 2 — REMOTE detected, checking local Python…");
+            console.log("[hooks]   Browser cannot write to host filesystem from remote origin.");
+            console.log("[hooks]   Provide a one-liner for the user to run on the host machine.");
+
+            const serverUrl = getServerUrl();
+            const oneLiner = `curl -sSL ${serverUrl}/static/install-hooks.sh | SERVER_URL=${serverUrl} bash`;
+            console.log("[hooks] step 3 — one-liner command:");
+            console.log("  %c" + oneLiner, "font-weight:bold;color:#22c55e;font-size:14px;");
+
+            installFeedback.innerHTML = `Remote server — run this on the host:<br><code style="font-size:11px;word-break:break-all;">${escapeHtml(oneLiner)}</code>`;
+            installFeedback.className = "install-feedback";
+            btnInstall.disabled = false;
+            return;
+        }
+
+        // ---- Local: server can write to local ~/.claude/ ----
+        console.log("[hooks] step 2 — LOCAL: server can write to ~/.claude/settings.json directly");
+        console.log("[hooks] step 3 — calling POST /api/install-hooks …");
+
         try {
             const resp = await fetch(apiUrl("/api/install-hooks"), { method: "POST" });
             const data = await resp.json();
+            console.log("[hooks] step 4 — response:", resp.status, data);
+
             if (resp.ok) {
+                console.log("[hooks] ✓ installed %d events into %s", data.installed_events, data.target);
                 installFeedback.textContent = `✓ ${data.installed_events} hooks installed`;
                 installFeedback.className = "install-feedback success";
                 updateHookStatusUI(true);
             } else {
+                console.error("[hooks] ✗ install failed:", data.detail);
                 installFeedback.textContent = `✗ ${data.detail}`;
                 installFeedback.className = "install-feedback error";
             }
         } catch (err) {
+            console.error("[hooks] ✗ server unreachable:", err);
             installFeedback.textContent = "✗ server unreachable";
             installFeedback.className = "install-feedback error";
         }
@@ -491,6 +532,12 @@
     });
 
     btnUninstall.addEventListener("click", async () => {
+        if (!isLocalhost()) {
+            settingsFeedback.textContent = "✗ Cannot uninstall from remote — run: rm -rf ~/.cc-monitor/hooks";
+            settingsFeedback.className = "settings-panel__feedback error";
+            setTimeout(() => { settingsFeedback.textContent = ""; settingsFeedback.className = "settings-panel__feedback"; }, 6000);
+            return;
+        }
         if (!confirm("Remove cc-monitor hooks from ~/.claude/settings.json?")) return;
         btnUninstall.disabled = true;
         settingsFeedback.textContent = "removing…";
