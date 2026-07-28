@@ -52,9 +52,13 @@ class SessionProvider extends ChangeNotifier {
     if (!_api.isConfigured) return;
     _sseClient = SseClient(_api);
     _sseClient!.connect().listen((event) {
-      if (event['_event_type'] == 'state_update') {
+      final type = event['_event_type'] as String?;
+      if (type == 'state_update') {
         final session = Session.fromJson(event);
         _upsert(session);
+      } else if (type == 'device_update') {
+        // A device was paired or revoked — verify our token is still valid
+        _checkTokenValid();
       }
     }, onError: (_) {
       _connected = false;
@@ -83,6 +87,19 @@ class SessionProvider extends ChangeNotifier {
         notifyListeners();
       }
     });
+  }
+
+  Future<void> _checkTokenValid() async {
+    try {
+      final resp = await _api.get('/api/auth/token/info');
+      if (resp.statusCode == 401) {
+        _connected = false;
+        _clear();
+        notifyListeners();
+      }
+    } catch (_) {
+      // Server unreachable — keep current state
+    }
   }
 
   void _clear() {
