@@ -13,6 +13,7 @@ COPY pyproject.toml .
 COPY src/ src/
 COPY static/ static/
 COPY hooks/ hooks/
+COPY .claude/ .claude/
 
 # Proxy-aware pip install
 RUN if [ -n "${HTTP_PROXY}" ]; then \
