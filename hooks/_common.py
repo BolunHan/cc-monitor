@@ -5,13 +5,19 @@ cc_monitor package, so hook scripts work regardless of venv state.
 """
 
 import json
+import ssl
 import sys
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
 DATA_DIR = Path.home() / ".cc-monitor"
-SERVER_URL = "http://localhost:9876/api/event"
+_SERVER_HOST = "localhost"
+_SERVER_PORT = 9876
+_HTTP_URL = f"http://{_SERVER_HOST}:{_SERVER_PORT}/api/event"
+_HTTPS_URL = f"https://{_SERVER_HOST}:{_SERVER_PORT}/api/event"
+# Accept self-signed certs (local dev server)
+_SSL_CONTEXT = ssl._create_unverified_context()
 
 
 def map_event(hook_event_name: str, notification_type: str | None = None) -> str:
@@ -56,19 +62,28 @@ def write_state_file(session_id: str, data: dict) -> None:
 
 
 def notify_server(data: dict) -> bool:
-    """POST the raw hook event to the server. Returns True on success."""
-    try:
-        body = json.dumps(data).encode("utf-8")
-        req = urllib.request.Request(
-            SERVER_URL,
-            data=body,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        urllib.request.urlopen(req, timeout=2)
-        return True
-    except Exception:
-        return False
+    """POST the raw hook event to the server. Returns True on success.
+
+    Tries HTTPS first (server may have TLS enabled), then HTTP as fallback.
+    Self-signed certificates are accepted (local dev server).
+    """
+    body = json.dumps(data).encode("utf-8")
+    for url in (_HTTPS_URL, _HTTP_URL):
+        try:
+            req = urllib.request.Request(
+                url,
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            if url.startswith("https"):
+                urllib.request.urlopen(req, timeout=2, context=_SSL_CONTEXT)
+            else:
+                urllib.request.urlopen(req, timeout=2)
+            return True
+        except Exception:
+            continue
+    return False
 
 
 def run_hook(expected_event: str) -> None:

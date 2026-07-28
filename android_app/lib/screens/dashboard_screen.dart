@@ -94,6 +94,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ],
                   ),
                 ),
+              // Debug status bar
+              _DebugBar(provider: provider),
               Expanded(child: body),
             ],
           );
@@ -238,9 +240,135 @@ class _ServerDrawerState extends State<_ServerDrawer> {
     setState(() { _servers = servers; _active = active; });
   }
 
+// ---------------------------------------------------------------------------
+// Debug status bar — shows SSE heartbeat & event log
+// ---------------------------------------------------------------------------
+class _DebugBar extends StatelessWidget {
+  final SessionProvider provider;
+  const _DebugBar({required this.provider});
+
   @override
   Widget build(BuildContext context) {
-    return Drawer(
+    final log = provider.eventLog;
+    final lastHeartbeat = log.where((e) => e.type == 'heartbeat').firstOrNull;
+    final lastEvent = log.firstOrNull;
+
+    return GestureDetector(
+      onTap: () {
+        showModalBottomSheet(
+          context: context,
+          builder: (_) => _DebugLogSheet(provider: provider),
+        );
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        color: provider.connected ? Colors.green.shade900 : Colors.red.shade900,
+        child: Row(
+          children: [
+            Icon(
+              provider.connected ? Icons.cloud_done : Icons.cloud_off,
+              color: Colors.white70,
+              size: 14,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                provider.connected
+                    ? 'SSE alive | ${log.length} events | tap for log'
+                    : 'SSE disconnected | tap for log',
+                style: const TextStyle(color: Colors.white70, fontSize: 11),
+              ),
+            ),
+            if (lastEvent != null)
+              Text(
+                '${lastEvent.time.hour.toString().padLeft(2, '0')}:${lastEvent.time.minute.toString().padLeft(2, '0')}:${lastEvent.time.second.toString().padLeft(2, '0')}',
+                style: const TextStyle(color: Colors.white54, fontSize: 10),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DebugLogSheet extends StatelessWidget {
+  final SessionProvider provider;
+  const _DebugLogSheet({required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    final log = provider.eventLog;
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.6,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('SSE Event Log (${log.length})',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Text(provider.connected ? 'CONNECTED' : 'DISCONNECTED',
+                  style: TextStyle(
+                      color: provider.connected ? Colors.green : Colors.red,
+                      fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const Divider(),
+          Expanded(
+            child: log.isEmpty
+                ? const Center(child: Text('No events yet — waiting for SSE…'))
+                : ListView.builder(
+                    itemCount: log.length,
+                    itemBuilder: (_, i) {
+                      final e = log[i];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          children: [
+                            Text(
+                              '${e.time.hour.toString().padLeft(2, '0')}:${e.time.minute.toString().padLeft(2, '0')}:${e.time.second.toString().padLeft(2, '0')}',
+                              style: const TextStyle(
+                                  fontSize: 11, fontFamily: 'monospace', color: Colors.grey),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: e.type == 'heartbeat'
+                                    ? Colors.grey.shade800
+                                    : e.type == 'device_update' || e.type == 'ACTION'
+                                        ? Colors.orange.shade900
+                                        : Colors.blue.shade900,
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              child: Text(e.type,
+                                  style: const TextStyle(
+                                      fontSize: 10,
+                                      fontFamily: 'monospace',
+                                      color: Colors.white70)),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(e.detail,
+                                  style: const TextStyle(fontSize: 11),
+                                  overflow: TextOverflow.ellipsis),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ServerDrawer extends StatefulWidget {
       child: Column(
         children: [
           const DrawerHeader(

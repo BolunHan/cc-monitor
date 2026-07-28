@@ -15,13 +15,26 @@ class SessionProvider extends ChangeNotifier {
   bool _loading = true;
   bool _connected = false;
 
+  // Debug: visible SSE event log
+  final List<_SseEventEntry> _eventLog = [];
+  static const int _maxEventLog = 50;
+
   List<Session> get active => List.unmodifiable(_active);
   List<Session> get complete => List.unmodifiable(_complete);
   List<Session> get archived => List.unmodifiable(_archived);
   bool get loading => _loading;
   bool get connected => _connected;
+  List<_SseEventEntry> get eventLog => List.unmodifiable(_eventLog);
 
   SessionProvider(this._api);
+
+  void _logEvent(String type, String detail) {
+    _eventLog.insert(0, _SseEventEntry(DateTime.now(), type, detail));
+    if (_eventLog.length > _maxEventLog) {
+      _eventLog.removeRange(_maxEventLog, _eventLog.length);
+    }
+    notifyListeners();
+  }
 
   Future<void> loadSessions() async {
     if (!_api.isConfigured) return;
@@ -53,14 +66,19 @@ class SessionProvider extends ChangeNotifier {
     _sseClient = SseClient(_api);
     _sseClient!.connect().listen((event) {
       final type = event['_event_type'] as String?;
+      _logEvent(type ?? 'unknown', _describeEvent(type, event));
       if (type == 'state_update') {
         final session = Session.fromJson(event);
         _upsert(session);
+        _connected = true;
+      } else if (type == 'heartbeat') {
+        _connected = true;
       } else if (type == 'device_update') {
-        // A device was paired or revoked — verify our token is still valid
+        _logEvent('ACTION', 'device_update → checking token…');
         _checkTokenValid();
       }
     }, onError: (_) {
+      _logEvent('ERROR', 'SSE stream error');
       _connected = false;
       notifyListeners();
     });
@@ -89,16 +107,28 @@ class SessionProvider extends ChangeNotifier {
     });
   }
 
+  String _describeEvent(String? type, Map<String, dynamic> event) {
+    if (type == 'state_update') {
+      return 'session: ${event['session_id']?.toString().substring(0, 8) ?? '?'} → ${event['state'] ?? '?'}';
+    }
+    if (type == 'heartbeat') return '♥';
+    if (type == 'device_update') return 'device list changed';
+    return event.toString();
+  }
+
   Future<void> _checkTokenValid() async {
     try {
       final resp = await _api.get('/api/auth/token/info');
       if (resp.statusCode == 401) {
+        _logEvent('ACTION', 'token REVOKED (401) → disconnecting');
         _connected = false;
         _clear();
         notifyListeners();
+      } else {
+        _logEvent('ACTION', 'token valid (${resp.statusCode})');
       }
-    } catch (_) {
-      // Server unreachable — keep current state
+    } catch (e) {
+      _logEvent('ACTION', 'token check failed: $e');
     }
   }
 
@@ -162,4 +192,11 @@ class SessionProvider extends ChangeNotifier {
     _sseClient?.disconnect();
     super.dispose();
   }
+}
+
+class _SseEventEntry {
+  final DateTime time;
+  final String type;
+  final String detail;
+  _SseEventEntry(this.time, this.type, this.detail);
 }
