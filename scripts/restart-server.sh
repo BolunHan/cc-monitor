@@ -31,6 +31,9 @@ echo "    done"
 # 2. Reinstall package
 echo "--- reinstalling package ---"
 cd "$PROJECT_ROOT"
+# Clear stale bytecode
+find src -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+find src -name "*.pyc" -delete 2>/dev/null || true
 "$VENV/bin/pip" install -e ".[dev]" -q
 echo "    done"
 
