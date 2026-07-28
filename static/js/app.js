@@ -820,7 +820,7 @@
     const pairFeedback = document.getElementById("pair-feedback");
     let pairingCode = "";
     let pairingRequestId = "";
-    let pairingPollInterval = null;
+    let _pairPollTimer = null;
 
     function generatePairingCode() {
         return String(Math.floor(100000 + Math.random() * 900000));
@@ -909,7 +909,7 @@
     function startPairingPoll(requestId, modal) {
         const log = modal.querySelector("#pair-log");
         let attempts = 0;
-        pairingPollInterval = setInterval(async () => {
+        _pairPollTimer = setInterval(async () => {
             try {
                 const resp = await apiFetch(`/api/auth/pair/request/${requestId}/status`);
                 const data = await resp.json();
@@ -936,9 +936,9 @@
     }
 
     function stopPairingPoll() {
-        if (pairingPollInterval) {
-            clearInterval(pairingPollInterval);
-            pairingPollInterval = null;
+        if (_pairPollTimer) {
+            clearInterval(_pairPollTimer);
+            _pairPollTimer = null;
         }
     }
 
