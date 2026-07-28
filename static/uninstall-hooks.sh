@@ -34,12 +34,14 @@ fi
 
 # 2. Remove cc-monitor hooks from settings.json
 echo "[2/3] Removing hooks from $SETTINGS_FILE..."
-CC_EVENTS="${CC_HOOK_EVENTS[*]}" CC_FILE="$SETTINGS_FILE" python3 << 'PYEOF'
+CC_EVENTS="${CC_HOOK_EVENTS[*]}" CC_FILE="$SETTINGS_FILE" HOOKS_DIR="$HOOKS_DIR" python3 << 'PYEOF'
 import json, os, sys
 from pathlib import Path
 
 events = os.environ['CC_EVENTS'].split()
 f = Path(os.environ['CC_FILE'])
+hooks_dir = os.environ.get('HOOKS_DIR', '')
+
 if not f.exists():
     print('  No settings file — nothing to do')
     sys.exit(0)
@@ -47,15 +49,35 @@ if not f.exists():
 settings = json.loads(f.read_text())
 hooks = settings.get('hooks', {})
 removed = 0
+
 for event in events:
-    if event in hooks:
+    groups = hooks.get(event, [])
+    new_groups = []
+    for group in groups:
+        # Keep hooks that are NOT ours (don't contain hooks_dir path)
+        kept_hooks = []
+        for h in group.get('hooks', []):
+            cmd = h.get('command', '')
+            if hooks_dir and hooks_dir in cmd:
+                removed += 1
+            else:
+                kept_hooks.append(h)
+        if kept_hooks:
+            group['hooks'] = kept_hooks
+            new_groups.append(group)
+        elif group.get('hooks'):
+            # All hooks removed from this group — drop the group
+            removed += len(group.get('hooks', []))
+
+    if new_groups:
+        hooks[event] = new_groups
+    elif event in hooks:
         del hooks[event]
-        removed += 1
 
 if removed > 0:
     settings['hooks'] = hooks
     f.write_text(json.dumps(settings, indent=2))
-    print(f'  Removed {removed} cc-monitor hook events')
+    print(f'  Removed {removed} cc-monitor hook entries')
 else:
     print('  No cc-monitor hooks found')
 PYEOF
