@@ -58,6 +58,8 @@ class SecureStore {
   static const _keyClientId = 'cc_monitor_client_id';
   static const _keyActive = 'cc_monitor_active';
   static const _keyLogLevel = 'cc_monitor_log_level';
+  static const _keyNotifySound = 'cc_monitor_notify_sound';
+  static const _keyNotifyVibrate = 'cc_monitor_notify_vibrate';
 
   final FlutterSecureStorage _storage;
   SecureStore() : _storage = const FlutterSecureStorage();
@@ -153,6 +155,26 @@ class SecureStore {
 
   Future<void> setLogLevel(LogLevel level) async {
     await _storage.write(key: _keyLogLevel, value: level.value.toString());
+  }
+
+  // ---- notification prefs ----
+
+  Future<bool> getNotifySound() async {
+    final raw = await _storage.read(key: _keyNotifySound);
+    return raw != 'false'; // default true
+  }
+
+  Future<void> setNotifySound(bool value) async {
+    await _storage.write(key: _keyNotifySound, value: value.toString());
+  }
+
+  Future<bool> getNotifyVibrate() async {
+    final raw = await _storage.read(key: _keyNotifyVibrate);
+    return raw != 'false'; // default true
+  }
+
+  Future<void> setNotifyVibrate(bool value) async {
+    await _storage.write(key: _keyNotifyVibrate, value: value.toString());
   }
 
   Future<void> clear() async => await _storage.deleteAll();

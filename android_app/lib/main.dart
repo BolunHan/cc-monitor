@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'app_theme.dart';
 import 'services/api_client.dart';
+import 'services/notification_service.dart';
 import 'services/secure_store.dart';
 import 'services/pairing_service.dart';
 import 'providers/session_provider.dart';
@@ -24,6 +25,9 @@ void main() {
 
   debugPrint('=== cc-monitor app starting ===');
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Init notifications
+  NotificationService.init();
 
   final secureStore = SecureStore();
   final apiClient = ApiClient(store: secureStore);

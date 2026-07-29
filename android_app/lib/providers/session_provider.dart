@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/session.dart';
 import '../services/api_client.dart';
+import '../services/notification_service.dart';
 import '../services/sse_client.dart';
 import '../services/secure_store.dart';
 
@@ -22,6 +23,14 @@ class SessionProvider extends ChangeNotifier {
 
   // Log level filter
   LogLevel _logLevel = LogLevel.info;
+
+  // Track previous state for transition detection
+  final Map<String, String> _prevState = {};
+
+  // Notification state counts
+  int _notifyWorking = 0;
+  int _notifyApproval = 0;
+  int _notifyReview = 0;
 
   List<Session> get active => List.unmodifiable(_active);
   List<Session> get complete => List.unmodifiable(_complete);
@@ -165,6 +174,11 @@ class SessionProvider extends ChangeNotifier {
     _active = [];
     _complete = [];
     _archived = [];
+    _prevState.clear();
+    _notifyWorking = 0;
+    _notifyApproval = 0;
+    _notifyReview = 0;
+    _updateStickyNotification();
     _sseClient?.disconnect();
     _sseClient = null;
     _heartbeatTimer?.cancel();
@@ -203,7 +217,54 @@ class SessionProvider extends ChangeNotifier {
     _complete.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     _archived.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
 
+    // Detect state transitions for alert notifications
+    final prev = _prevState[session.sessionId];
+    final curr = session.state;
+    if (prev != null && prev != curr) {
+      if (curr == 'pending_approval' || curr == 'pending_review' || curr == 'all_done') {
+        final name = _sessionName(session);
+        NotificationService.showAlert(sessionName: name, state: curr);
+      }
+    }
+    _prevState[session.sessionId] = curr;
+
+    // Update sticky notification counts
+    _updateNotifyCounts();
+    _updateStickyNotification();
+
     notifyListeners();
+  }
+
+  String _sessionName(Session s) {
+    final cwd = s.cwd;
+    if (cwd.isNotEmpty) {
+      final trimmed = cwd.endsWith('/') ? cwd.substring(0, cwd.length - 1) : cwd;
+      final idx = trimmed.lastIndexOf('/');
+      return idx >= 0 ? trimmed.substring(idx + 1) : trimmed;
+    }
+    return s.sessionId.length >= 8 ? s.sessionId.substring(0, 8) : s.sessionId;
+  }
+
+  void _updateNotifyCounts() {
+    int working = 0, approval = 0, review = 0;
+    for (final s in _active) {
+      switch (s.state) {
+        case 'working': working++; break;
+        case 'pending_approval': approval++; break;
+        case 'pending_review': review++; break;
+      }
+    }
+    _notifyWorking = working;
+    _notifyApproval = approval;
+    _notifyReview = review;
+  }
+
+  void _updateStickyNotification() {
+    NotificationService.updateSticky(
+      working: _notifyWorking,
+      pendingApproval: _notifyApproval,
+      pendingReview: _notifyReview,
+    );
   }
 
   void _categorize(List<Session> sessions) {
@@ -213,6 +274,12 @@ class SessionProvider extends ChangeNotifier {
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     _archived = sessions.where((s) => s.archived).toList()
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    // Seed previous state so initial load doesn't trigger alerts
+    for (final s in [..._active, ..._complete, ..._archived]) {
+      _prevState.putIfAbsent(s.sessionId, () => s.state);
+    }
+    _updateNotifyCounts();
+    _updateStickyNotification();
   }
 
   @override

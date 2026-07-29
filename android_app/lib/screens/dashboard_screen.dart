@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../app_theme.dart';
 import '../providers/session_provider.dart';
 import '../models/session.dart';
+import '../services/notification_service.dart';
 import '../services/secure_store.dart';
 import '../services/api_client.dart';
 
@@ -17,7 +18,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Request notification permission
+      NotificationService.requestPermission();
+      // Load notification prefs from storage
+      final store = context.read<SecureStore>();
+      final sound = await store.getNotifySound();
+      final vibrate = await store.getNotifyVibrate();
+      if (!mounted) return;
+      NotificationService.updateSettings(sound: sound, vibrate: vibrate);
+      // Connect SSE
       context.read<SessionProvider>().connectSse();
     });
   }

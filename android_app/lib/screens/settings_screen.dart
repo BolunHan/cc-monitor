@@ -1,12 +1,40 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/pairing_provider.dart';
+import '../services/notification_service.dart';
 import '../services/secure_store.dart';
 import '../services/pairing_service.dart';
 import '../services/api_client.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  bool _sound = true;
+  bool _vibrate = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _sound = NotificationService.soundEnabled;
+    _vibrate = NotificationService.vibrateEnabled;
+  }
+
+  Future<void> _toggleSound(bool val) async {
+    setState(() => _sound = val);
+    NotificationService.updateSettings(sound: val, vibrate: _vibrate);
+    await context.read<SecureStore>().setNotifySound(val);
+  }
+
+  Future<void> _toggleVibrate(bool val) async {
+    setState(() => _vibrate = val);
+    NotificationService.updateSettings(sound: _sound, vibrate: val);
+    await context.read<SecureStore>().setNotifyVibrate(val);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -52,6 +80,23 @@ class SettingsScreen extends StatelessWidget {
                         context, '/servers', (_) => false);
                   }
                 },
+              ),
+              const Divider(),
+              const ListTile(
+                leading: Icon(Icons.notifications),
+                title: Text('Notifications'),
+              ),
+              SwitchListTile(
+                title: const Text('Sound'),
+                subtitle: const Text('Play sound on alerts'),
+                value: _sound,
+                onChanged: _toggleSound,
+              ),
+              SwitchListTile(
+                title: const Text('Vibration'),
+                subtitle: const Text('Vibrate on alerts'),
+                value: _vibrate,
+                onChanged: _toggleVibrate,
               ),
               const Divider(),
               const ListTile(
