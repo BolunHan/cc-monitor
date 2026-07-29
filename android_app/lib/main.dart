@@ -17,17 +17,16 @@ import 'screens/pairing_screen.dart';
 
 const _tag = 'cc-monitor';
 
-void main() {
+void main() async {
   debugPrint = (message, {wrapWidth}) {
-    // Print to both logcat and console with tag
     debugPrintSynchronously('[$_tag] $message', wrapWidth: wrapWidth);
   };
 
   debugPrint('=== cc-monitor app starting ===');
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Init notifications
-  NotificationService.init();
+  // Init notifications (must await for channels to be created)
+  await NotificationService.init();
 
   final secureStore = SecureStore();
   final apiClient = ApiClient(store: secureStore);

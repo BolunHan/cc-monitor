@@ -49,7 +49,7 @@ class NotificationService {
         AndroidFlutterLocalNotificationsPlugin>();
 
     if (androidPlugin != null) {
-      // Sticky channel — low importance, no sound
+      // Sticky channel — min importance, no sound, persistent
       await androidPlugin.createNotificationChannel(
         const AndroidNotificationChannel(
           _channelStickyId,
@@ -57,6 +57,7 @@ class NotificationService {
           importance: Importance.low,
           playSound: false,
           enableVibration: false,
+          showBadge: false,
         ),
       );
 

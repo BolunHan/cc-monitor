@@ -89,7 +89,7 @@ deploy: restart-server deploy-apk
 
 # ---- Docker ----
 
-DOCKER_PROXY := http://192.168.3.24:7780
+DOCKER_PROXY := http://192.168.3.25:7780
 
 .PHONY: docker-build
 docker-build:
