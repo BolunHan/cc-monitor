@@ -3,10 +3,15 @@
 This module is intentionally self-contained — it does NOT import from the
 cc_monitor package, so hook scripts work regardless of venv state.
 
-The server URL is determined from (in priority order):
-  1. --url <url> CLI argument (set by the injected hook command)
+CLI arguments (set by the injected hook command):
+  --url <url>   Server URL to POST events to
+  --uid <uid>   Installation UID — sent with every event so the server
+                knows which installation this hook belongs to
+
+Fallback priority for server URL:
+  1. --url CLI argument
   2. CC_MONITOR_URL environment variable
-  3. Fallback: https://localhost:9876 (backward compat)
+  3. https://localhost:9876 (legacy default)
 """
 
 import json
@@ -23,26 +28,28 @@ DATA_DIR = Path.home() / ".cc-monitor"
 _SSL_CONTEXT = ssl._create_unverified_context()
 
 
-def _parse_server_url() -> str:
-    """Parse --url <url> from CLI arguments or environment.
-
-    The injected hook command includes --url so each cc-monitor server
-    gets its own endpoint.  Falls back to env var and then a localhost
-    default for backward compatibility with pre-URL hooks.
-    """
+def _parse_cli_arg(name: str) -> str:
+    """Parse a --<name> <value> pair from CLI arguments."""
     args = sys.argv[1:]
     for i, arg in enumerate(args):
-        if arg == "--url" and i + 1 < len(args):
-            return args[i + 1].rstrip("/")
-    # Fallback: environment variable
+        if arg == f"--{name}" and i + 1 < len(args):
+            return args[i + 1]
+    return ""
+
+
+def _parse_server_url() -> str:
+    """Parse --url from CLI args, env, or default."""
+    url = _parse_cli_arg("url")
+    if url:
+        return url.rstrip("/")
     env_url = os.environ.get("CC_MONITOR_URL", "")
     if env_url:
         return env_url.rstrip("/")
-    # Legacy default — works for single-server localhost setups
     return "https://localhost:9876"
 
 
 _SERVER_URL = _parse_server_url()
+_CC_MONITOR_UID = _parse_cli_arg("uid")
 
 
 def map_event(hook_event_name: str, notification_type: str | None = None) -> str:
@@ -91,16 +98,17 @@ def notify_server(data: dict) -> bool:
 
     Uses the configured server URL from --url / CC_MONITOR_URL / default.
     Self-signed certificates are accepted (local dev server).
-    Falls back to HTTP if HTTPS fails and the URL uses HTTPS.
+    Includes cc_monitor_uid so the server knows which installation fired.
     """
+    # Tag the event with our installation UID
+    if _CC_MONITOR_UID:
+        data["cc_monitor_uid"] = _CC_MONITOR_UID
+
     body = json.dumps(data).encode("utf-8")
     api_url = _SERVER_URL + "/api/event"
 
-    # Build a list of URLs to try — if the configured URL is HTTPS,
-    # also try the HTTP equivalent as fallback (backward compat).
     urls_to_try = [api_url]
     if api_url.startswith("https://"):
-        # Also try HTTP fallback for servers without TLS
         fallback = api_url.replace("https://", "http://", 1)
         urls_to_try.append(fallback)
 

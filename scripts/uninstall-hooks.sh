@@ -2,109 +2,126 @@
 # ============================================================================
 # cc-monitor Hook Uninstaller
 #
-# Removes cc-monitor hooks from ~/.claude/settings.json by parsing the JSON
-# and deleting only hooks whose command contains BOTH the hooks directory
-# AND the target server URL.  This means multiple cc-monitor servers can
-# coexist — uninstalling one leaves the others intact.
+# Surgically removes cc-monitor hooks from ~/.claude/settings.json.
+# Matches hooks by CC_MONITOR_UID for precise removal — multiple
+# cc-monitor installations coexist without interference.
 #
 # Usage:
-#   curl -sSL https://192.168.3.28:9876/static/uninstall-hooks.sh | bash
-#   # or with explicit server URL for precise matching:
-#   curl -sSL ... | SERVER_URL=https://192.168.1.50:9876 bash
+#   curl -skSL https://<server>:9876/static/uninstall-hooks.sh | SERVER_URL=https://<server>:9876 bash
+#   # With explicit UID for precise matching:
+#   CC_MONITOR_UID=abc123 bash uninstall-hooks.sh
 # ============================================================================
 set -euo pipefail
 
 SERVER_URL="${SERVER_URL:-}"
+CC_MONITOR_UID="${CC_MONITOR_UID:-}"
 HOOKS_DIR="${HOME}/.cc-monitor/hooks"
 SETTINGS_FILE="${HOME}/.claude/settings.json"
-MARKER_FILE="${HOME}/.cc-monitor/.hooks-installed"
 BACKUP_FILE="${HOME}/.claude/settings.json.cc-monitor.bak"
 
-CC_HOOK_EVENTS=(
-    "PreToolUse" "PostToolUse" "UserPromptSubmit" "Stop"
-    "Notification" "PermissionRequest" "SessionEnd"
-)
-
 echo "=== cc-monitor Hook Uninstaller ==="
-if [ -n "$SERVER_URL" ]; then
-    echo "  Server: ${SERVER_URL}"
-fi
-echo "  Hooks dir: ${HOOKS_DIR}"
+if [ -n "$SERVER_URL" ]; then echo "  Server: ${SERVER_URL}"; fi
+if [ -n "$CC_MONITOR_UID" ]; then echo "  UID:    ${CC_MONITOR_UID}"; fi
+echo ""
 
-# 1. Remove hook scripts
-echo "[1/3] Removing hook scripts..."
-if [ -d "$HOOKS_DIR" ]; then
-    rm -rf "$HOOKS_DIR"
-    echo "  Removed $HOOKS_DIR"
-else
-    echo "  No hook scripts found"
+# ------------------------------------------------------------------
+# 1. Python check
+# ------------------------------------------------------------------
+PYTHON=""
+for c in python3 python; do
+    command -v "$c" &>/dev/null && { PYTHON="$c"; break; }
+done
+if [ -z "$PYTHON" ]; then
+    echo "ERROR: python3 not found."
+    exit 1
 fi
 
-# 2. Remove cc-monitor hooks from settings.json
-echo "[2/3] Removing hooks from $SETTINGS_FILE..."
-CC_EVENTS="${CC_HOOK_EVENTS[*]}" CC_FILE="$SETTINGS_FILE" \
-  HOOKS_DIR="$HOOKS_DIR" SERVER_URL="$SERVER_URL" python3 << 'PYEOF'
-import json, os, sys
+# ------------------------------------------------------------------
+# 2. Backup
+# ------------------------------------------------------------------
+echo "[1/3] Backing up settings..."
+[ -f "$SETTINGS_FILE" ] && cp "$SETTINGS_FILE" "$BACKUP_FILE" && echo "  Backup: ${BACKUP_FILE}" || echo "  No existing settings"
+
+# ------------------------------------------------------------------
+# 3. Remove hooks + post telemetry
+# ------------------------------------------------------------------
+echo "[2/3] Removing hooks..."
+SETTINGS="$SETTINGS_FILE" HOOKS="$HOOKS_DIR" SERVER="$SERVER_URL" \
+  CCUID="$CC_MONITOR_UID" "$PYTHON" << 'PYEOF'
+import json, os, ssl, sys, urllib.request
 from pathlib import Path
 
-events = os.environ['CC_EVENTS'].split()
-f = Path(os.environ['CC_FILE'])
-hooks_dir = os.environ.get('HOOKS_DIR', '')
-server_url = os.environ.get('SERVER_URL', '').rstrip('/')
+settings_file = Path(os.environ['SETTINGS'])
+hooks_dir = str(Path(os.environ['HOOKS']))
+server_url = os.environ.get('SERVER', '').rstrip('/')
+cc_uid = os.environ.get('CCUID', '')
 
-if not f.exists():
+if not settings_file.exists():
     print('  No settings file — nothing to do')
     sys.exit(0)
 
-settings = json.loads(f.read_text())
+settings = json.loads(settings_file.read_text())
 hooks = settings.get('hooks', {})
-removed = 0
 
-for event in events:
+EVENTS = ['PreToolUse','PostToolUse','UserPromptSubmit','Stop',
+          'Notification','PermissionRequest','SessionEnd']
+
+removed = 0
+for event in EVENTS:
     groups = hooks.get(event, [])
     new_groups = []
     for group in groups:
-        kept_hooks = []
+        kept = []
         for h in group.get('hooks', []):
             cmd = h.get('command', '')
-            # A hook belongs to a specific cc-monitor server if its command
-            # contains BOTH the hooks directory AND the server URL.
-            # Without SERVER_URL, fall back to matching hooks_dir alone
-            # (backward compat — removing legacy hooks installed without --url).
-            if server_url:
-                is_ours = (hooks_dir in cmd) and (server_url in cmd)
-            else:
-                # Legacy mode: match hooks_dir only (pre-URL installs)
-                is_ours = (hooks_dir in cmd)
-            if is_ours:
+            # Match: hook is ours if it contains our UID, or (fallback)
+            # contains both hooks_dir and server_url
+            if cc_uid and cc_uid in cmd:
+                removed += 1
+            elif server_url and hooks_dir in cmd and server_url in cmd:
                 removed += 1
             else:
-                kept_hooks.append(h)
-        if kept_hooks:
-            group['hooks'] = kept_hooks
+                kept.append(h)
+        if kept:
+            group['hooks'] = kept
             new_groups.append(group)
-
     if new_groups:
         hooks[event] = new_groups
     elif event in hooks:
         del hooks[event]
 
-if removed > 0:
-    settings['hooks'] = hooks
-    f.write_text(json.dumps(settings, indent=2))
-    print(f'  Removed {removed} cc-monitor hook entries')
-else:
-    print('  No cc-monitor hooks found')
+settings['hooks'] = hooks
+settings_file.write_text(json.dumps(settings, indent=2))
+print(f'  Removed {removed} hook entries')
+
+# Post telemetry
+if server_url:
+    ctx = ssl._create_unverified_context()
+    api = f"{server_url}/api/hooks-telemetry"
+    body = json.dumps({
+        'cc_monitor_uid': cc_uid or 'legacy',
+        'status': 'uninstalled',
+        'server_url': server_url,
+        'events_removed': removed,
+    }).encode()
+    for url in (api, api.replace('https://', 'http://', 1)):
+        try:
+            req = urllib.request.Request(url, data=body, headers={'Content-Type': 'application/json'}, method='POST')
+            urllib.request.urlopen(req, timeout=5, context=ctx) if url.startswith('https') else urllib.request.urlopen(req, timeout=5)
+            print('  ✓ Server notified')
+            break
+        except Exception:
+            continue
+    else:
+        print('  ⚠ Could not reach server (hooks removed locally)')
 PYEOF
 
-# 3. Clean up marker file
+# ------------------------------------------------------------------
+# 4. Clean up hook scripts
+# ------------------------------------------------------------------
 echo "[3/3] Cleaning up..."
-rm -f "$MARKER_FILE"
-echo "  Removed marker file"
+rm -rf "$HOOKS_DIR" 2>/dev/null && echo "  Removed ${HOOKS_DIR}" || echo "  No hook scripts to remove"
 
 echo ""
 echo "=== Done ==="
 echo "cc-monitor hooks uninstalled."
-if [ -f "$BACKUP_FILE" ]; then
-    echo "Backup saved at $BACKUP_FILE (restore with: cp $BACKUP_FILE $SETTINGS_FILE)"
-fi

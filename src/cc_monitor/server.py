@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
 from cc_monitor import __version__
@@ -443,6 +444,63 @@ def create_app(
             "missing_events": missing_events,
             "target": str(_GLOBAL_SETTINGS_PATH),
         })
+
+    # In-memory hook telemetry (populated by install/uninstall/check scripts)
+    _hook_state: dict = {"installed": False, "uids": [], "last_report": "", "updated_at": ""}
+
+    @app.post("/api/hooks-telemetry")
+    async def hooks_telemetry(request: Request):
+        """Receive hook installation telemetry from install/check scripts.
+
+        Called by install-hooks.sh, uninstall-hooks.sh, and check-hooks.sh
+        after they complete.  The server stores this and broadcasts an SSE
+        event so the dashboard updates in real time.
+        """
+        body = await request.json()
+        status = body.get("status", "")
+        uids = body.get("cc_monitor_uids", [])
+        uid = body.get("cc_monitor_uid", "")
+        if uid and uid not in uids:
+            uids.append(uid)
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        if status == "installed":
+            _hook_state.update({
+                "installed": True, "uids": uids, "last_report": "installed",
+                "events_found": body.get("events_merged", 0) or len(uids) * 7,
+                "events_missing": 0, "updated_at": now_iso,
+            })
+        elif status == "uninstalled":
+            _hook_state.update({
+                "installed": False, "uids": [], "last_report": "uninstalled",
+                "events_found": 0, "events_missing": 7, "updated_at": now_iso,
+            })
+        elif status == "check":
+            found = body.get("events_found", 0)
+            missing = body.get("events_missing", 0)
+            _hook_state.update({
+                "installed": found > 0, "uids": uids, "last_report": "check",
+                "events_found": found, "events_missing": missing, "updated_at": now_iso,
+            })
+
+        # Also maintain the marker file for backward compat
+        if _hook_state["installed"]:
+            _marker_file.touch()
+        elif _marker_file.exists():
+            _marker_file.unlink()
+
+        # Broadcast to all SSE clients
+        await manager.broadcast_event("hooks_status_update", {
+            "installed": _hook_state["installed"],
+            "uids": _hook_state["uids"],
+            "events_found": _hook_state.get("events_found", 0),
+            "events_missing": _hook_state.get("events_missing", 0),
+            "last_report": _hook_state["last_report"],
+            "updated_at": _hook_state["updated_at"],
+        })
+
+        return JSONResponse({"status": "ok", "hook_state": _hook_state})
 
     @app.post("/api/install-hooks")
     async def install_hooks():

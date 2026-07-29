@@ -178,6 +178,16 @@ body {
     background: color-mix(in srgb, var(--color-danger) 15%, transparent);
 }
 
+.btn--check {
+    border-color: var(--color-warning);
+    color: var(--color-warning);
+    background: transparent;
+}
+
+.btn--check:hover {
+    background: color-mix(in srgb, var(--color-warning) 15%, transparent);
+}
+
 .btn--small {
     padding: 3px 10px;
     font-size: 12px;

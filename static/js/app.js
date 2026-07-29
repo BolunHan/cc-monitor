@@ -388,8 +388,14 @@
 
         es.addEventListener("device_update", () => {
             loadPairedDevices();
-            // Also refresh QR pairing payload (new device may need new QR)
             if (typeof loadPairingQR === "function") loadPairingQR();
+        });
+
+        es.addEventListener("hooks_status_update", (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                updateHookStatusUI(data.installed);
+            } catch (_) {}
         });
 
         es.addEventListener("error", () => {});
@@ -551,6 +557,7 @@
     const settingsPort = document.getElementById("settings-port");
     const btnSaveSettings = document.getElementById("btn-save-settings");
     const btnUninstall = document.getElementById("btn-uninstall-hooks");
+    const btnCheck = document.getElementById("btn-check-hooks");
     const settingsFeedback = document.getElementById("settings-feedback");
 
     function populateSettingsInputs() {
@@ -632,6 +639,12 @@
             settingsFeedback.textContent = "";
             settingsFeedback.className = "settings-panel__feedback";
         }, 4000);
+    });
+
+    btnCheck.addEventListener("click", () => {
+        const serverUrl = getServerUrl();
+        const oneLiner = `curl -skSL ${serverUrl}/static/check-hooks.sh | SERVER_URL=${serverUrl} bash`;
+        showInstallModal(oneLiner);
     });
 
     // ---- Section collapse/expand ----
