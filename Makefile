@@ -90,6 +90,8 @@ deploy: restart-server deploy-apk
 # ---- Docker ----
 
 DOCKER_PROXY := http://192.168.3.24:7780
+DOCKER_UID   := $(shell id -u)
+DOCKER_GID   := $(shell id -g)
 
 .PHONY: docker-build
 docker-build:
@@ -100,7 +102,9 @@ docker-build:
 
 .PHONY: docker-up
 docker-up:
-	HOME=$(HOME) $(DOCKER) compose up -d
+	@# Pre-create data dir with host ownership (Docker daemon would create as root)
+	@mkdir -p $(HOME)/.cc-monitor
+	UID=$(DOCKER_UID) GID=$(DOCKER_GID) HOME=$(HOME) $(DOCKER) compose up -d
 
 .PHONY: docker-down
 docker-down:
@@ -109,7 +113,8 @@ docker-down:
 .PHONY: docker-restart
 docker-restart: docker-build
 	$(DOCKER) rm -f cc-monitor 2>/dev/null || true
-	HOME=$(HOME) $(DOCKER) compose up -d
+	@mkdir -p $(HOME)/.cc-monitor
+	UID=$(DOCKER_UID) GID=$(DOCKER_GID) HOME=$(HOME) $(DOCKER) compose up -d
 
 .PHONY: docker-logs
 docker-logs:

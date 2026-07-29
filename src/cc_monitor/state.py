@@ -51,7 +51,15 @@ class StateManager:
     """
 
     def __init__(self, data_dir: Path | None = None):
-        self._data_dir = data_dir or Path.home() / ".cc-monitor"
+        if data_dir is None:
+            try:
+                home = Path.home()
+                if str(home) == "/":
+                    home = Path("/root")
+            except (KeyError, RuntimeError):
+                home = Path("/root")
+            data_dir = home / ".cc-monitor"
+        self._data_dir = data_dir
         self._sessions: dict[str, SessionState] = {}
         self._pending_approval: set[str] = set()
         self._queues: list[asyncio.Queue] = []

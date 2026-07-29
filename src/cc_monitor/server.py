@@ -96,11 +96,24 @@ def _resolve_root() -> Path:
 _PROJECT_ROOT = _resolve_root()
 _STATIC_DIR = _PROJECT_ROOT / "static"
 _SOURCE_HOOKS_DIR = _PROJECT_ROOT / "hooks"
-_GLOBAL_HOOKS_DIR = Path.home() / ".cc-monitor" / "hooks"
-_GLOBAL_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
-_BACKUP_PATH = Path.home() / ".claude" / "settings.json.cc-monitor.bak"
 # Set during Docker build — server uses this to route install/uninstall to the one-liner
 _IS_DOCKER = (_PROJECT_ROOT / ".docker-env").exists()
+
+
+def _safe_home() -> Path:
+    """Return a writable home-equivalent directory.
+
+    In Docker: /data (the bind-mounted host ~/.cc-monitor directory).
+    Natively: the user's actual home directory.
+    """
+    if _IS_DOCKER:
+        return Path("/data")
+    return Path.home()
+
+
+_GLOBAL_HOOKS_DIR = _safe_home() / ".cc-monitor" / "hooks"
+_GLOBAL_SETTINGS_PATH = _safe_home() / ".claude" / "settings.json"
+_BACKUP_PATH = _safe_home() / ".claude" / "settings.json.cc-monitor.bak"
 
 # Hook event definitions (kept in sync with install-hooks.sh)
 _HOOK_EVENT_DEFS: dict[str, dict[str, str]] = {
@@ -162,8 +175,8 @@ def create_app(
         A configured FastAPI application.
     """
     app = FastAPI(title="cc-monitor", version=__version__)
-    _data_dir = data_dir or Path.home() / ".cc-monitor"
-    manager = StateManager(data_dir=data_dir)
+    _data_dir = data_dir or _safe_home() / ".cc-monitor"
+    manager = StateManager(data_dir=_data_dir)
 
     # Allow cross-origin requests from any origin (dashboard may be
     # hosted on GitHub Pages or another static host).
@@ -314,8 +327,11 @@ def create_app(
 
     @app.get("/api/version")
     async def version():
-        """Return the cc-monitor server version."""
-        return JSONResponse({"version": __version__})
+        """Return the cc-monitor server version and runtime info."""
+        return JSONResponse({
+            "version": __version__,
+            "docker": _IS_DOCKER,
+        })
 
     # ---- Session actions ----
 
@@ -663,7 +679,7 @@ def main() -> None:
     import uvicorn
 
     data_dir = Path(args.data_dir) if args.data_dir else None
-    _data_dir = data_dir or Path.home() / ".cc-monitor"
+    _data_dir = data_dir or _safe_home() / ".cc-monitor"
 
     # Handle --revoke-all
     if args.revoke_all:

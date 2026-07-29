@@ -9,8 +9,10 @@ ARG NO_PROXY
 
 WORKDIR /app
 
+# Let the server find static/ and hooks/ at /app
+ENV CC_MONITOR_ROOT=/app
 # Marker — server checks this to know it's running in Docker
-RUN touch /app/.docker-env
+RUN touch /app/.docker-env && mkdir -p /data && chmod 777 /data
 
 COPY pyproject.toml .
 COPY src/ src/

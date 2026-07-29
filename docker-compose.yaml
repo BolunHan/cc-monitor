@@ -4,8 +4,9 @@ services:
     container_name: cc-monitor
     network_mode: host
     restart: unless-stopped
+    # Run as the host user so files in ~/.cc-monitor are owned correctly.
+    # ${UID} and ${GID} must be set in the environment before running.
+    user: "${UID}:${GID}"
     volumes:
-      # Session state, tokens, hook scripts, marker file.
-      # IMPORTANT: replace /home/bolun with your actual home directory,
-      # or use `HOME=/home/youruser sudo -E docker compose up -d`.
-      - /home/bolun/.cc-monitor:/root/.cc-monitor
+      # Mount to /data (not /root) — /root is mode 700, non-root can't traverse
+      - ${HOME}/.cc-monitor:/data

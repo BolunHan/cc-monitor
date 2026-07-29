@@ -425,6 +425,17 @@
             const data = await resp.json();
             document.getElementById("footer-version").textContent =
                 `cc-monitor v${data.version}`;
+            // Docker badge in settings
+            const badge = document.getElementById("settings-docker-badge");
+            if (badge) {
+                if (data.docker) {
+                    badge.textContent = "🐳 Docker";
+                    badge.className = "settings-panel__docker-badge docker";
+                } else {
+                    badge.textContent = "🖥 Native";
+                    badge.className = "settings-panel__docker-badge native";
+                }
+            }
         } catch (_) {}
     }
 
