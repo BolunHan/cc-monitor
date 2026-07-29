@@ -8,5 +8,6 @@ services:
     # ${UID} and ${GID} must be set in the environment before running.
     user: "${UID}:${GID}"
     volumes:
-      # Mount to /data (not /root) — /root is mode 700, non-root can't traverse
-      - ${HOME}/.cc-monitor:/data
+      # Mount to /data/.cc-monitor (not /root) — /root is mode 700, non-root can't traverse.
+      # Must be /data/.cc-monitor because _safe_home() returns /data and code appends /.cc-monitor.
+      - ${HOME}/.cc-monitor:/data/.cc-monitor
