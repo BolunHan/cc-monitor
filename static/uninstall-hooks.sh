@@ -74,11 +74,8 @@ for event in EVENTS:
         kept = []
         for h in group.get('hooks', []):
             cmd = h.get('command', '')
-            # Match: hook is ours if it contains our UID, or (fallback)
-            # contains both hooks_dir and server_url
-            if cc_uid and cc_uid in cmd:
-                removed += 1
-            elif server_url and hooks_dir in cmd and server_url in cmd:
+            # Match: hook is ours if command contains hooks_dir AND server_url
+            if server_url and hooks_dir in cmd and server_url in cmd:
                 removed += 1
             else:
                 kept.append(h)
@@ -91,13 +88,16 @@ for event in EVENTS:
         del hooks[event]
 
 settings['hooks'] = hooks
-# Remove our UID from env if it matches
-env = settings.get('env', {})
-if env.get('CC_MONITOR_UID') == cc_uid or not cc_uid:
-    env.pop('CC_MONITOR_UID', None)
-    if env:
-        settings['env'] = env
-    elif 'env' in settings:
+# Only remove env.CC_MONITOR_UID if all cc-monitor hooks are gone
+total_cc_hooks = sum(
+    1 for ev in EVENTS
+    for g in hooks.get(ev, [])
+    for h in g.get('hooks', [])
+    if hooks_dir in h.get('command', '')
+)
+if total_cc_hooks == 0 and 'env' in settings:
+    settings['env'].pop('CC_MONITOR_UID', None)
+    if not settings['env']:
         del settings['env']
 settings_file.write_text(json.dumps(settings, indent=2))
 print(f'  Removed {removed} hook entries')

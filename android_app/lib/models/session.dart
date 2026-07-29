@@ -6,6 +6,7 @@ class Session {
   final String? rawDetail;
   final String? summary;
   final bool archived;
+  final String ccMonitorUid;
   final DateTime updatedAt;
 
   const Session({
@@ -16,6 +17,7 @@ class Session {
     this.rawDetail,
     this.summary,
     this.archived = false,
+    this.ccMonitorUid = '',
     required this.updatedAt,
   });
 
@@ -28,6 +30,7 @@ class Session {
       rawDetail: json['raw_detail'] as String?,
       summary: json['summary'] as String?,
       archived: json['archived'] as bool? ?? false,
+      ccMonitorUid: json['cc_monitor_uid'] as String? ?? '',
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
   }

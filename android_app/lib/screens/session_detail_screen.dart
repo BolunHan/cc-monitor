@@ -28,6 +28,8 @@ class SessionDetailScreen extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             children: [
               _InfoRow('Session ID', session.sessionId),
+              if (session.ccMonitorUid.isNotEmpty)
+                _InfoRow('UID', session.ccMonitorUid),
               _InfoRow('State', session.state),
               _InfoRow('CWD', session.cwd),
               _InfoRow('Last Event', session.rawEvent),

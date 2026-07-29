@@ -3,10 +3,11 @@
 This module is intentionally self-contained — it does NOT import from the
 cc_monitor package, so hook scripts work regardless of venv state.
 
-CLI arguments (set by the injected hook command):
-  --url <url>   Server URL to POST events to
-  --uid <uid>   Installation UID — sent with every event so the server
-                knows which installation this hook belongs to
+Identifiers:
+  --url <url>      CLI arg — which cc-monitor server to POST events to
+  CC_MONITOR_UID   env var — set by Claude Code via settings.json env field,
+                   identifies the Claude instance across all servers
+  CC_MONITOR_URL   env var — fallback server URL (legacy)
 
 Fallback priority for server URL:
   1. --url CLI argument
@@ -28,20 +29,12 @@ DATA_DIR = Path.home() / ".cc-monitor"
 _SSL_CONTEXT = ssl._create_unverified_context()
 
 
-def _parse_cli_arg(name: str) -> str:
-    """Parse a --<name> <value> pair from CLI arguments."""
-    args = sys.argv[1:]
-    for i, arg in enumerate(args):
-        if arg == f"--{name}" and i + 1 < len(args):
-            return args[i + 1]
-    return ""
-
-
 def _parse_server_url() -> str:
     """Parse --url from CLI args, env, or default."""
-    url = _parse_cli_arg("url")
-    if url:
-        return url.rstrip("/")
+    args = sys.argv[1:]
+    for i, arg in enumerate(args):
+        if arg == "--url" and i + 1 < len(args):
+            return args[i + 1].rstrip("/")
     env_url = os.environ.get("CC_MONITOR_URL", "")
     if env_url:
         return env_url.rstrip("/")
@@ -49,7 +42,9 @@ def _parse_server_url() -> str:
 
 
 _SERVER_URL = _parse_server_url()
-_CC_MONITOR_UID = _parse_cli_arg("uid") or os.environ.get("CC_MONITOR_UID", "")
+# Set by Claude Code via the 'env' field in ~/.claude/settings.json.
+# This identifies the Claude instance, not the cc-monitor server.
+_CC_MONITOR_UID = os.environ.get("CC_MONITOR_UID", "")
 
 
 def map_event(hook_event_name: str, notification_type: str | None = None) -> str:

@@ -198,7 +198,10 @@ class _SessionCard extends StatelessWidget {
           onTap: onTap,
           leading: CircleAvatar(backgroundColor: _stateColor(), radius: 6),
           title: Text(session.summary ?? session.cwd, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text(session.state.replaceAll('_', ' ')),
+          subtitle: Text([
+            session.state.replaceAll('_', ' '),
+            if (session.ccMonitorUid.isNotEmpty) session.ccMonitorUid,
+          ].join(' · ')),
           trailing: Text(_formatTime(session.updatedAt), style: Theme.of(context).textTheme.bodySmall),
         ),
       ),

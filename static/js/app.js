@@ -266,6 +266,7 @@
                     <strong>cwd:</strong> ${escapeHtml(session.cwd || "—")}<br>
                     <strong>event:</strong> ${escapeHtml(session.raw_event || "—")}
                     ${session.raw_detail ? ` (${escapeHtml(session.raw_detail)})` : ""}
+                    ${session.cc_monitor_uid ? `<br><strong>uid:</strong> <code>${escapeHtml(session.cc_monitor_uid)}</code>` : ""}
                 </div>
                 <div class="session-card__time">${relativeTime(session.updated_at)}</div>
             </div>

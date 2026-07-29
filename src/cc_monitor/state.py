@@ -28,6 +28,7 @@ class SessionState:
     raw_detail: str | None
     summary: str | None = None
     archived: bool = False
+    cc_monitor_uid: str = ""
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> dict:
@@ -38,6 +39,7 @@ class SessionState:
             "raw_event": self.raw_event,
             "raw_detail": self.raw_detail,
             "summary": self.summary,
+            "cc_monitor_uid": self.cc_monitor_uid,
             "archived": self.archived,
             "updated_at": self.updated_at.isoformat(),
         }
@@ -99,6 +101,7 @@ class StateManager:
                     raw_detail=data.get("raw_detail"),
                     summary=data.get("summary"),
                     archived=data.get("archived", False),
+                    cc_monitor_uid=data.get("cc_monitor_uid", ""),
                     updated_at=datetime.fromisoformat(data["updated_at"]),
                 )
                 self._sessions[session.session_id] = session
@@ -164,6 +167,7 @@ class StateManager:
             raw_event=hook_event_name,
             raw_detail=tool_name or notification_type,
             summary=summary,
+            cc_monitor_uid=raw.get("cc_monitor_uid", existing.cc_monitor_uid if existing else ""),
         )
         self._sessions[session_id] = session
 

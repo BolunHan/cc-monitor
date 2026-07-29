@@ -96,10 +96,10 @@ HOOK_EVENTS = {
     'SessionEnd':        {'matcher': '',  'script': 'session_end.py'},
 }
 
-# Build hook config
+# Build hook config (no --uid — CC_MONITOR_UID comes from env field)
 hooks_config = {}
 for event_name, cfg in HOOK_EVENTS.items():
-    cmd = f"{hooks_dir / cfg['script']} --url {server_url} --uid {cc_uid}"
+    cmd = f"{hooks_dir / cfg['script']} --url {server_url}"
     entry = {'hooks': [{'type': 'command', 'command': cmd, 'description': f'cc-monitor: {event_name}'}]}
     if cfg['matcher']:
         entry['matcher'] = cfg['matcher']
@@ -109,21 +109,29 @@ for event_name, cfg in HOOK_EVENTS.items():
 target = json.loads(settings_file.read_text()) if settings_file.exists() else {}
 target_hooks = target.get('hooks', {})
 
+# Dedup: if env.CC_MONITOR_UID is already set (same Claude instance), skip
+existing_uid = target.get('env', {}).get('CC_MONITOR_UID', '')
+if not existing_uid:
+    # First install — set our UID
+    env = target.get('env', {})
+    env['CC_MONITOR_UID'] = cc_uid
+    target['env'] = env
+elif existing_uid != cc_uid:
+    # Different UID exists — use the existing one (one Claude = one UID)
+    cc_uid = existing_uid
+
 merged, skipped = 0, 0
 for event_name, new_groups in hooks_config.items():
     existing = target_hooks.get(event_name, [])
-    already = any(cc_uid in eh.get('command', '') for eg in existing for eh in eg.get('hooks', []))
+    # Dedup: check if URL already has hooks for this event
+    already = any(server_url in eh.get('command', '') for eg in existing for eh in eg.get('hooks', []))
     if already:
         skipped += 1
         continue
     target_hooks[event_name] = existing + new_groups
     merged += 1
 
-# Set CC_MONITOR_UID in Claude's env so hooks inherit it automatically
 target['hooks'] = target_hooks
-env = target.get('env', {})
-env['CC_MONITOR_UID'] = cc_uid
-target['env'] = env
 settings_file.parent.mkdir(parents=True, exist_ok=True)
 settings_file.write_text(json.dumps(target, indent=2))
 print(f'  Injected {merged}, skipped {skipped}')
