@@ -5,21 +5,24 @@
  */
 (() => {
     const STORAGE_KEY_URL = "cc-monitor-server-url";
-    const DEFAULT_HOST = "http://127.0.0.1";
-    const DEFAULT_PORT = "9876";
+    const STORAGE_KEY_TOKEN = "cc-monitor-auth-token";
+    const STORAGE_KEY_CLIENT_ID = "cc-monitor-client-id";
+
+    function getClientId() {
+        let cid = localStorage.getItem(STORAGE_KEY_CLIENT_ID);
+        if (!cid) {
+            cid = "web-" + crypto.randomUUID();
+            localStorage.setItem(STORAGE_KEY_CLIENT_ID, cid);
+        }
+        return cid;
+    }
 
     // ---- Server URL ----
 
     function getServerUrl() {
         const stored = localStorage.getItem(STORAGE_KEY_URL);
         if (stored) return stored.replace(/\/+$/, "");
-        // If served from localhost, use current origin (server knows its port)
-        const hostname = window.location.hostname;
-        if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]") {
-            return window.location.origin;
-        }
-        // Default for remote dashboards (gh-pages, etc.)
-        return DEFAULT_HOST + ":" + DEFAULT_PORT;
+        return window.location.origin;
     }
 
     function setServerUrl(url) {
@@ -28,6 +31,46 @@
 
     function apiUrl(path) {
         return getServerUrl() + path;
+    }
+
+    // ---- Auth token ----
+
+    function getAuthToken() {
+        return localStorage.getItem(STORAGE_KEY_TOKEN) || "";
+    }
+
+    function setAuthToken(token) {
+        localStorage.setItem(STORAGE_KEY_TOKEN, token);
+    }
+
+    function clearAuthToken() {
+        localStorage.removeItem(STORAGE_KEY_TOKEN);
+    }
+
+    async function apiFetch(path, opts = {}) {
+        const url = apiUrl(path);
+        const headers = { ...(opts.headers || {}) };
+        const token = getAuthToken();
+        if (token) headers["Authorization"] = "Bearer " + token;
+        const resp = await fetch(url, { ...opts, headers });
+        if (resp.status === 401) {
+            updateUnauthorizedUI(true);
+        }
+        return resp;
+    }
+
+    let isUnauthorized = false;
+
+    function updateUnauthorizedUI(unauth) {
+        isUnauthorized = unauth;
+        const banner = document.getElementById("unauth-banner");
+        if (banner) {
+            banner.classList.toggle("hidden", !unauth);
+        }
+        // Don't mark as connected if unauthorized
+        if (unauth) {
+            setConnected(false);
+        }
     }
 
     // ---- Globals ----
@@ -223,6 +266,7 @@
                     <strong>cwd:</strong> ${escapeHtml(session.cwd || "—")}<br>
                     <strong>event:</strong> ${escapeHtml(session.raw_event || "—")}
                     ${session.raw_detail ? ` (${escapeHtml(session.raw_detail)})` : ""}
+                    ${session.cc_monitor_uid ? `<br><strong>uid:</strong> <code>${escapeHtml(session.cc_monitor_uid)}</code>` : ""}
                 </div>
                 <div class="session-card__time">${relativeTime(session.updated_at)}</div>
             </div>
@@ -275,7 +319,7 @@
 
     async function handleCardAction(action, sessionId) {
         try {
-            const resp = await fetch(apiUrl(`/api/session/${sessionId}/${action}`), {method: "POST"});
+            const resp = await apiFetch(`/api/session/${sessionId}/${action}`, {method: "POST"});
             if (resp.ok) {
                 const session = await resp.json();
                 updateCard(session);
@@ -304,7 +348,11 @@
         if (currentEventSource) currentEventSource.close();
         lastHeartbeat = 0;
 
-        const es = new EventSource(apiUrl("/api/stream"));
+        let sseUrl = apiUrl("/api/stream");
+        const token = getAuthToken();
+        if (token) sseUrl += "?token=" + encodeURIComponent(token);
+
+        const es = new EventSource(sseUrl);
         currentEventSource = es;
 
         es.addEventListener("open", () => {
@@ -330,6 +378,27 @@
             lastHeartbeat = Date.now();
         });
 
+        // Pairing/device push events — refresh relevant sections in real time
+        es.addEventListener("pairing_request", () => {
+            pollPairingRequests();
+        });
+
+        es.addEventListener("pairing_resolved", () => {
+            pollPairingRequests();
+        });
+
+        es.addEventListener("device_update", () => {
+            loadPairedDevices();
+            if (typeof loadPairingQR === "function") loadPairingQR();
+        });
+
+        es.addEventListener("hooks_status_update", (e) => {
+            try {
+                const data = JSON.parse(e.data);
+                updateHookStatusUI(data.installed);
+            } catch (_) {}
+        });
+
         es.addEventListener("error", () => {});
     }
 
@@ -343,7 +412,7 @@
 
     async function loadSessions() {
         try {
-            const resp = await fetch(apiUrl("/api/status"));
+            const resp = await apiFetch("/api/status");
             const data = await resp.json();
             if (data.sessions && data.sessions.length > 0) {
                 data.sessions.forEach(s => {
@@ -359,10 +428,21 @@
 
     async function loadVersion() {
         try {
-            const resp = await fetch(apiUrl("/api/version"));
+            const resp = await apiFetch("/api/version");
             const data = await resp.json();
             document.getElementById("footer-version").textContent =
                 `cc-monitor v${data.version}`;
+            // Docker badge in settings
+            const badge = document.getElementById("settings-docker-badge");
+            if (badge) {
+                if (data.docker) {
+                    badge.textContent = "🐳 Docker";
+                    badge.className = "settings-panel__docker-badge docker";
+                } else {
+                    badge.textContent = "🖥 Native";
+                    badge.className = "settings-panel__docker-badge native";
+                }
+            }
         } catch (_) {}
     }
 
@@ -372,6 +452,11 @@
     const btnInstall = document.getElementById("btn-install-hooks");
     const installFeedback = document.getElementById("install-feedback");
     const settingsHookStatus = document.getElementById("settings-hook-status");
+
+    function isLocalhost() {
+        const hostname = window.location.hostname;
+        return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+    }
 
     function updateHookStatusUI(installed) {
         if (installed) {
@@ -386,11 +471,14 @@
     }
 
     async function checkHooksStatus() {
+        console.log("[hooks] checking status at", apiUrl("/api/hooks-status"));
         try {
-            const resp = await fetch(apiUrl("/api/hooks-status"));
+            const resp = await apiFetch("/api/hooks-status");
             const data = await resp.json();
+            console.log("[hooks] status response:", data);
             updateHookStatusUI(data.installed);
         } catch (err) {
+            console.warn("[hooks] status check failed:", err);
             updateHookStatusUI(false);
         }
     }
@@ -399,18 +487,57 @@
         btnInstall.disabled = true;
         installFeedback.textContent = "installing…";
         installFeedback.className = "install-feedback";
+
+        // ---- Step 1: Determine if server is local or remote ----
+        const local = isLocalhost();
+        console.log("[hooks] step 1 — server location:",
+            local ? "LOCAL (same machine)" : "REMOTE (different machine / container)");
+        console.log("[hooks]   window.location:", window.location.hostname, "server URL:", getServerUrl());
+
+        if (!local) {
+            // ---- Remote / Docker: cannot inject from browser ----
+            console.log("[hooks] step 2 — REMOTE detected, checking local Python…");
+            console.log("[hooks]   Browser cannot write to host filesystem from remote origin.");
+            console.log("[hooks]   Provide a one-liner for the user to run on the host machine.");
+
+            const serverUrl = getServerUrl();
+            const oneLiner = `curl -skSL ${serverUrl}/static/install-hooks.sh | SERVER_URL=${serverUrl} bash`;
+            console.log("[hooks] step 3 — one-liner command:");
+            console.log("  %c" + oneLiner, "font-weight:bold;color:#22c55e;font-size:14px;");
+
+            showInstallModal(oneLiner);
+            btnInstall.disabled = false;
+            return;
+        }
+
+        // ---- Local: server may be native or Docker ----
+        console.log("[hooks] step 2 — LOCAL: calling POST /api/install-hooks …");
+
         try {
-            const resp = await fetch(apiUrl("/api/install-hooks"), { method: "POST" });
+            const resp = await apiFetch("/api/install-hooks", { method: "POST" });
             const data = await resp.json();
+            console.log("[hooks] step 3 — response:", resp.status, data);
+
             if (resp.ok) {
-                installFeedback.textContent = `✓ ${data.installed_events} hooks installed`;
-                installFeedback.className = "install-feedback success";
-                updateHookStatusUI(true);
+                if (data.mode === "docker") {
+                    // Docker server — can't write to host, show one-liner
+                    console.log("[hooks] Docker detected, showing one-liner");
+                    showInstallModal(data.oneliner);
+                    installFeedback.textContent = "";
+                    installFeedback.className = "install-feedback";
+                } else {
+                    console.log("[hooks] ✓ installed %d events into %s", data.installed_events, data.target);
+                    installFeedback.textContent = `✓ ${data.installed_events} hooks installed`;
+                    installFeedback.className = "install-feedback success";
+                    updateHookStatusUI(true);
+                }
             } else {
+                console.error("[hooks] ✗ install failed:", data.detail);
                 installFeedback.textContent = `✗ ${data.detail}`;
                 installFeedback.className = "install-feedback error";
             }
         } catch (err) {
+            console.error("[hooks] ✗ server unreachable:", err);
             installFeedback.textContent = "✗ server unreachable";
             installFeedback.className = "install-feedback error";
         }
@@ -431,6 +558,7 @@
     const settingsPort = document.getElementById("settings-port");
     const btnSaveSettings = document.getElementById("btn-save-settings");
     const btnUninstall = document.getElementById("btn-uninstall-hooks");
+    const btnCheck = document.getElementById("btn-check-hooks");
     const settingsFeedback = document.getElementById("settings-feedback");
 
     function populateSettingsInputs() {
@@ -438,7 +566,7 @@
         try {
             const u = new URL(url);
             settingsUrl.value = u.protocol + "//" + u.hostname;
-            settingsPort.value = u.port || DEFAULT_PORT;
+            settingsPort.value = u.port || window.location.port || DEFAULT_PORT;
         } catch (_) {
             settingsUrl.value = url;
             settingsPort.value = "";
@@ -476,17 +604,29 @@
     });
 
     btnUninstall.addEventListener("click", async () => {
-        if (!confirm("Remove cc-monitor hooks from ~/.claude/settings.json?")) return;
+        if (!isLocalhost()) {
+            const serverUrl = getServerUrl();
+            const oneLiner = `curl -skSL ${serverUrl}/static/uninstall-hooks.sh | SERVER_URL=${serverUrl} bash`;
+            showInstallModal(oneLiner);
+            return;
+        }
         btnUninstall.disabled = true;
         settingsFeedback.textContent = "removing…";
         settingsFeedback.className = "settings-panel__feedback";
         try {
-            const resp = await fetch(apiUrl("/api/uninstall-hooks"), { method: "POST" });
+            const resp = await apiFetch("/api/uninstall-hooks", { method: "POST" });
             const data = await resp.json();
             if (resp.ok) {
-                settingsFeedback.textContent = `✓ ${data.removed_events} hooks removed`;
-                settingsFeedback.className = "settings-panel__feedback success";
-                updateHookStatusUI(false);
+                if (data.mode === "docker") {
+                    // Docker server — show one-liner
+                    showInstallModal(data.oneliner);
+                    settingsFeedback.textContent = "";
+                    settingsFeedback.className = "settings-panel__feedback";
+                } else {
+                    settingsFeedback.textContent = `✓ ${data.removed_entries} hooks removed`;
+                    settingsFeedback.className = "settings-panel__feedback success";
+                    updateHookStatusUI(false);
+                }
             } else {
                 settingsFeedback.textContent = `✗ ${data.detail}`;
                 settingsFeedback.className = "settings-panel__feedback error";
@@ -500,6 +640,12 @@
             settingsFeedback.textContent = "";
             settingsFeedback.className = "settings-panel__feedback";
         }, 4000);
+    });
+
+    btnCheck.addEventListener("click", () => {
+        const serverUrl = getServerUrl();
+        const oneLiner = `curl -skSL ${serverUrl}/static/check-hooks.sh | SERVER_URL=${serverUrl} bash`;
+        showInstallModal(oneLiner);
     });
 
     // ---- Section collapse/expand ----
@@ -551,7 +697,7 @@
 
     async function loadPairingQR() {
         try {
-            const resp = await fetch(apiUrl("/api/auth/pair/qr"));
+            const resp = await apiFetch("/api/auth/pair/qr");
             if (!resp.ok) {
                 pairQr.innerHTML = '<p class="pairing-error">Pairing not available — start server with --host 0.0.0.0</p>';
                 return;
@@ -587,7 +733,7 @@
 
     async function pollPairingRequests() {
         try {
-            const resp = await fetch(apiUrl("/api/auth/pair/requests"));
+            const resp = await apiFetch("/api/auth/pair/requests");
             if (!resp.ok) return;
             const data = await resp.json();
             const requests = data.requests || [];
@@ -609,7 +755,7 @@
 
     window._ccApprovePair = async function(requestId) {
         try {
-            await fetch(apiUrl(`/api/auth/pair/request/${requestId}/approve`), { method: "POST" });
+            await apiFetch(`/api/auth/pair/request/${requestId}/approve`, { method: "POST" });
             pollPairingRequests();
             loadPairedDevices();
             loadPairingQR();
@@ -618,7 +764,7 @@
 
     window._ccDenyPair = async function(requestId) {
         try {
-            await fetch(apiUrl(`/api/auth/pair/request/${requestId}/deny`), { method: "POST" });
+            await apiFetch(`/api/auth/pair/request/${requestId}/deny`, { method: "POST" });
             pollPairingRequests();
         } catch (_) {}
     };
@@ -626,7 +772,7 @@
     async function loadPairedDevices() {
         const list = document.getElementById("paired-devices-list");
         try {
-            const resp = await fetch(apiUrl("/api/auth/devices"));
+            const resp = await apiFetch("/api/auth/devices");
             if (!resp.ok) { list.innerHTML = '<p class="pairing-empty">—</p>'; return; }
             const data = await resp.json();
             const devices = data.devices || [];
@@ -634,20 +780,35 @@
                 list.innerHTML = '<p class="pairing-empty">No paired devices</p>';
                 return;
             }
-            list.innerHTML = devices.map(d => `
-                <div class="pairing-request">
-                    <span class="pairing-request__name">${escHtml(d.device_name)}<br><code style="font-size:0.85em">${escHtml(d.client_id ? d.client_id.substring(0, 8) : '-')}</code> <small>${d.expired ? 'expired' : 'active'}</small></span>
+            const myId = getClientId();
+            list.innerHTML = devices.map(d => {
+                const isSelf = d.client_id === myId;
+                const meta = d.meta || {};
+                const info = [
+                    isSelf ? '<span style="color:#ef4444;font-weight:600">SELF</span>' : '',
+                    meta.browser || '',
+                    meta.platform || '',
+                ].filter(Boolean).join(' · ');
+                return `
+                <div class="pairing-request${isSelf ? ' pairing-request--self' : ''}">
+                    <span class="pairing-request__name">
+                        ${escHtml(d.device_name)}
+                        ${info ? `<br><small style="color:var(--color-text-muted)">${info}</small>` : ''}
+                        <br><code style="font-size:0.85em">${escHtml(d.client_id ? d.client_id.substring(0, 8) : '-')}</code>
+                        <small>${d.expired ? 'expired' : 'active'}</small>
+                    </span>
                     <div class="pairing-request__actions">
-                        <button class="btn btn--danger btn--tiny" onclick="window._ccRevokeDevice('${d.token_prefix}')" title="Revoke">✕</button>
+                        <button class="btn btn--danger btn--tiny" onclick="window._ccRevokeDevice('${d.client_id}')" title="Revoke">✕</button>
                     </div>
                 </div>
-            `).join("");
+                `;
+            }).join("");
         } catch (_) {}
     }
 
-    window._ccRevokeDevice = async function(tokenPrefix) {
+    window._ccRevokeDevice = async function(clientId) {
         try {
-            await fetch(apiUrl(`/api/auth/devices/${encodeURIComponent(tokenPrefix)}`), { method: "DELETE" });
+            await apiFetch(`/api/auth/devices/${encodeURIComponent(clientId)}`, { method: "DELETE" });
             loadPairedDevices();
         } catch (_) {}
     };
@@ -656,6 +817,232 @@
         const div = document.createElement("div");
         div.textContent = str;
         return div.innerHTML;
+    }
+
+    // ---- Install modal (remote / Docker) ----
+
+    function showInstallModal(oneLiner) {
+        // Remove any existing modal
+        const old = document.getElementById("install-modal");
+        if (old) old.remove();
+
+        const modal = document.createElement("div");
+        modal.id = "install-modal";
+        modal.className = "modal-overlay";
+        modal.innerHTML = `
+            <div class="modal">
+                <h2 class="modal__title">Install cc-monitor Hooks</h2>
+                <div class="modal__warning">
+                    ⚠ This script modifies <code>~/.claude/settings.json</code> directly.
+                    Only run installers from the trusted cc-monitor repository:<br>
+                    <a href="https://github.com/BolunHan/cc-monitor" target="_blank" rel="noopener">
+                        github.com/BolunHan/cc-monitor
+                    </a>
+                </div>
+                <p class="modal__desc">Run this command on the machine where Claude Code runs:</p>
+                <div class="modal__cmd">
+                    <code id="install-oneliner">${escapeHtml(oneLiner)}</code>
+                </div>
+                <div class="modal__actions">
+                    <button class="btn btn--primary" id="btn-copy-oneliner">Copy</button>
+                    <button class="btn" id="btn-close-modal">Close</button>
+                </div>
+                <span class="modal__feedback" id="modal-feedback"></span>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        // Copy button
+        document.getElementById("btn-copy-oneliner").addEventListener("click", () => {
+            navigator.clipboard.writeText(oneLiner).then(() => {
+                const fb = document.getElementById("modal-feedback");
+                fb.textContent = "✓ copied";
+                fb.className = "modal__feedback success";
+                setTimeout(() => { fb.textContent = ""; fb.className = "modal__feedback"; }, 2000);
+            }).catch(() => {
+                // Fallback: select the text
+                const el = document.getElementById("install-oneliner");
+                const range = document.createRange();
+                range.selectNodeContents(el);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+            });
+        });
+
+        // Close button + click-outside
+        document.getElementById("btn-close-modal").addEventListener("click", () => modal.remove());
+        modal.addEventListener("click", (e) => { if (e.target === modal) modal.remove(); });
+    }
+
+    // ---- Pairing modal (unauthorized web UI) ----
+
+    const btnPairDevice = document.getElementById("btn-pair-device");
+    const pairFeedback = document.getElementById("pair-feedback");
+    let pairingCode = "";
+    let pairingRequestId = "";
+    let _pairPollTimer = null;
+
+    function generatePairingCode() {
+        return String(Math.floor(100000 + Math.random() * 900000));
+    }
+
+    btnPairDevice.addEventListener("click", async () => {
+        pairingCode = generatePairingCode();
+        const serverUrl = getServerUrl();
+        const approveCmd = `cc-monitor --approve ${pairingCode}`;
+
+        // Submit pairing request
+        let requestId = "";
+        try {
+            const resp = await apiFetch("/api/auth/pair/request", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    device_name: "Web Dashboard",
+                    pairing_code: pairingCode,
+                    client_id: getClientId(),
+                    device_meta: {
+                        browser: navigator.userAgent.includes("Firefox") ? "Firefox" :
+                                 navigator.userAgent.includes("Chrome") ? "Chrome" :
+                                 navigator.userAgent.includes("Safari") ? "Safari" : "Unknown",
+                        platform: navigator.platform || "Unknown",
+                    },
+                }),
+            });
+            const data = await resp.json();
+            requestId = data.request_id;
+            pairingRequestId = requestId;
+        } catch (err) {
+            pairFeedback.textContent = "✗ failed to submit pairing request";
+            pairFeedback.className = "install-feedback error";
+            return;
+        }
+
+        // Build modal
+        const old = document.getElementById("pairing-modal");
+        if (old) old.remove();
+
+        const modal = document.createElement("div");
+        modal.id = "pairing-modal";
+        modal.className = "modal-overlay";
+        modal.innerHTML = `
+            <div class="modal">
+                <h2 class="modal__title">Pair Web Dashboard</h2>
+                <div class="modal__warning">
+                    ⚠ This dashboard needs authorization to access the cc-monitor server.
+                    Only approve if you initiated this pairing from a trusted source:<br>
+                    <a href="https://github.com/BolunHan/cc-monitor" target="_blank" rel="noopener">
+                        github.com/BolunHan/cc-monitor
+                    </a>
+                </div>
+                <p class="modal__desc">Pairing code: <strong style="font-size:22px;letter-spacing:4px;">${pairingCode}</strong></p>
+                <p class="modal__desc">Approve with this command on the server machine:</p>
+                <div class="modal__cmd">
+                    <code id="pair-oneliner">${escapeHtml(approveCmd)}</code>
+                </div>
+                <div class="modal__actions">
+                    <button class="btn btn--primary" id="btn-copy-pair">Copy</button>
+                    <button class="btn" id="btn-close-pair">Close</button>
+                </div>
+                <div class="modal__log" id="pair-log">
+                    <div class="modal__log-entry">Waiting for approval…</div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        // Copy button
+        document.getElementById("btn-copy-pair").addEventListener("click", () => {
+            navigator.clipboard.writeText(approveCmd).then(() => {
+                const fb = document.getElementById("pair-log");
+                fb.innerHTML += '<div class="modal__log-entry success">✓ copied to clipboard</div>';
+            });
+        });
+
+        // Close + cleanup
+        document.getElementById("btn-close-pair").addEventListener("click", () => {
+            modal.remove();
+            stopPairStatusPoll();
+        });
+        modal.addEventListener("click", (e) => {
+            if (e.target === modal) { modal.remove(); stopPairStatusPoll(); }
+        });
+
+        // Start polling
+        startPairStatusPoll(requestId, modal);
+    });
+
+    function startPairStatusPoll(requestId, modal) {
+        const log = modal.querySelector("#pair-log");
+        let attempts = 0;
+        _pairPollTimer = setInterval(async () => {
+            try {
+                const resp = await apiFetch(`/api/auth/pair/request/${requestId}/status`);
+                const data = await resp.json();
+                attempts++;
+                log.innerHTML += `<div class="modal__log-entry">[${attempts}] status: ${data.status}</div>`;
+                if (data.status === "approved") {
+                    log.innerHTML += '<div class="modal__log-entry success">✓ Approved!</div>';
+                    stopPairStatusPoll();
+                    // The token was returned to the approver; re-submit to get a new one
+                    // For now, close the modal — user needs to refresh
+                    setTimeout(() => {
+                        log.innerHTML += '<div class="modal__log-entry">Reloading page to apply token…</div>';
+                        // Actually, we need the token. Let's re-request.
+                        reRequestToken(requestId, modal);
+                    }, 1000);
+                } else if (data.status === "denied") {
+                    log.innerHTML += '<div class="modal__log-entry error">✗ Denied</div>';
+                    stopPairStatusPoll();
+                }
+            } catch (err) {
+                log.innerHTML += `<div class="modal__log-entry error">Poll error: ${err}</div>`;
+            }
+        }, 2000);
+    }
+
+    function stopPairStatusPoll() {
+        if (_pairPollTimer) {
+            clearInterval(_pairPollTimer);
+            _pairPollTimer = null;
+        }
+    }
+
+    async function reRequestToken(requestId, modal) {
+        const log = modal.querySelector("#pair-log");
+        try {
+            const resp = await apiFetch("/api/auth/pair/request", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    device_name: "Web Dashboard",
+                    pairing_code: pairingCode,
+                    client_id: getClientId(),
+                    device_meta: {
+                        browser: navigator.userAgent.includes("Firefox") ? "Firefox" :
+                                 navigator.userAgent.includes("Chrome") ? "Chrome" :
+                                 navigator.userAgent.includes("Safari") ? "Safari" : "Unknown",
+                        platform: navigator.platform || "Unknown",
+                    },
+                }),
+            });
+            const data = await resp.json();
+            if (data.token) {
+                log.innerHTML += '<div class="modal__log-entry success">✓ Paired! Token saved.</div>';
+                setAuthToken(data.token);
+                updateUnauthorizedUI(false);
+                setTimeout(() => {
+                    modal.remove();
+                    connectSSE();
+                    loadSessions();
+                    loadVersion();
+                    checkHooksStatus();
+                }, 500);
+            }
+        } catch (err) {
+            log.innerHTML += `<div class="modal__log-entry error">Re-request failed: ${err}</div>`;
+        }
     }
 
     // ---- Initialise ----

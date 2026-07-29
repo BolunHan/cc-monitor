@@ -45,6 +45,13 @@ body {
 .header__title {
     font-size: 20px;
     font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.header__icon {
+    flex-shrink: 0;
 }
 
 .header__actions {
@@ -171,6 +178,16 @@ body {
     background: color-mix(in srgb, var(--color-danger) 15%, transparent);
 }
 
+.btn--check {
+    border-color: var(--color-warning);
+    color: var(--color-warning);
+    background: transparent;
+}
+
+.btn--check:hover {
+    background: color-mix(in srgb, var(--color-warning) 15%, transparent);
+}
+
 .btn--small {
     padding: 3px 10px;
     font-size: 12px;
@@ -212,6 +229,22 @@ body {
     font-size: 16px;
     font-weight: 600;
     margin-bottom: 16px;
+}
+
+.settings-panel__docker-badge {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 10px;
+    vertical-align: middle;
+}
+.settings-panel__docker-badge.docker {
+    background: #1b3a5c;
+    color: #58a6ff;
+}
+.settings-panel__docker-badge.native {
+    background: #1a3a1a;
+    color: #3fb950;
 }
 
 .settings-panel__fields {
@@ -564,6 +597,122 @@ body {
 .btn--card-unarchive:hover {
     border-color: var(--color-working);
     color: var(--color-working);
+}
+
+/* ---- Install Modal ---- */
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 580px;
+    width: 90%;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.modal__title {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 16px;
+}
+
+.modal__warning {
+    font-size: 13px;
+    color: var(--color-warning);
+    background: var(--color-warning-bg);
+    border: 1px solid var(--color-warning-border);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 16px;
+    line-height: 1.5;
+}
+
+.modal__warning a {
+    color: var(--color-working);
+    text-decoration: underline;
+}
+
+.modal__warning code {
+    font-family: "SF Mono", "Fira Code", monospace;
+    background: rgba(0,0,0,0.2);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+.modal__desc {
+    font-size: 13px;
+    color: var(--color-text-muted);
+    margin-bottom: 12px;
+}
+
+.modal__cmd {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 14px;
+    margin-bottom: 16px;
+    overflow-x: auto;
+}
+
+.modal__cmd code {
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 13px;
+    color: var(--color-done);
+    word-break: break-all;
+    white-space: pre-wrap;
+}
+
+.modal__actions {
+    display: flex;
+    gap: 8px;
+}
+
+.modal__feedback {
+    display: block;
+    margin-top: 10px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.modal__feedback.success {
+    color: var(--color-done);
+}
+
+.modal__log {
+    margin-top: 16px;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    padding: 12px;
+    max-height: 200px;
+    overflow-y: auto;
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.modal__log-entry {
+    color: var(--color-text-muted);
+}
+
+.modal__log-entry.success {
+    color: var(--color-done);
+}
+
+.modal__log-entry.error {
+    color: var(--color-disconnected);
 }
 
 /* ---- Footer ---- */

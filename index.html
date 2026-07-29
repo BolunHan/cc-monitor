@@ -16,6 +16,11 @@
                 <button class="btn btn--warning" id="btn-install-hooks">Install Global Hooks</button>
                 <span class="install-feedback" id="install-feedback"></span>
             </div>
+            <div id="unauth-banner" class="hooks-banner hidden">
+                <span class="hooks-banner__badge">🔒 unauthorized access</span>
+                <button class="btn btn--warning" id="btn-pair-device">Pair</button>
+                <span class="install-feedback" id="pair-feedback"></span>
+            </div>
             <div class="header__status">
                 <span class="connection-indicator" id="connection-indicator" title="SSE connection status"></span>
                 <span class="connection-label" id="connection-label">connecting</span>
@@ -51,7 +56,7 @@
 
     <div class="settings-panel hidden" id="settings-panel">
         <div class="settings-panel__content">
-            <h3 class="settings-panel__title">Settings</h3>
+            <h3 class="settings-panel__title">Settings <span class="settings-panel__docker-badge" id="settings-docker-badge"></span></h3>
             <div class="settings-panel__fields">
                 <label class="settings-panel__label">
                     Server URL
@@ -68,6 +73,7 @@
             <div class="settings-panel__row">
                 <span class="settings-panel__label-text">Global hooks</span>
                 <span class="settings-panel__hook-status" id="settings-hook-status">checking…</span>
+                <button class="btn btn--check btn--small" id="btn-check-hooks">Check</button>
                 <button class="btn btn--danger btn--small" id="btn-uninstall-hooks">Uninstall</button>
             </div>
         </div>
