@@ -4,10 +4,11 @@ services:
     container_name: cc-monitor
     network_mode: host
     restart: unless-stopped
-    # Run as the host user so files in ~/.cc-monitor are owned correctly.
-    # ${UID} and ${GID} must be set in the environment before running.
-    user: "${UID}:${GID}"
     volumes:
-      # Mount to /data/.cc-monitor (not /root) — /root is mode 700, non-root can't traverse.
-      # Must be /data/.cc-monitor because _safe_home() returns /data and code appends /.cc-monitor.
-      - ${HOME}/.cc-monitor:/data/.cc-monitor
+      # Named volume persists server state across container rebuilds.
+      # Hook scripts are installed on the host via the one-liner — the
+      # container never touches host files.
+      - cc-monitor-data:/data
+
+volumes:
+  cc-monitor-data:

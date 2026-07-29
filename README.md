@@ -152,6 +152,8 @@ cc-monitor --revoke-all
 
 ## Docker
 
+The Docker container is **self-contained** — all state lives in a named Docker volume. No host directories are mounted.
+
 ```bash
 # Build
 docker build \
@@ -159,16 +161,19 @@ docker build \
   --build-arg HTTPS_PROXY=$HTTPS_PROXY \
   -t cc-monitor:latest .
 
-# Run (host network + persistent volume required)
-docker run -d --name cc-monitor --network=host \
-  -v ~/.cc-monitor:/root/.cc-monitor \
-  --restart unless-stopped cc-monitor:latest
-
-# Or use docker-compose
+# Run
 docker compose up -d
 ```
 
-**Volume:** `~/.cc-monitor` stores session state, tokens, hook scripts, and the `.hooks-installed` marker. Mounting it is **required** for state persistence and hooks detection.
+**Hook installation** always uses the one-liner (the container cannot write to your host files):
+```bash
+curl -skSL https://<server>:9876/static/install-hooks.sh | SERVER_URL=https://<server>:9876 bash
+```
+
+**Persistence:** State, tokens, and certificates are stored in the `cc-monitor-data` Docker volume. To reset:
+```bash
+docker compose down -v
+```
 
 ## Android App
 
@@ -335,20 +340,25 @@ curl -skSL https://<服务器IP>:9876/static/install-hooks.sh | SERVER_URL=https
 
 ## Docker
 
+Docker 容器**完全自包含**——所有状态存储在命名的 Docker 卷中，不挂载任何主机目录。
+
 ```bash
 # 构建
 docker build -t cc-monitor:latest .
 
-# 运行（需要 host 网络 + 数据卷）
-docker run -d --name cc-monitor --network=host \
-  -v ~/.cc-monitor:/root/.cc-monitor \
-  --restart unless-stopped cc-monitor:latest
-
-# 或使用 docker-compose
+# 运行
 docker compose up -d
 ```
 
-**数据卷：** `~/.cc-monitor` 存储会话状态、token、hook 脚本和 `.hooks-installed` 标记文件。**必须挂载**以确保数据持久化和 hook 检测。
+**Hook 安装**始终使用一键命令（容器无法写入主机文件）：
+```bash
+curl -skSL https://<服务器>:9876/static/install-hooks.sh | SERVER_URL=https://<服务器>:9876 bash
+```
+
+**持久化：** 状态、token 和证书存储在 `cc-monitor-data` Docker 卷中。重置：
+```bash
+docker compose down -v
+```
 
 ## Android 应用
 

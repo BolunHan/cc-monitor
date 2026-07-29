@@ -101,10 +101,10 @@ _IS_DOCKER = (_PROJECT_ROOT / ".docker-env").exists()
 
 
 def _safe_home() -> Path:
-    """Return a writable home-equivalent directory.
+    """Return the data directory root.
 
-    In Docker: /data (the bind-mounted host ~/.cc-monitor directory).
-    Natively: the user's actual home directory.
+    In Docker: /data (a named volume managed by Docker).
+    Natively: the user's home directory.
     """
     if _IS_DOCKER:
         return Path("/data")
