@@ -119,7 +119,11 @@ for event_name, new_groups in hooks_config.items():
     target_hooks[event_name] = existing + new_groups
     merged += 1
 
+# Set CC_MONITOR_UID in Claude's env so hooks inherit it automatically
 target['hooks'] = target_hooks
+env = target.get('env', {})
+env['CC_MONITOR_UID'] = cc_uid
+target['env'] = env
 settings_file.parent.mkdir(parents=True, exist_ok=True)
 settings_file.write_text(json.dumps(target, indent=2))
 print(f'  Injected {merged}, skipped {skipped}')

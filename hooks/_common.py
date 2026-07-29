@@ -49,7 +49,7 @@ def _parse_server_url() -> str:
 
 
 _SERVER_URL = _parse_server_url()
-_CC_MONITOR_UID = _parse_cli_arg("uid")
+_CC_MONITOR_UID = _parse_cli_arg("uid") or os.environ.get("CC_MONITOR_UID", "")
 
 
 def map_event(hook_event_name: str, notification_type: str | None = None) -> str:

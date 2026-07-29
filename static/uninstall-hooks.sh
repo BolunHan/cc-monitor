@@ -91,6 +91,14 @@ for event in EVENTS:
         del hooks[event]
 
 settings['hooks'] = hooks
+# Remove our UID from env if it matches
+env = settings.get('env', {})
+if env.get('CC_MONITOR_UID') == cc_uid or not cc_uid:
+    env.pop('CC_MONITOR_UID', None)
+    if env:
+        settings['env'] = env
+    elif 'env' in settings:
+        del settings['env']
 settings_file.write_text(json.dumps(settings, indent=2))
 print(f'  Removed {removed} hook entries')
 
