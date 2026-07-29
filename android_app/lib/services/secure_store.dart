@@ -3,6 +3,23 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+enum LogLevel {
+  debug(0, 'Debug'),
+  info(1, 'Info'),
+  warning(2, 'Warning'),
+  error(3, 'Error');
+
+  const LogLevel(this.value, this.label);
+  final int value;
+  final String label;
+
+  bool shouldShow(LogLevel eventLevel) => eventLevel.value >= value;
+
+  static LogLevel fromValue(int value) {
+    return LogLevel.values.firstWhere((l) => l.value == value, orElse: () => LogLevel.info);
+  }
+}
+
 class ServerEntry {
   final String host;
   final int port;
@@ -40,6 +57,7 @@ class SecureStore {
   static const _keyServers = 'cc_monitor_servers';
   static const _keyClientId = 'cc_monitor_client_id';
   static const _keyActive = 'cc_monitor_active';
+  static const _keyLogLevel = 'cc_monitor_log_level';
 
   final FlutterSecureStorage _storage;
   SecureStore() : _storage = const FlutterSecureStorage();
@@ -123,6 +141,18 @@ class SecureStore {
     final active = await getActive();
     if (active == null) return;
     await addServer(ServerEntry(host: active.host, port: active.port, token: token, certSha256: active.certSha256, clientId: active.clientId));
+  }
+
+  // ---- log level ----
+
+  Future<LogLevel> getLogLevel() async {
+    final raw = await _storage.read(key: _keyLogLevel);
+    if (raw == null) return LogLevel.info;
+    return LogLevel.fromValue(int.tryParse(raw) ?? 1);
+  }
+
+  Future<void> setLogLevel(LogLevel level) async {
+    await _storage.write(key: _keyLogLevel, value: level.value.toString());
   }
 
   Future<void> clear() async => await _storage.deleteAll();

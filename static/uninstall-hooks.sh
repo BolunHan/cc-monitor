@@ -3,14 +3,18 @@
 # cc-monitor Hook Uninstaller
 #
 # Removes cc-monitor hooks from ~/.claude/settings.json by parsing the JSON
-# and deleting only the 7 cc-monitor hook events (not touching other hooks).
-# Also removes the marker file and hook scripts.
+# and deleting only hooks whose command contains BOTH the hooks directory
+# AND the target server URL.  This means multiple cc-monitor servers can
+# coexist — uninstalling one leaves the others intact.
 #
 # Usage:
 #   curl -sSL https://192.168.3.28:9876/static/uninstall-hooks.sh | bash
+#   # or with explicit server URL for precise matching:
+#   curl -sSL ... | SERVER_URL=https://192.168.1.50:9876 bash
 # ============================================================================
 set -euo pipefail
 
+SERVER_URL="${SERVER_URL:-}"
 HOOKS_DIR="${HOME}/.cc-monitor/hooks"
 SETTINGS_FILE="${HOME}/.claude/settings.json"
 MARKER_FILE="${HOME}/.cc-monitor/.hooks-installed"
@@ -22,6 +26,10 @@ CC_HOOK_EVENTS=(
 )
 
 echo "=== cc-monitor Hook Uninstaller ==="
+if [ -n "$SERVER_URL" ]; then
+    echo "  Server: ${SERVER_URL}"
+fi
+echo "  Hooks dir: ${HOOKS_DIR}"
 
 # 1. Remove hook scripts
 echo "[1/3] Removing hook scripts..."
@@ -34,13 +42,15 @@ fi
 
 # 2. Remove cc-monitor hooks from settings.json
 echo "[2/3] Removing hooks from $SETTINGS_FILE..."
-CC_EVENTS="${CC_HOOK_EVENTS[*]}" CC_FILE="$SETTINGS_FILE" HOOKS_DIR="$HOOKS_DIR" python3 << 'PYEOF'
+CC_EVENTS="${CC_HOOK_EVENTS[*]}" CC_FILE="$SETTINGS_FILE" \
+  HOOKS_DIR="$HOOKS_DIR" SERVER_URL="$SERVER_URL" python3 << 'PYEOF'
 import json, os, sys
 from pathlib import Path
 
 events = os.environ['CC_EVENTS'].split()
 f = Path(os.environ['CC_FILE'])
 hooks_dir = os.environ.get('HOOKS_DIR', '')
+server_url = os.environ.get('SERVER_URL', '').rstrip('/')
 
 if not f.exists():
     print('  No settings file — nothing to do')
@@ -54,20 +64,25 @@ for event in events:
     groups = hooks.get(event, [])
     new_groups = []
     for group in groups:
-        # Keep hooks that are NOT ours (don't contain hooks_dir path)
         kept_hooks = []
         for h in group.get('hooks', []):
             cmd = h.get('command', '')
-            if hooks_dir and hooks_dir in cmd:
+            # A hook belongs to a specific cc-monitor server if its command
+            # contains BOTH the hooks directory AND the server URL.
+            # Without SERVER_URL, fall back to matching hooks_dir alone
+            # (backward compat — removing legacy hooks installed without --url).
+            if server_url:
+                is_ours = (hooks_dir in cmd) and (server_url in cmd)
+            else:
+                # Legacy mode: match hooks_dir only (pre-URL installs)
+                is_ours = (hooks_dir in cmd)
+            if is_ours:
                 removed += 1
             else:
                 kept_hooks.append(h)
         if kept_hooks:
             group['hooks'] = kept_hooks
             new_groups.append(group)
-        elif group.get('hooks'):
-            # All hooks removed from this group — drop the group
-            removed += len(group.get('hooks', []))
 
     if new_groups:
         hooks[event] = new_groups

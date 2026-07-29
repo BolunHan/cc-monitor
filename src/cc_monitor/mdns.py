@@ -52,7 +52,7 @@ class MDNSAdvertiser:
 
         self._info = AsyncServiceInfo(
             _SERVICE_TYPE,
-            name=f"{hostname}._cc-monitor._tcp.local.",
+            name=f"{hostname}:{self._port}._cc-monitor._tcp.local.",
             addresses=addresses,
             port=self._port,
             properties=txt,

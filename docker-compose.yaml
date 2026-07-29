@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   cc-monitor:
     image: cc-monitor:latest
@@ -7,11 +5,7 @@ services:
     network_mode: host
     restart: unless-stopped
     volumes:
-      # Required: session state + hooks marker file
-      - ~/.cc-monitor:/root/.cc-monitor
-    # Build from source if image not already built:
-    # build:
-    #   context: .
-    #   args:
-    #     HTTP_PROXY: ${HTTP_PROXY}
-    #     HTTPS_PROXY: ${HTTPS_PROXY}
+      # Session state, tokens, hook scripts, marker file.
+      # IMPORTANT: replace /home/bolun with your actual home directory,
+      # or use `HOME=/home/youruser sudo -E docker compose up -d`.
+      - /home/bolun/.cc-monitor:/root/.cc-monitor

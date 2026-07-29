@@ -15,7 +15,9 @@
 #   1. Downloads hook scripts from the cc-monitor server
 #   2. Places them in ~/.cc-monitor/hooks/
 #   3. Merges hook configuration into ~/.claude/settings.json
-#   4. Preserves existing non-cc-monitor settings and hooks
+#   4. Commands include --url so hooks point back to the right server
+#   5. Preserves existing non-cc-monitor settings and hooks
+#   6. Deduplicates by server URL — multiple cc-monitor servers coexist
 # ============================================================================
 set -euo pipefail
 
@@ -66,7 +68,7 @@ mkdir -p "$HOOKS_DIR"
 
 for hook in "${HOOKS[@]}"; do
     downloaded=false
-    # Try HTTPS first, then HTTP (server may have TLS or not)
+    # Try the server URL's protocol first, then fall back
     for proto in https http; do
         if curl -fsk -o "${HOOKS_DIR}/${hook}" \
             "${proto}://$(echo "${SERVER_URL}" | sed 's|https\?://||')/hooks/${hook}" 2>/dev/null; then
@@ -98,12 +100,13 @@ fi
 # 4. Inject hook configuration
 # ------------------------------------------------------------------
 echo "[4/4] Injecting hook configuration..."
-SETTINGS="$SETTINGS_FILE" HOOKS="$HOOKS_DIR" "$PYTHON" << 'PYEOF'
+SETTINGS="$SETTINGS_FILE" HOOKS="$HOOKS_DIR" SERVER="$SERVER_URL" "$PYTHON" << 'PYEOF'
 import json, os, sys
 from pathlib import Path
 
 settings_file = Path(os.environ['SETTINGS'])
 hooks_dir = Path(os.environ['HOOKS'])
+server_url = os.environ.get('SERVER', 'https://127.0.0.1:9876').rstrip('/')
 
 hook_events = {
     'PreToolUse':        {'matcher': '*', 'script': 'pre_tool_use.py'},
@@ -118,10 +121,11 @@ hook_events = {
 hooks_config = {}
 for event_name, cfg in hook_events.items():
     script_path = str(hooks_dir / cfg['script'])
+    command = f"{script_path} --url {server_url}"
     entry = {
         'hooks': [{
             'type': 'command',
-            'command': script_path,
+            'command': command,
             'description': f'cc-monitor: {event_name}',
         }]
     }
@@ -136,10 +140,9 @@ if settings_file.exists():
 target_hooks = target.get('hooks', {})
 merged = 0
 skipped = 0
-our_commands = set()  # track our script paths to detect duplicates
 
 for event_name, new_groups in hooks_config.items():
-    # Collect our command strings for this event
+    # Collect our expected command strings for this event
     our_cmds = set()
     for g in new_groups:
         for h in g.get('hooks', []):
@@ -147,7 +150,7 @@ for event_name, new_groups in hooks_config.items():
 
     existing_groups = target_hooks.get(event_name, [])
 
-    # Check if our commands are already registered under this event
+    # Check if our commands (with this exact server URL) are already registered
     already_there = False
     for eg in existing_groups:
         for eh in eg.get('hooks', []):
@@ -176,4 +179,4 @@ touch "${HOME}/.cc-monitor/.hooks-installed"
 echo ""
 echo "=== Done ==="
 echo "cc-monitor hooks installed. Restart Claude Code to use them."
-echo "To uninstall: curl -sSL ${SERVER_URL}/static/uninstall-hooks.sh | bash"
+echo "To uninstall: curl -sSL ${SERVER_URL}/static/uninstall-hooks.sh | SERVER_URL=${SERVER_URL} bash"

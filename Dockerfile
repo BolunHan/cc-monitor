@@ -9,6 +9,9 @@ ARG NO_PROXY
 
 WORKDIR /app
 
+# Marker — server checks this to know it's running in Docker
+RUN touch /app/.docker-env
+
 COPY pyproject.toml .
 COPY src/ src/
 COPY static/ static/

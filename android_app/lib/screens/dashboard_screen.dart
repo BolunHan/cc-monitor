@@ -94,7 +94,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ],
                   ),
                 ),
-              _DebugBar(provider: provider),
+              _StateBar(provider: provider),
               Expanded(child: body),
             ],
           );
@@ -312,11 +312,11 @@ class _ServerDrawerState extends State<_ServerDrawer> {
   }
 }
 
-// ---- Debug status bar ----
+// ---- SSE state bar ----
 
-class _DebugBar extends StatelessWidget {
+class _StateBar extends StatelessWidget {
   final SessionProvider provider;
-  const _DebugBar({required this.provider});
+  const _StateBar({required this.provider});
 
   @override
   Widget build(BuildContext context) {
@@ -327,7 +327,7 @@ class _DebugBar extends StatelessWidget {
       onTap: () {
         showModalBottomSheet(
           context: context,
-          builder: (_) => _DebugLogSheet(provider: provider),
+          builder: (_) => _StateLogSheet(provider: provider),
         );
       },
       child: Container(
@@ -362,13 +362,27 @@ class _DebugBar extends StatelessWidget {
   }
 }
 
-class _DebugLogSheet extends StatelessWidget {
+class _StateLogSheet extends StatefulWidget {
   final SessionProvider provider;
-  const _DebugLogSheet({required this.provider});
+  const _StateLogSheet({required this.provider});
+
+  @override
+  State<_StateLogSheet> createState() => _StateLogSheetState();
+}
+
+class _StateLogSheetState extends State<_StateLogSheet> {
+  late LogLevel _level;
+
+  @override
+  void initState() {
+    super.initState();
+    _level = widget.provider.logLevel;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final log = provider.eventLog;
+    final allLog = widget.provider.eventLog;
+    final log = widget.provider.filteredEventLog;
     return Container(
       height: MediaQuery.of(context).size.height * 0.6,
       padding: const EdgeInsets.all(16),
@@ -378,18 +392,37 @@ class _DebugLogSheet extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('SSE Event Log (${log.length})',
+              Text('SSE Event Log (${log.length}/${allLog.length})',
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              Text(provider.connected ? 'CONNECTED' : 'DISCONNECTED',
+              Text(widget.provider.connected ? 'CONNECTED' : 'DISCONNECTED',
                   style: TextStyle(
-                      color: provider.connected ? Colors.green : Colors.red,
+                      color: widget.provider.connected ? Colors.green : Colors.red,
                       fontWeight: FontWeight.bold)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Text('Level: ', style: TextStyle(fontSize: 12)),
+              DropdownButton<LogLevel>(
+                value: _level,
+                isDense: true,
+                underline: const SizedBox(),
+                items: LogLevel.values.map((l) {
+                  return DropdownMenuItem(value: l, child: Text(l.label, style: const TextStyle(fontSize: 12)));
+                }).toList(),
+                onChanged: (val) {
+                  if (val == null) return;
+                  setState(() => _level = val);
+                  widget.provider.setLogLevel(val);
+                },
+              ),
             ],
           ),
           const Divider(),
           Expanded(
             child: log.isEmpty
-                ? const Center(child: Text('No events yet — waiting for SSE…'))
+                ? const Center(child: Text('No events — waiting for SSE…'))
                 : ListView.builder(
                     itemCount: log.length,
                     itemBuilder: (_, i) {
@@ -407,11 +440,7 @@ class _DebugLogSheet extends StatelessWidget {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                               decoration: BoxDecoration(
-                                color: e.type == 'heartbeat'
-                                    ? Colors.grey.shade800
-                                    : e.type == 'device_update' || e.type == 'ACTION'
-                                        ? Colors.orange.shade900
-                                        : Colors.blue.shade900,
+                                color: _badgeColor(e),
                                 borderRadius: BorderRadius.circular(3),
                               ),
                               child: Text(e.type,
@@ -435,5 +464,16 @@ class _DebugLogSheet extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Color _badgeColor(SseEventEntry e) {
+    return switch (e.level) {
+      LogLevel.debug => Colors.grey.shade800,
+      LogLevel.warning => Colors.orange.shade900,
+      LogLevel.error => Colors.red.shade900,
+      LogLevel.info => e.type == 'device_update' || e.type == 'ACTION'
+          ? Colors.orange.shade900
+          : Colors.blue.shade900,
+    };
   }
 }

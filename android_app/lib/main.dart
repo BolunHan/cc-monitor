@@ -60,6 +60,7 @@ class CCMonitorApp extends StatelessWidget {
       ],
       child: MaterialApp(
         title: 'cc-monitor',
+        debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
         darkTheme: AppTheme.dark,
         home: _StartupGate(

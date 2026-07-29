@@ -87,6 +87,34 @@ deploy-apk: build-apk adb-install
 deploy: restart-server deploy-apk
 	@echo "=== Full deploy complete ==="
 
+# ---- Docker ----
+
+DOCKER_PROXY := http://192.168.3.24:7780
+
+.PHONY: docker-build
+docker-build:
+	$(DOCKER) build \
+		--build-arg HTTP_PROXY=$(DOCKER_PROXY) \
+		--build-arg HTTPS_PROXY=$(DOCKER_PROXY) \
+		-t cc-monitor:latest .
+
+.PHONY: docker-up
+docker-up:
+	HOME=$(HOME) $(DOCKER) compose up -d
+
+.PHONY: docker-down
+docker-down:
+	$(DOCKER) compose down
+
+.PHONY: docker-restart
+docker-restart: docker-build
+	$(DOCKER) rm -f cc-monitor 2>/dev/null || true
+	HOME=$(HOME) $(DOCKER) compose up -d
+
+.PHONY: docker-logs
+docker-logs:
+	$(DOCKER) logs -f cc-monitor
+
 # ---- Help ----
 
 .PHONY: help
@@ -94,10 +122,17 @@ help:
 	@echo "cc-monitor Makefile"
 	@echo ""
 	@echo "  Server:"
-	@echo "    make restart-server      Kill, reinstall, restart server"
+	@echo "    make restart-server      Kill, reinstall, restart native server"
 	@echo "    make test                 Run all tests (verbose)"
 	@echo "    make test-quick           Run all tests (quiet)"
 	@echo "    make install              Reinstall package in dev mode"
+	@echo ""
+	@echo "  Docker:"
+	@echo "    make docker-build         Build Docker image"
+	@echo "    make docker-up            Start Docker container"
+	@echo "    make docker-down          Stop Docker container"
+	@echo "    make docker-restart       Rebuild + restart Docker"
+	@echo "    make docker-logs          Follow container logs"
 	@echo ""
 	@echo "  Android:"
 	@echo "    make build-apk            Build debug APK via Docker"

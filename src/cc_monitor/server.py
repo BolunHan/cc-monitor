@@ -95,9 +95,23 @@ def _resolve_root() -> Path:
 
 _PROJECT_ROOT = _resolve_root()
 _STATIC_DIR = _PROJECT_ROOT / "static"
-_SOURCE_HOOKS_PATH = _PROJECT_ROOT / ".claude" / "settings.json"
+_SOURCE_HOOKS_DIR = _PROJECT_ROOT / "hooks"
+_GLOBAL_HOOKS_DIR = Path.home() / ".cc-monitor" / "hooks"
 _GLOBAL_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
 _BACKUP_PATH = Path.home() / ".claude" / "settings.json.cc-monitor.bak"
+# Set during Docker build — server uses this to route install/uninstall to the one-liner
+_IS_DOCKER = (_PROJECT_ROOT / ".docker-env").exists()
+
+# Hook event definitions (kept in sync with install-hooks.sh)
+_HOOK_EVENT_DEFS: dict[str, dict[str, str]] = {
+    "PreToolUse":        {"matcher": "*", "script": "pre_tool_use.py"},
+    "PostToolUse":       {"matcher": "*", "script": "post_tool_use.py"},
+    "UserPromptSubmit":  {"matcher": "",  "script": "user_prompt_submit.py"},
+    "Stop":              {"matcher": "",  "script": "stop.py"},
+    "Notification":      {"matcher": "*", "script": "notification.py"},
+    "PermissionRequest": {"matcher": "*", "script": "permission_request.py"},
+    "SessionEnd":        {"matcher": "",  "script": "session_end.py"},
+}
 
 
 def _format_sse_event(event: str, data: str | None = None) -> str:
@@ -123,6 +137,8 @@ def create_app(
     pairing_manager: PairingManager | None = None,
     token_manager: TokenManager | None = None,
     lan_host: str = "",
+    port: int = 9876,
+    use_tls: bool = False,
 ) -> FastAPI:
     """Build the FastAPI app with a given data directory.
 
@@ -139,6 +155,8 @@ def create_app(
             token_ttl if None.
         token_manager: Shared TokenManager instance. Created from
             data_dir if None.
+        port: Server port (used to construct hook --url arg).
+        use_tls: Whether TLS is enabled (used to construct hook --url).
 
     Returns:
         A configured FastAPI application.
@@ -327,26 +345,32 @@ def create_app(
 
     # ---- Hook installation ----
 
-    _hook_event_names: set[str] = set()
+    # Compute the URL hooks should use to reach this server.
+    # Server-side install is only reachable from localhost, so hooks
+    # on the same machine use 127.0.0.1:<port>.
+    _hooks_scheme = "https" if use_tls else "http"
+    _hooks_server_url = f"{_hooks_scheme}://127.0.0.1:{port}"
 
-    def _load_source_hooks() -> dict:
-        """Load hook definitions from the project's .claude/settings.json."""
-        if not _SOURCE_HOOKS_PATH.exists():
-            raise HTTPException(
-                status_code=500,
-                detail=f"Source hooks file not found: {_SOURCE_HOOKS_PATH}",
-            )
-        try:
-            source = json.loads(_SOURCE_HOOKS_PATH.read_text())
-        except json.JSONDecodeError as exc:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Invalid JSON in source hooks: {exc}",
-            )
-        hooks = source.get("hooks", {})
-        if not hooks:
-            raise HTTPException(status_code=500, detail="No hooks found in source settings")
-        return hooks
+    def _build_hook_command(script_name: str) -> str:
+        """Construct the hook command string with --url argument."""
+        script_path = str(_GLOBAL_HOOKS_DIR / script_name)
+        return f"{script_path} --url {_hooks_server_url}"
+
+    def _build_hook_groups() -> dict:
+        """Build hook event groups with proper commands and matchers."""
+        hooks_config = {}
+        for event_name, cfg in _HOOK_EVENT_DEFS.items():
+            entry: dict = {
+                "hooks": [{
+                    "type": "command",
+                    "command": _build_hook_command(cfg["script"]),
+                    "description": f"cc-monitor: {event_name}",
+                }]
+            }
+            if cfg["matcher"]:
+                entry["matcher"] = cfg["matcher"]
+            hooks_config[event_name] = [entry]
+        return hooks_config
 
     def _load_global_settings() -> dict:
         """Read the global settings file, or return empty dict."""
@@ -365,24 +389,22 @@ def create_app(
         _GLOBAL_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
         _GLOBAL_SETTINGS_PATH.write_text(json.dumps(settings, indent=2))
 
-    # Populate known event names from source at startup
-    try:
-        _hook_event_names = set(_load_source_hooks().keys())
-    except Exception:
-        pass
+    # Populate known event names from hook event defs
+    _hook_event_names: set[str] = set(_HOOK_EVENT_DEFS.keys())
+    _marker_file = manager._data_dir / ".hooks-installed"
 
     @app.get("/api/hooks-status")
     async def hooks_status():
-        """Check whether cc-monitor hooks are installed globally.
+        """Check whether cc-monitor hooks are installed.
 
-        Checks:
-        1. Marker file (~/.cc-monitor/.hooks-installed) — set by install-hooks.sh
-        2. Global settings (~/.claude/settings.json) — for non-Docker localhost
+        Checks (in order):
+        1. Marker file (~/.cc-monitor/.hooks-installed) — most reliable
+        2. Global settings (~/.claude/settings.json) — localhost fallback
         """
-        marker = (manager._data_dir / ".hooks-installed").exists()
+        marker = _marker_file.exists()
 
-        installed_events = []
-        missing_events = []
+        installed_events: list[str] = []
+        missing_events: list[str] = []
         try:
             global_settings = _load_global_settings()
             global_hooks = global_settings.get("hooks", {})
@@ -410,37 +432,99 @@ def create_app(
     async def install_hooks():
         """Inject cc-monitor hooks into the global Claude Code settings.
 
-        Creates a backup of the existing global settings before modifying.
-        Merges hooks into ~/.claude/settings.json, preserving all
-        existing non-cc-monitor settings and hooks.
+        When running natively, copies hook scripts and merges configuration
+        into ~/.claude/settings.json.  Creates the .hooks-installed marker.
+
+        When running in Docker, the server cannot write to the host's
+        ~/.claude/settings.json — returns the one-liner shell command
+        that the browser can display to the user.
         """
-        source_hooks = _load_source_hooks()
+        if _IS_DOCKER:
+            # Docker can still copy hook scripts to the shared volume
+            if _SOURCE_HOOKS_DIR.is_dir():
+                import shutil
+                _GLOBAL_HOOKS_DIR.mkdir(parents=True, exist_ok=True)
+                for src_file in _SOURCE_HOOKS_DIR.iterdir():
+                    if src_file.suffix == ".py":
+                        shutil.copy2(src_file, _GLOBAL_HOOKS_DIR / src_file.name)
+            # Create marker so hooks-status reports installed
+            _marker_file.touch()
+            # Return the one-liner — the web UI shows this in a modal
+            return JSONResponse({
+                "status": "docker",
+                "mode": "docker",
+                "oneliner": (
+                    f"curl -skSL {_hooks_server_url}/static/install-hooks.sh"
+                    f" | SERVER_URL={_hooks_server_url} bash"
+                ),
+                "message": "Running in Docker — run this command on the host machine.",
+            })
+
+        # --- Native install below ---
+
+        # 1. Copy hook scripts to ~/.cc-monitor/hooks/
+        if _SOURCE_HOOKS_DIR.is_dir():
+            import shutil
+            _GLOBAL_HOOKS_DIR.mkdir(parents=True, exist_ok=True)
+            copied = 0
+            for src_file in _SOURCE_HOOKS_DIR.iterdir():
+                if src_file.suffix == ".py":
+                    shutil.copy2(src_file, _GLOBAL_HOOKS_DIR / src_file.name)
+                    copied += 1
+            logger.info("Copied %d hook scripts to %s", copied, _GLOBAL_HOOKS_DIR)
+
+        # 2. Build hook groups with --url commands
+        source_hooks = _build_hook_groups()
         target = _load_global_settings()
 
         # Create backup before modifying
-        if _GLOBAL_SETTINGS_PATH.exists():
+        if _GLOBAL_SETTINGS_PATH.exists() and _GLOBAL_SETTINGS_PATH.is_file():
             _BACKUP_PATH.write_text(json.dumps(target, indent=2))
             logger.info("Backed up global settings to %s", _BACKUP_PATH)
 
-        # Deep-merge: replace cc-monitor hook events, preserve others
+        # 3. Merge: append our hook groups, preserving existing entries
         target_hooks = target.get("hooks", {})
         merged_count = 0
-        for event_name, matcher_groups in source_hooks.items():
+        skipped_count = 0
+
+        for event_name, new_groups in source_hooks.items():
+            our_cmds = set()
+            for g in new_groups:
+                for h in g.get("hooks", []):
+                    our_cmds.add(h.get("command", ""))
+
+            existing_groups = target_hooks.get(event_name, [])
+
+            already_there = False
+            for eg in existing_groups:
+                for eh in eg.get("hooks", []):
+                    if eh.get("command", "") in our_cmds:
+                        already_there = True
+                        break
+
+            if already_there:
+                skipped_count += 1
+                continue
+
+            target_hooks[event_name] = existing_groups + new_groups
             merged_count += 1
-            target_hooks[event_name] = matcher_groups
 
         target["hooks"] = target_hooks
         _save_global_settings(target)
 
+        # 4. Create marker file
+        _marker_file.touch()
+
         logger.info(
-            "Installed %d cc-monitor hook events into %s",
-            merged_count,
-            _GLOBAL_SETTINGS_PATH,
+            "Installed %d cc-monitor hook events into %s (skipped %d already present)",
+            merged_count, _GLOBAL_SETTINGS_PATH, skipped_count,
         )
 
         return JSONResponse({
             "status": "ok",
+            "mode": "native",
             "installed_events": merged_count,
+            "skipped_events": skipped_count,
             "target": str(_GLOBAL_SETTINGS_PATH),
             "backup": str(_BACKUP_PATH) if _BACKUP_PATH.exists() else None,
         })
@@ -449,30 +533,73 @@ def create_app(
     async def uninstall_hooks():
         """Remove cc-monitor hooks from the global Claude Code settings.
 
-        Only removes hook events that match the project's source hooks.
-        All other settings and hooks are preserved.
+        When running in Docker, returns the one-liner uninstall command.
+        When native, surgically removes only this server's hooks.
         """
+        if _IS_DOCKER:
+            # Clean up marker + scripts from shared volume
+            if _marker_file.exists():
+                _marker_file.unlink()
+            if _GLOBAL_HOOKS_DIR.is_dir():
+                import shutil
+                shutil.rmtree(_GLOBAL_HOOKS_DIR, ignore_errors=True)
+            return JSONResponse({
+                "status": "docker",
+                "mode": "docker",
+                "oneliner": (
+                    f"curl -skSL {_hooks_server_url}/static/uninstall-hooks.sh"
+                    f" | SERVER_URL={_hooks_server_url} bash"
+                ),
+                "message": "Running in Docker — run this command on the host machine.",
+            })
+
+        # --- Native uninstall below ---
         target = _load_global_settings()
         target_hooks = target.get("hooks", {})
 
         removed_count = 0
+        server_url = _hooks_server_url
+        hooks_dir_str = str(_GLOBAL_HOOKS_DIR)
+
         for event_name in _hook_event_names:
-            if event_name in target_hooks:
+            groups = target_hooks.get(event_name, [])
+            new_groups = []
+            for group in groups:
+                kept_hooks = []
+                for h in group.get("hooks", []):
+                    cmd = h.get("command", "")
+                    if (hooks_dir_str in cmd) and (server_url in cmd):
+                        removed_count += 1
+                    else:
+                        kept_hooks.append(h)
+                if kept_hooks:
+                    group["hooks"] = kept_hooks
+                    new_groups.append(group)
+
+            if new_groups:
+                target_hooks[event_name] = new_groups
+            elif event_name in target_hooks:
                 del target_hooks[event_name]
-                removed_count += 1
 
         target["hooks"] = target_hooks
         _save_global_settings(target)
 
+        if _marker_file.exists():
+            _marker_file.unlink()
+
+        if _GLOBAL_HOOKS_DIR.is_dir():
+            import shutil
+            shutil.rmtree(_GLOBAL_HOOKS_DIR, ignore_errors=True)
+
         logger.info(
-            "Uninstalled %d cc-monitor hook events from %s",
-            removed_count,
-            _GLOBAL_SETTINGS_PATH,
+            "Uninstalled %d cc-monitor hook entries from %s",
+            removed_count, _GLOBAL_SETTINGS_PATH,
         )
 
         return JSONResponse({
             "status": "ok",
-            "removed_events": removed_count,
+            "mode": "native",
+            "removed_entries": removed_count,
             "target": str(_GLOBAL_SETTINGS_PATH),
             "backup_available": _BACKUP_PATH.exists(),
         })
@@ -633,6 +760,8 @@ def main() -> None:
         token_ttl=args.token_ttl,
         cert_config=cert_config,
         lan_host=lan_host,
+        port=args.port,
+        use_tls=bool(ssl_kwargs),
     )
 
     # Start mDNS advertiser

@@ -492,20 +492,27 @@
             return;
         }
 
-        // ---- Local: server can write to local ~/.claude/ ----
-        console.log("[hooks] step 2 — LOCAL: server can write to ~/.claude/settings.json directly");
-        console.log("[hooks] step 3 — calling POST /api/install-hooks …");
+        // ---- Local: server may be native or Docker ----
+        console.log("[hooks] step 2 — LOCAL: calling POST /api/install-hooks …");
 
         try {
             const resp = await apiFetch("/api/install-hooks", { method: "POST" });
             const data = await resp.json();
-            console.log("[hooks] step 4 — response:", resp.status, data);
+            console.log("[hooks] step 3 — response:", resp.status, data);
 
             if (resp.ok) {
-                console.log("[hooks] ✓ installed %d events into %s", data.installed_events, data.target);
-                installFeedback.textContent = `✓ ${data.installed_events} hooks installed`;
-                installFeedback.className = "install-feedback success";
-                updateHookStatusUI(true);
+                if (data.mode === "docker") {
+                    // Docker server — can't write to host, show one-liner
+                    console.log("[hooks] Docker detected, showing one-liner");
+                    showInstallModal(data.oneliner);
+                    installFeedback.textContent = "";
+                    installFeedback.className = "install-feedback";
+                } else {
+                    console.log("[hooks] ✓ installed %d events into %s", data.installed_events, data.target);
+                    installFeedback.textContent = `✓ ${data.installed_events} hooks installed`;
+                    installFeedback.className = "install-feedback success";
+                    updateHookStatusUI(true);
+                }
             } else {
                 console.error("[hooks] ✗ install failed:", data.detail);
                 installFeedback.textContent = `✗ ${data.detail}`;
@@ -580,11 +587,10 @@
     btnUninstall.addEventListener("click", async () => {
         if (!isLocalhost()) {
             const serverUrl = getServerUrl();
-            const oneLiner = `curl -skSL ${serverUrl}/static/uninstall-hooks.sh | bash`;
+            const oneLiner = `curl -skSL ${serverUrl}/static/uninstall-hooks.sh | SERVER_URL=${serverUrl} bash`;
             showInstallModal(oneLiner);
             return;
         }
-        if (!confirm("Remove cc-monitor hooks from ~/.claude/settings.json?")) return;
         btnUninstall.disabled = true;
         settingsFeedback.textContent = "removing…";
         settingsFeedback.className = "settings-panel__feedback";
@@ -592,9 +598,16 @@
             const resp = await apiFetch("/api/uninstall-hooks", { method: "POST" });
             const data = await resp.json();
             if (resp.ok) {
-                settingsFeedback.textContent = `✓ ${data.removed_events} hooks removed`;
-                settingsFeedback.className = "settings-panel__feedback success";
-                updateHookStatusUI(false);
+                if (data.mode === "docker") {
+                    // Docker server — show one-liner
+                    showInstallModal(data.oneliner);
+                    settingsFeedback.textContent = "";
+                    settingsFeedback.className = "settings-panel__feedback";
+                } else {
+                    settingsFeedback.textContent = `✓ ${data.removed_entries} hooks removed`;
+                    settingsFeedback.className = "settings-panel__feedback success";
+                    updateHookStatusUI(false);
+                }
             } else {
                 settingsFeedback.textContent = `✗ ${data.detail}`;
                 settingsFeedback.className = "settings-panel__feedback error";

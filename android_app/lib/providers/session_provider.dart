@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../models/session.dart';
 import '../services/api_client.dart';
 import '../services/sse_client.dart';
+import '../services/secure_store.dart';
 
 class SessionProvider extends ChangeNotifier {
   final ApiClient _api;
@@ -15,25 +16,41 @@ class SessionProvider extends ChangeNotifier {
   bool _loading = true;
   bool _connected = false;
 
-  // Debug: visible SSE event log
-  final List<_SseEventEntry> _eventLog = [];
-  static const int _maxEventLog = 50;
+  // SSE event log
+  final List<SseEventEntry> _eventLog = [];
+  static const int _maxEventLog = 200;
+
+  // Log level filter
+  LogLevel _logLevel = LogLevel.info;
 
   List<Session> get active => List.unmodifiable(_active);
   List<Session> get complete => List.unmodifiable(_complete);
   List<Session> get archived => List.unmodifiable(_archived);
   bool get loading => _loading;
   bool get connected => _connected;
-  List<_SseEventEntry> get eventLog => List.unmodifiable(_eventLog);
+  LogLevel get logLevel => _logLevel;
+  List<SseEventEntry> get eventLog => List.unmodifiable(_eventLog);
+
+  /// Filtered event log (respects current log level).
+  List<SseEventEntry> get filteredEventLog =>
+      _eventLog.where((e) => _logLevel.shouldShow(e.level)).toList();
 
   SessionProvider(this._api);
 
-  void _logEvent(String type, String detail) {
-    _eventLog.insert(0, _SseEventEntry(DateTime.now(), type, detail));
+  Future<void> setLogLevel(LogLevel level) async {
+    _logLevel = level;
+    notifyListeners();
+  }
+
+  void _logEvent(String type, String detail, {LogLevel level = LogLevel.info}) {
+    _eventLog.insert(0, SseEventEntry(DateTime.now(), type, detail, level));
     if (_eventLog.length > _maxEventLog) {
       _eventLog.removeRange(_maxEventLog, _eventLog.length);
     }
-    notifyListeners();
+    // Only notify if the event is visible at current level
+    if (_logLevel.shouldShow(level)) {
+      notifyListeners();
+    }
   }
 
   Future<void> loadSessions() async {
@@ -66,7 +83,8 @@ class SessionProvider extends ChangeNotifier {
     _sseClient = SseClient(_api);
     _sseClient!.connect().listen((event) {
       final type = event['_event_type'] as String?;
-      _logEvent(type ?? 'unknown', _describeEvent(type, event));
+      final level = _eventLevel(type);
+      _logEvent(type ?? 'unknown', _describeEvent(type, event), level: level);
       if (type == 'state_update') {
         final session = Session.fromJson(event);
         _upsert(session);
@@ -74,11 +92,11 @@ class SessionProvider extends ChangeNotifier {
       } else if (type == 'heartbeat') {
         _connected = true;
       } else if (type == 'device_update') {
-        _logEvent('ACTION', 'device_update → checking token…');
+        _logEvent('ACTION', 'device_update → checking token…', level: LogLevel.info);
         _checkTokenValid();
       }
     }, onError: (_) {
-      _logEvent('ERROR', 'SSE stream error');
+      _logEvent('ERROR', 'SSE stream error', level: LogLevel.error);
       _connected = false;
       notifyListeners();
     });
@@ -107,6 +125,17 @@ class SessionProvider extends ChangeNotifier {
     });
   }
 
+  LogLevel _eventLevel(String? type) {
+    return switch (type) {
+      'heartbeat' => LogLevel.debug,
+      'state_update' => LogLevel.info,
+      'device_update' => LogLevel.info,
+      'pairing_request' => LogLevel.info,
+      'pairing_resolved' => LogLevel.info,
+      _ => LogLevel.info,
+    };
+  }
+
   String _describeEvent(String? type, Map<String, dynamic> event) {
     if (type == 'state_update') {
       return 'session: ${event['session_id']?.toString().substring(0, 8) ?? '?'} → ${event['state'] ?? '?'}';
@@ -120,15 +149,15 @@ class SessionProvider extends ChangeNotifier {
     try {
       final resp = await _api.get('/api/auth/token/info');
       if (resp.statusCode == 401) {
-        _logEvent('ACTION', 'token REVOKED (401) → disconnecting');
+        _logEvent('ACTION', 'token REVOKED (401) → disconnecting', level: LogLevel.warning);
         _connected = false;
         _clear();
         notifyListeners();
       } else {
-        _logEvent('ACTION', 'token valid (${resp.statusCode})');
+        _logEvent('ACTION', 'token valid (${resp.statusCode})', level: LogLevel.debug);
       }
     } catch (e) {
-      _logEvent('ACTION', 'token check failed: $e');
+      _logEvent('ACTION', 'token check failed: $e', level: LogLevel.error);
     }
   }
 
@@ -194,9 +223,10 @@ class SessionProvider extends ChangeNotifier {
   }
 }
 
-class _SseEventEntry {
+class SseEventEntry {
   final DateTime time;
   final String type;
   final String detail;
-  _SseEventEntry(this.time, this.type, this.detail);
+  final LogLevel level;
+  SseEventEntry(this.time, this.type, this.detail, this.level);
 }
