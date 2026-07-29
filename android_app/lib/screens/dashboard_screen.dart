@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../app_theme.dart';
 import '../providers/session_provider.dart';
 import '../models/session.dart';
 import '../services/secure_store.dart';
@@ -157,16 +158,7 @@ class _SessionCard extends StatelessWidget {
     required this.onTap,
   });
 
-  Color _stateColor() {
-    return switch (session.state) {
-      'working' => Colors.orange,
-      'pending_review' => Colors.blue,
-      'pending_approval' => Colors.red,
-      'idle' => Colors.grey,
-      'all_done' => Colors.green,
-      _ => Colors.grey,
-    };
-  }
+  Color _stateColor() => AppTheme.stateColor(session.state);
 
   @override
   Widget build(BuildContext context) {

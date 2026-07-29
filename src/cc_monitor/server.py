@@ -114,7 +114,6 @@ def _safe_home() -> Path:
 
 _GLOBAL_HOOKS_DIR = _safe_home() / ".cc-monitor" / "hooks"
 _GLOBAL_SETTINGS_PATH = _safe_home() / ".claude" / "settings.json"
-_BACKUP_PATH = _safe_home() / ".claude" / "settings.json.cc-monitor.bak"
 
 # Hook event definitions (kept in sync with install-hooks.sh)
 _HOOK_EVENT_DEFS: dict[str, dict[str, str]] = {
@@ -552,9 +551,11 @@ def create_app(
         target = _load_global_settings()
 
         # Create backup before modifying
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+        backup_path = _safe_home() / ".claude" / f"settings.json.cc-monitor.install.{ts}.bak"
         if _GLOBAL_SETTINGS_PATH.exists() and _GLOBAL_SETTINGS_PATH.is_file():
-            _BACKUP_PATH.write_text(json.dumps(target, indent=2))
-            logger.info("Backed up global settings to %s", _BACKUP_PATH)
+            backup_path.write_text(json.dumps(target, indent=2))
+            logger.info("Backed up global settings to %s", backup_path)
 
         # 3. Merge: append our hook groups, preserving existing entries
         target_hooks = target.get("hooks", {})
@@ -600,7 +601,7 @@ def create_app(
             "installed_events": merged_count,
             "skipped_events": skipped_count,
             "target": str(_GLOBAL_SETTINGS_PATH),
-            "backup": str(_BACKUP_PATH) if _BACKUP_PATH.exists() else None,
+            "backup": str(backup_path) if backup_path.exists() else None,
         })
 
     @app.post("/api/uninstall-hooks")
@@ -675,7 +676,9 @@ def create_app(
             "mode": "native",
             "removed_entries": removed_count,
             "target": str(_GLOBAL_SETTINGS_PATH),
-            "backup_available": _BACKUP_PATH.exists(),
+            "backup_available": any(
+                (_safe_home() / ".claude").glob("settings.json.cc-monitor.*.bak")
+            ),
         })
 
     # ---- Static files ----

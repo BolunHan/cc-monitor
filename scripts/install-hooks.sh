@@ -14,7 +14,7 @@ set -euo pipefail
 SERVER_URL="${SERVER_URL:-https://127.0.0.1:9876}"
 HOOKS_DIR="${HOME}/.cc-monitor/hooks"
 SETTINGS_FILE="${HOME}/.claude/settings.json"
-BACKUP_FILE="${HOME}/.claude/settings.json.cc-monitor.bak"
+BACKUP_FILE="${HOME}/.claude/settings.json.cc-monitor.install.$(date +%Y%m%d-%H%M%S).bak"
 
 # Generate a unique installation ID
 CC_MONITOR_UID=$(python3 -c "import uuid; print(uuid.uuid4().hex[:12])" 2>/dev/null || echo "cc$(date +%s)$(shuf -i 100-999 -n 1)")

@@ -17,7 +17,7 @@ SERVER_URL="${SERVER_URL:-}"
 CC_MONITOR_UID="${CC_MONITOR_UID:-}"
 HOOKS_DIR="${HOME}/.cc-monitor/hooks"
 SETTINGS_FILE="${HOME}/.claude/settings.json"
-BACKUP_FILE="${HOME}/.claude/settings.json.cc-monitor.bak"
+BACKUP_FILE="${HOME}/.claude/settings.json.cc-monitor.uninstall.$(date +%Y%m%d-%H%M%S).bak"
 
 echo "=== cc-monitor Hook Uninstaller ==="
 if [ -n "$SERVER_URL" ]; then echo "  Server: ${SERVER_URL}"; fi
