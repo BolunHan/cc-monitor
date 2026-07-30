@@ -196,9 +196,10 @@ object NotificationHelper {
         if (soundUri != null) {
             builder.setSound(soundUri)
         }
-        if (vibratePattern != null) {
-            builder.setVibration(vibratePattern)
-        }
+        var defaults = 0
+        if (soundUri != null) defaults = defaults or NotificationCompat.DEFAULT_SOUND
+        if (vibratePattern != null) defaults = defaults or NotificationCompat.DEFAULT_VIBRATE
+        if (defaults != 0) builder.setDefaults(defaults)
 
         NotificationManagerCompat.from(context).notify(alertId, builder.build())
     }
