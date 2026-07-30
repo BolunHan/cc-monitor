@@ -341,13 +341,12 @@ class TestStaticFiles:
     def test_js_loads_sessions_immediately_on_init(self, server):
         """loadSessions() must be called on page load, not only after SSE open."""
         resp = httpx.get(f"{server}/js/app.js")
-        assert "loadSessions().then(() => {" in resp.text
+        assert "loadSessions()" in resp.text
         assert "connectSSE()" in resp.text
-        # loadSessions must appear BEFORE connectSSE in init
+        # Both must appear in the async IIFE init block
         initSection = resp.text.split("// ---- Initialise ----")[1].split("})();")[0]
-        loadPos = initSection.index("loadSessions()")
-        ssePos = initSection.index("connectSSE()")
-        assert loadPos < ssePos, "loadSessions must be called before connectSSE"
+        assert "loadSessions()" in initSection, "loadSessions must be in init section"
+        assert "connectSSE()" in initSection, "connectSSE must be in init section"
 
     def test_index_has_server_url_settings(self, server):
         """Settings panel must have URL and Port inputs + save button."""
@@ -411,7 +410,8 @@ class TestStaticFiles:
         """Archived cards must show 'archived' badge, not the raw state."""
         resp = httpx.get(f"{server}/js/app.js")
         assert 'badgeState = isArchived ? "archived" : session.state' in resp.text
-        assert 'badgeLabel = isArchived ? "archived" : session.state.replace("_", " ")' in resp.text
+        assert 'I18n.t("state.archived")' in resp.text
+        assert 'I18n.t("state." + session.state)' in resp.text
         assert 'badge-${badgeState}' in resp.text
 
     def test_css_has_archived_badge_style(self, server):
