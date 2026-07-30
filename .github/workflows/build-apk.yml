@@ -30,6 +30,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          cache: true
 
       - name: Extract metadata
         id: meta
@@ -40,6 +41,10 @@ jobs:
             VERSION="dev-$(date +%Y%m%d-%H%M%S)"
           fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Flutter doctor
+        working-directory: android_app
+        run: flutter doctor -v
 
       - name: Install Flutter dependencies
         working-directory: android_app
