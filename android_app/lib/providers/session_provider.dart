@@ -230,9 +230,11 @@ class SessionProvider extends ChangeNotifier {
     // Detect state transitions for alert notifications
     final prev = _prevState[session.sessionId];
     final curr = session.state;
+    debugPrint('[cc-monitor:state] ${session.sessionId.substring(0,8)} $prev → $curr');
     if (prev != null && prev != curr) {
       if (curr == 'pending_approval' || curr == 'pending_review' || curr == 'all_done') {
         final name = _sessionName(session);
+        debugPrint('[cc-monitor:state] firing showAlert: $name → $curr');
         NotificationService.showAlert(sessionName: name, state: curr);
       }
     }

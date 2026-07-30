@@ -2,8 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import 'api_client.dart';
+
+const _tag = 'cc-monitor:sse';
 
 class SseClient {
   final ApiClient _api;
@@ -26,14 +29,20 @@ class SseClient {
 
     while (_cancelToken != null && !_cancelToken!.isCancelled) {
       try {
+        debugPrint('[$_tag] connecting SSE stream (backoff=${backoff}s)...');
         final response = await _api.dio.get(
           '/api/stream',
           options: Options(
             responseType: ResponseType.stream,
             headers: {'Accept': 'text/event-stream'},
+            connectTimeout: const Duration(seconds: 15),
+            receiveTimeout: const Duration(minutes: 5),
           ),
           cancelToken: _cancelToken,
         );
+
+        debugPrint('[$_tag] SSE connected, listening...');
+        backoff = 1;
 
         final stream = response.data.stream as Stream<List<int>>;
         String buffer = '';
@@ -49,14 +58,16 @@ class SseClient {
         }
 
         // Connection closed — reconnect
-        backoff = 1;
+        debugPrint('[$_tag] SSE stream closed, reconnecting...');
       } catch (e) {
         if (_cancelToken?.isCancelled ?? true) break;
-        // Reconnect with backoff
+        debugPrint('[$_tag] SSE error: $e');
+        debugPrint('[$_tag] reconnecting in ${backoff}s...');
         await Future.delayed(Duration(seconds: backoff));
         backoff = (backoff * 2).clamp(1, maxBackoff);
       }
     }
+    debugPrint('[$_tag] SSE listener stopped');
   }
 
   void _parseEvent(String block) {
