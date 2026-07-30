@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:cc_monitor_app/l10n/app_localizations.dart';
 import '../app_theme.dart';
 import '../providers/session_provider.dart';
 import '../models/session.dart';

@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:cc_monitor_app/l10n/app_localizations.dart';
 import 'connecting_screen.dart';
 
 class PairingScreen extends StatefulWidget {

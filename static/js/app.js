@@ -12,7 +12,7 @@ const I18n = (() => {
 
     async function load(lang) {
         try {
-            const resp = await fetch('./i18n/' + lang + '.json');
+            const resp = await fetch('./static/i18n/' + lang + '.json');
             if (!resp.ok) throw new Error('not found');
             _data = await resp.json();
             _lang = lang;

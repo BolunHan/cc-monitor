@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:cc_monitor_app/l10n/app_localizations.dart';
 import '../providers/pairing_provider.dart';
 import '../services/notification_service.dart';
 import '../services/secure_store.dart';
@@ -56,7 +56,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 leading: const Icon(Icons.key),
                 title: Text(l10n.settingsTokenStatus),
                 subtitle: Text(pp.tokenExpiringSoon
-                    ? l10n.settingsTokenExpires(pp.tokenExpiresAt)
+                    ? l10n.settingsTokenExpires(pp.tokenExpiresAt.toString())
                     : l10n.settingsTokenValid),
                 trailing: pp.tokenExpiringSoon
                     ? ElevatedButton(
