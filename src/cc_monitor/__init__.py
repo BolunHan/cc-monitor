@@ -1,3 +1,3 @@
 """Monitor Claude Code working status via hooks."""
 
-__version__ = "0.5.0.alpha2"
+__version__ = "0.5.1"
