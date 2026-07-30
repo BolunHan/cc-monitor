@@ -44,7 +44,10 @@ class SessionProvider extends ChangeNotifier {
   List<SseEventEntry> get filteredEventLog =>
       _eventLog.where((e) => _logLevel.shouldShow(e.level)).toList();
 
-  SessionProvider(this._api);
+  SessionProvider(this._api) {
+    // Show sticky notification immediately (even before SSE connects)
+    _updateStickyNotification();
+  }
 
   Future<void> setLogLevel(LogLevel level) async {
     _logLevel = level;

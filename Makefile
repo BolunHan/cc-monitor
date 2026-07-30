@@ -89,13 +89,13 @@ deploy: restart-server deploy-apk
 
 # ---- Docker ----
 
-DOCKER_PROXY := http://192.168.3.25:7780
+# Set via environment: export DOCKER_PROXY=http://your-proxy:port
+DOCKER_PROXY ?=
 
 .PHONY: docker-build
 docker-build:
 	$(DOCKER) build \
-		--build-arg HTTP_PROXY=$(DOCKER_PROXY) \
-		--build-arg HTTPS_PROXY=$(DOCKER_PROXY) \
+		$(if $(DOCKER_PROXY),--build-arg HTTP_PROXY=$(DOCKER_PROXY) --build-arg HTTPS_PROXY=$(DOCKER_PROXY)) \
 		-t cc-monitor:latest .
 
 .PHONY: docker-up
