@@ -43,31 +43,52 @@ object NotificationHelper {
         }
         nm.createNotificationChannel(ongoingChannel)
 
-        // Alert channel — HIGH importance, sound + vibration on event push
-        val alertChannel = NotificationChannel(
+        // Alert channel — created with current sound/vibrate settings
+        createAlertChannel(nm)
+    }
+
+    private fun createAlertChannel(nm: NotificationManager) {
+        // Delete old channel so new settings take effect
+        nm.deleteNotificationChannel(CHANNEL_ALERT)
+
+        val channel = NotificationChannel(
             CHANNEL_ALERT,
             "Session Alerts",
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = "State transition alerts"
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-            enableVibration(true)
-            vibrationPattern = longArrayOf(0, 200, 100, 200)
-            val attrs = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build()
-            setSound(
-                RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
-                attrs
-            )
+            setShowBadge(true)
+
+            if (soundEnabled) {
+                val attrs = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+                setSound(
+                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
+                    attrs
+                )
+            } else {
+                setSound(null, null)
+            }
+
+            if (vibrateEnabled) {
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 200, 100, 200)
+            } else {
+                enableVibration(false)
+                vibrationPattern = null
+            }
         }
-        nm.createNotificationChannel(alertChannel)
+        nm.createNotificationChannel(channel)
     }
 
-    fun updateSoundVibrate(sound: Boolean, vibrate: Boolean) {
+    fun updateSoundVibrate(context: Context, sound: Boolean, vibrate: Boolean) {
         soundEnabled = sound
         vibrateEnabled = vibrate
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        createAlertChannel(nm)
     }
 
     fun buildOngoingNotification(
@@ -129,6 +150,7 @@ object NotificationHelper {
             .setContentIntent(contentIntent)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
             .build()
     }
 
@@ -165,11 +187,9 @@ object NotificationHelper {
             else -> "State Change" to "Session is now $state"
         }
 
-        val soundUri = if (soundEnabled) {
-            RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-        } else null
-
-        val vibratePattern = if (vibrateEnabled) longArrayOf(0, 200, 100, 200) else null
+        // Sound and vibration are controlled at the channel level.
+        // When the user toggles settings, the channel is recreated
+        // with the appropriate sound/vibration configuration.
 
         val alertId = (System.currentTimeMillis() % 100000).toInt()
 
@@ -183,24 +203,18 @@ object NotificationHelper {
                 (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
         )
 
-        val builder = NotificationCompat.Builder(context, CHANNEL_ALERT)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle(title)
-            .setContentText("$sessionName · $body")
-            .setContentIntent(contentIntent)
-            .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-
-        if (soundUri != null) {
-            builder.setSound(soundUri)
-        }
-        var defaults = 0
-        if (soundUri != null) defaults = defaults or NotificationCompat.DEFAULT_SOUND
-        if (vibratePattern != null) defaults = defaults or NotificationCompat.DEFAULT_VIBRATE
-        if (defaults != 0) builder.setDefaults(defaults)
-
-        NotificationManagerCompat.from(context).notify(alertId, builder.build())
+        NotificationManagerCompat.from(context).notify(
+            alertId,
+            NotificationCompat.Builder(context, CHANNEL_ALERT)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle(title)
+                .setContentText("$sessionName · $body")
+                .setContentIntent(contentIntent)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .build()
+        )
     }
 }

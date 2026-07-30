@@ -41,8 +41,8 @@ class NotificationForegroundService : Service() {
             }
         }
 
-        fun updateSettings(sound: Boolean, vibrate: Boolean) {
-            NotificationHelper.updateSoundVibrate(sound, vibrate)
+        fun updateSettings(context: android.content.Context, sound: Boolean, vibrate: Boolean) {
+            NotificationHelper.updateSoundVibrate(context, sound, vibrate)
         }
     }
 

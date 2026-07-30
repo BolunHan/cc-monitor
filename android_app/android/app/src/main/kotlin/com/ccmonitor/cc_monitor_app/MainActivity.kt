@@ -91,7 +91,7 @@ class MainActivity : FlutterActivity() {
                 "updateSettings" -> {
                     val sound = call.argument<Boolean>("sound") ?: true
                     val vibrate = call.argument<Boolean>("vibrate") ?: true
-                    NotificationForegroundService.updateSettings(sound, vibrate)
+                    NotificationForegroundService.updateSettings(this, sound, vibrate)
                     result.success(true)
                 }
 

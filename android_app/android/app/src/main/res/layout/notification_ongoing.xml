@@ -3,6 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
+    android:background="#1a1d27"
     android:padding="8dp">
 
     <TextView
@@ -19,7 +20,7 @@
         android:id="@+id/notify_subtitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textColor="@android:color/darker_gray"
+        android:textColor="#8b8fa3"
         android:textSize="12sp"
         android:maxLines="1"
         android:ellipsize="end"
