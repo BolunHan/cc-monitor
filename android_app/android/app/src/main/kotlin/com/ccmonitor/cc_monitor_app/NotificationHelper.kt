@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.net.Uri
@@ -105,12 +106,22 @@ object NotificationHelper {
     ): Notification {
         val remoteViews = RemoteViews(context.packageName, R.layout.notification_ongoing)
 
+        // Detect system dark/light theme
+        val isNight = (context.resources.configuration.uiMode and
+                android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+                android.content.res.Configuration.UI_MODE_NIGHT_YES
+
+        val titleColor = if (isNight) 0xFFFFFFFF.toInt() else 0xFF1a1d27.toInt()
+        val subtitleColor = if (isNight) 0xFF8b8fa3.toInt() else 0xFF6b7280.toInt()
+
         val title = buildTitle(working, approval, completed)
         remoteViews.setTextViewText(R.id.notify_title, title)
+        remoteViews.setTextColor(R.id.notify_title, titleColor)
         remoteViews.setTextViewText(
             R.id.notify_subtitle,
             if (serverLabel.isNotEmpty()) "Connected to: $serverLabel" else "No server connected"
         )
+        remoteViews.setTextColor(R.id.notify_subtitle, subtitleColor)
 
         // Working button
         remoteViews.setTextViewText(R.id.btn_working, "$working working")
