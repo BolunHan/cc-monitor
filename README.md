@@ -87,13 +87,13 @@ Powerful zero-install monitoring — works from any browser.
 
 ### What you can do
 
-| Action | How |
-|--------|-----|
-| See all sessions | Active / Complete / Archived tabs with live state breakdown |
-| Get notified | Browser push notifications on idle, pending review, pending approval |
-| Pair devices | QR code + 6-digit approval flow for the Android app |
-| Manage hooks | One-click install / uninstall / check from the Settings panel |
-| Switch language | EN / 中文 toggle in the top bar |
+| Action           | How                                                                  |
+| ---------------- | -------------------------------------------------------------------- |
+| See all sessions | Active / Complete / Archived tabs with live state breakdown          |
+| Get notified     | Browser push notifications on idle, pending review, pending approval |
+| Pair devices     | QR code + 6-digit approval flow for the Android app                  |
+| Manage hooks     | One-click install / uninstall / check from the Settings panel        |
+| Switch language  | EN / 中文 toggle in the top bar                                      |
 
 ---
 
@@ -136,13 +136,13 @@ Open **Settings** (⚙) from the dashboard. You'll see:
 
 ## Session States — Your Traffic Light
 
-| Light | State | What it means | Your move |
-|-------|-------|---------------|-----------|
-| 🔵 | `working` | Claude is coding, running tools, generating output | Go grab coffee ☕ |
-| 🟢 | `pending_review` | Claude finished — output ready for you | Review the results |
-| 🟡 | `pending_approval` | Claude needs permission (tool approval, permission prompt) | Approve or deny |
-| ⚪ | `idle` | Nothing happening — session dormant | Send the next prompt |
-| ✅ | `all_done` | Session ended | Archive and move on |
+| Light | State              | What it means                                              | Your move            |
+| ----- | ------------------ | ---------------------------------------------------------- | -------------------- |
+| 🔵     | `working`          | Claude is coding, running tools, generating output         | Go grab coffee ☕     |
+| 🟢     | `pending_review`   | Claude finished — output ready for you                     | Review the results   |
+| 🟡     | `pending_approval` | Claude needs permission (tool approval, permission prompt) | Approve or deny      |
+| ⚪     | `idle`             | Nothing happening — session dormant                        | Send the next prompt |
+| ✅     | `all_done`         | Session ended                                              | Archive and move on  |
 
 **You get notified instantly** via browser push and/or Android notification on every state change that needs your attention.
 
@@ -170,25 +170,25 @@ For the full technical reference, see [API Reference](#api-reference) and [Archi
 
 ## API Reference
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| `POST` | `/api/event` | Yes | Submit a hook event |
-| `GET` | `/api/status` | Yes | All sessions |
-| `GET` | `/api/status/<id>` | Yes | Single session |
-| `GET` | `/api/stream` | Token¹ | SSE stream (state_update + heartbeat every 3s) |
-| `GET` | `/api/version` | No | Server version |
-| `GET` | `/api/hooks-status` | Yes | Hook installation status |
-| `POST` | `/api/install-hooks` | Yes² | Install hooks globally |
-| `POST` | `/api/uninstall-hooks` | Yes² | Remove cc-monitor hooks |
-| `POST` | `/api/session/<id>/archive` | Yes | Archive session |
-| `POST` | `/api/session/<id>/unarchive` | Yes | Unarchive session |
-| `POST` | `/api/session/<id>/complete` | Yes | Mark session done |
-| `GET` | `/api/auth/pair/qr` | No | QR pairing payload |
-| `POST` | `/api/auth/pair/request` | No | Submit pairing request |
-| `GET` | `/api/auth/pair/request/<id>/status` | No | Poll request status |
-| `POST` | `/api/auth/pair/request/<id>/approve` | No | Approve (localhost only) |
-| `DELETE` | `/api/auth/devices/<id>` | Yes | Revoke device |
-| `GET` | `/api/auth/devices` | Yes | List paired devices |
+| Method   | Path                                  | Auth   | Description                                    |
+| -------- | ------------------------------------- | ------ | ---------------------------------------------- |
+| `POST`   | `/api/event`                          | Yes    | Submit a hook event                            |
+| `GET`    | `/api/status`                         | Yes    | All sessions                                   |
+| `GET`    | `/api/status/<id>`                    | Yes    | Single session                                 |
+| `GET`    | `/api/stream`                         | Token¹ | SSE stream (state_update + heartbeat every 3s) |
+| `GET`    | `/api/version`                        | No     | Server version                                 |
+| `GET`    | `/api/hooks-status`                   | Yes    | Hook installation status                       |
+| `POST`   | `/api/install-hooks`                  | Yes²   | Install hooks globally                         |
+| `POST`   | `/api/uninstall-hooks`                | Yes²   | Remove cc-monitor hooks                        |
+| `POST`   | `/api/session/<id>/archive`           | Yes    | Archive session                                |
+| `POST`   | `/api/session/<id>/unarchive`         | Yes    | Unarchive session                              |
+| `POST`   | `/api/session/<id>/complete`          | Yes    | Mark session done                              |
+| `GET`    | `/api/auth/pair/qr`                   | No     | QR pairing payload                             |
+| `POST`   | `/api/auth/pair/request`              | No     | Submit pairing request                         |
+| `GET`    | `/api/auth/pair/request/<id>/status`  | No     | Poll request status                            |
+| `POST`   | `/api/auth/pair/request/<id>/approve` | No     | Approve (localhost only)                       |
+| `DELETE` | `/api/auth/devices/<id>`              | Yes    | Revoke device                                  |
+| `GET`    | `/api/auth/devices`                   | Yes    | List paired devices                            |
 
 ¹ Token via `?token=` query parameter (EventSource limitation)  
 ² Requires localhost access
@@ -299,13 +299,13 @@ curl -skSL https://<服务器IP>:9876/static/install-hooks.sh | SERVER_URL=https
 
 ### 功能一览
 
-| 功能 | 操作方式 |
-|--------|-----|
-| 查看所有会话 | Active / Complete / Archived 标签页，含实时状态统计 |
-| 接收通知 | 浏览器推送通知（idle、pending review、pending approval） |
-| 配对设备 | 二维码 + 6 位数字审批流程（供 Android 应用使用） |
-| 管理 Hook | 设置面板中一键安装 / 卸载 / 检查 |
-| 切换语言 | 顶部 EN / 中文 切换按钮 |
+| 功能         | 操作方式                                                 |
+| ------------ | -------------------------------------------------------- |
+| 查看所有会话 | Active / Complete / Archived 标签页，含实时状态统计      |
+| 接收通知     | 浏览器推送通知（idle、pending review、pending approval） |
+| 配对设备     | 二维码 + 6 位数字审批流程（供 Android 应用使用）         |
+| 管理 Hook    | 设置面板中一键安装 / 卸载 / 检查                         |
+| 切换语言     | 顶部 EN / 中文 切换按钮                                  |
 
 ---
 
@@ -348,13 +348,13 @@ adb install cc-monitor-app-release.apk
 
 ## 会话状态 — 你的红绿灯
 
-| 灯光 | 状态 | 含义 | 你该做什么 |
-|-------|-------|------|-----------|
-| 🔵 | `working` | Claude 正在写代码、执行工具、生成输出 | 去喝杯咖啡 ☕ |
-| 🟢 | `pending_review` | Claude 完成 — 输出等待审查 | 检查结果 |
-| 🟡 | `pending_approval` | Claude 需要权限（工具审批、权限提示） | 批准或拒绝 |
-| ⚪ | `idle` | 无活动 — 会话休眠 | 发送下一条提示 |
-| ✅ | `all_done` | 会话已结束 | 归档，继续下一个任务 |
+| 灯光 | 状态               | 含义                                  | 你该做什么           |
+| ---- | ------------------ | ------------------------------------- | -------------------- |
+| 🔵    | `working`          | Claude 正在写代码、执行工具、生成输出 | 去喝杯咖啡 ☕         |
+| 🟢    | `pending_review`   | Claude 完成 — 输出等待审查            | 检查结果             |
+| 🟡    | `pending_approval` | Claude 需要权限（工具审批、权限提示） | 批准或拒绝           |
+| ⚪    | `idle`             | 无活动 — 会话休眠                     | 发送下一条提示       |
+| ✅    | `all_done`         | 会话已结束                            | 归档，继续下一个任务 |
 
 **每次需要你关注的状态变化，你都会立即通过浏览器推送和/或 Android 通知收到提醒。**
 
@@ -382,25 +382,25 @@ Claude Code                    cc-monitor                  Web 仪表盘
 
 ## API 接口
 
-| 方法 | 路径 | 说明 |
-|--------|------|------|
-| `POST` | `/api/event` | 提交 hook 事件 |
-| `GET` | `/api/status` | 所有会话状态 |
-| `GET` | `/api/status/<id>` | 单个会话状态 |
-| `GET` | `/api/stream` | SSE 实时推送（state_update + 每 3s heartbeat） |
-| `GET` | `/api/version` | 服务器版本 |
-| `GET` | `/api/hooks-status` | 检查 hook 安装状态 |
-| `POST` | `/api/install-hooks` | 安装 hook 到全局配置 |
-| `POST` | `/api/uninstall-hooks` | 移除 cc-monitor hook |
-| `POST` | `/api/session/<id>/archive` | 归档会话 |
-| `POST` | `/api/session/<id>/unarchive` | 取消归档 |
-| `POST` | `/api/session/<id>/complete` | 标记会话完成 |
-| `GET` | `/api/auth/pair/qr` | 二维码配对数据 |
-| `POST` | `/api/auth/pair/request` | 提交配对请求 |
-| `GET` | `/api/auth/pair/request/<id>/status` | 查询请求状态 |
-| `POST` | `/api/auth/pair/request/<id>/approve` | 批准配对（仅限 localhost） |
-| `DELETE` | `/api/auth/devices/<id>` | 撤销设备 |
-| `GET` | `/api/auth/devices` | 列出已配对设备 |
+| 方法     | 路径                                  | 说明                                           |
+| -------- | ------------------------------------- | ---------------------------------------------- |
+| `POST`   | `/api/event`                          | 提交 hook 事件                                 |
+| `GET`    | `/api/status`                         | 所有会话状态                                   |
+| `GET`    | `/api/status/<id>`                    | 单个会话状态                                   |
+| `GET`    | `/api/stream`                         | SSE 实时推送（state_update + 每 3s heartbeat） |
+| `GET`    | `/api/version`                        | 服务器版本                                     |
+| `GET`    | `/api/hooks-status`                   | 检查 hook 安装状态                             |
+| `POST`   | `/api/install-hooks`                  | 安装 hook 到全局配置                           |
+| `POST`   | `/api/uninstall-hooks`                | 移除 cc-monitor hook                           |
+| `POST`   | `/api/session/<id>/archive`           | 归档会话                                       |
+| `POST`   | `/api/session/<id>/unarchive`         | 取消归档                                       |
+| `POST`   | `/api/session/<id>/complete`          | 标记会话完成                                   |
+| `GET`    | `/api/auth/pair/qr`                   | 二维码配对数据                                 |
+| `POST`   | `/api/auth/pair/request`              | 提交配对请求                                   |
+| `GET`    | `/api/auth/pair/request/<id>/status`  | 查询请求状态                                   |
+| `POST`   | `/api/auth/pair/request/<id>/approve` | 批准配对（仅限 localhost）                     |
+| `DELETE` | `/api/auth/devices/<id>`              | 撤销设备                                       |
+| `GET`    | `/api/auth/devices`                   | 列出已配对设备                                 |
 
 ---
 
