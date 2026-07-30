@@ -38,7 +38,6 @@ const I18n = (() => {
             if (k) el.textContent = t(k);
         });
         // Re-render dynamic content tied to data
-        loadVersion();
         loadSessionsView();
     }
 
@@ -1135,8 +1134,8 @@ function loadSessionsView() {
         I18n.renderAll();
         loadVersion();
         checkHooksStatus();
+        connectSSE();
         await loadSessions();
         if (lastHeartbeat === 0) setConnected(true);
-        connectSSE();
     })();
 })();
