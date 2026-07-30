@@ -90,7 +90,7 @@ class NotificationService {
 
     final parts = <String>[];
     if (working > 0) parts.add('$working working');
-    if (pendingApproval > 0) parts.add('$pendingApproval need approval');
+    if (pendingApproval > 0) parts.add('$pendingApproval pending');
     if (pendingReview > 0) parts.add('$pendingReview completed');
     final title = parts.isNotEmpty
         ? 'cc-monitor: ${parts.join(' | ')}'
@@ -114,6 +114,7 @@ class NotificationService {
           showWhen: false,
           importance: Importance.low,
           priority: Priority.low,
+          color: const Color(0xFF22C55E),
           actions: _buildActions(working, pendingApproval, pendingReview),
         ),
       ),
@@ -125,30 +126,27 @@ class NotificationService {
     int pendingApproval,
     int pendingReview,
   ) {
-    // Need a PendingIntent that opens the app.
-    // flutter_local_notifications uses a broadcast receiver for actions —
-    // we just need any action that brings the user back to the app.
-    // The plugin handles the intent internally when onDidReceiveNotificationResponse
-    // fires with the action id.
     return [
       AndroidNotificationAction(
         'action_working',
         '$working working',
         showsUserInterface: true,
-        // No icon — the text itself is the button
         cancelNotification: false,
+        titleColor: const Color(0xFF58A6FF),
       ),
       AndroidNotificationAction(
         'action_approval',
-        '$pendingApproval pending approval',
+        '$pendingApproval pending',
         showsUserInterface: true,
         cancelNotification: false,
+        titleColor: const Color(0xFFD97706),
       ),
       AndroidNotificationAction(
         'action_completed',
         '$pendingReview completed',
         showsUserInterface: true,
         cancelNotification: false,
+        titleColor: const Color(0xFF22C55E),
       ),
     ];
   }
