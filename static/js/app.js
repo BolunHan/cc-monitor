@@ -70,6 +70,7 @@ function loadSessionsView() {
     const STORAGE_KEY_URL = "cc-monitor-server-url";
     const STORAGE_KEY_TOKEN = "cc-monitor-auth-token";
     const STORAGE_KEY_CLIENT_ID = "cc-monitor-client-id";
+    const DEFAULT_PORT = "9876";
 
     function getClientId() {
         let cid = localStorage.getItem(STORAGE_KEY_CLIENT_ID);
@@ -89,12 +90,24 @@ function loadSessionsView() {
 
     function getServerUrl() {
         const stored = localStorage.getItem(STORAGE_KEY_URL);
-        if (stored) return ensureProtocol(stored).replace(/\/+$/, "");
+        if (stored) {
+            let url = ensureProtocol(stored).replace(/\/+$/, "");
+            // If no port in the URL, add default
+            const u = new URL(url);
+            if (!u.port) url = u.protocol + "//" + u.hostname + ":" + DEFAULT_PORT;
+            return url;
+        }
         return window.location.origin;
     }
 
     function setServerUrl(url) {
-        localStorage.setItem(STORAGE_KEY_URL, ensureProtocol(url).replace(/\/+$/, ""));
+        let fixed = ensureProtocol(url).replace(/\/+$/, "");
+        // If no port in the URL, add default
+        try {
+            const u = new URL(fixed);
+            if (!u.port) fixed = u.protocol + "//" + u.hostname + ":" + DEFAULT_PORT;
+        } catch (_) {}
+        localStorage.setItem(STORAGE_KEY_URL, fixed);
     }
 
     function apiUrl(path) {
