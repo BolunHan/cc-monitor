@@ -70,6 +70,7 @@ function loadSessionsView() {
     const STORAGE_KEY_URL = "cc-monitor-server-url";
     const STORAGE_KEY_TOKEN = "cc-monitor-auth-token";
     const STORAGE_KEY_CLIENT_ID = "cc-monitor-client-id";
+    const DEFAULT_PORT = "9876";
 
     function getClientId() {
         let cid = localStorage.getItem(STORAGE_KEY_CLIENT_ID);
@@ -89,12 +90,24 @@ function loadSessionsView() {
 
     function getServerUrl() {
         const stored = localStorage.getItem(STORAGE_KEY_URL);
-        if (stored) return ensureProtocol(stored).replace(/\/+$/, "");
+        if (stored) {
+            let url = ensureProtocol(stored).replace(/\/+$/, "");
+            // If no port in the URL, add default
+            const u = new URL(url);
+            if (!u.port) url = u.protocol + "//" + u.hostname + ":" + DEFAULT_PORT;
+            return url;
+        }
         return window.location.origin;
     }
 
     function setServerUrl(url) {
-        localStorage.setItem(STORAGE_KEY_URL, ensureProtocol(url).replace(/\/+$/, ""));
+        let fixed = ensureProtocol(url).replace(/\/+$/, "");
+        // If no port in the URL, add default
+        try {
+            const u = new URL(fixed);
+            if (!u.port) fixed = u.protocol + "//" + u.hostname + ":" + DEFAULT_PORT;
+        } catch (_) {}
+        localStorage.setItem(STORAGE_KEY_URL, fixed);
     }
 
     function apiUrl(path) {
@@ -456,10 +469,12 @@ function loadSessionsView() {
         // Pairing/device push events — refresh relevant sections in real time
         es.addEventListener("pairing_request", () => {
             pollPairingRequests();
+            updatePairIndicator();
         });
 
         es.addEventListener("pairing_resolved", () => {
             pollPairingRequests();
+            updatePairIndicator();
         });
 
         es.addEventListener("device_update", () => {
@@ -1126,10 +1141,40 @@ function loadSessionsView() {
         I18n.setLang(langSwitch.value);
     });
 
+    // ---- Pairing indicator (background poll) ----
+
+    const pairDot = document.getElementById("pair-dot");
+
+    async function updatePairIndicator() {
+        try {
+            const resp = await apiFetch("/api/auth/pair/requests");
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const count = (data.requests || []).length;
+            if (pairDot) pairDot.classList.toggle("hidden", count === 0);
+        } catch (_) {}
+    }
+
+    let _pairIndicatorTimer = null;
+
+    function startPairIndicator() {
+        updatePairIndicator();
+        _pairIndicatorTimer = setInterval(updatePairIndicator, 15000);
+    }
+
     // ---- Initialise ----
 
     requestNotificationPermission();
     populateSettingsInputs();
+
+    // Show cert note when dashboard is hosted remotely (not localhost)
+    if (!isLocalhost()) {
+        const certNote = document.getElementById("settings-cert-note");
+        if (certNote) certNote.style.display = "block";
+    }
+
+    // Start background pairing poll for the indicator dot
+    startPairIndicator();
 
     // Load i18n first, then bootstrap
     (async () => {

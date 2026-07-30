@@ -20,6 +20,7 @@
   "settings.server_url": "Server URL",
   "settings.port": "Port",
   "settings.save": "Save & Reconnect",
+  "settings.cert_note": "🔐 The local server uses a self-signed TLS certificate. If connection fails, first open your server URL in a new tab and accept the certificate (Advanced → Proceed to site), then return here.",
   "settings.saved": "✓ saved, reconnecting…",
   "settings.url_required": "✗ Server URL is required",
   "settings.hook_status": "Global hooks",
