@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import 'app_theme.dart';
 import 'services/api_client.dart';
@@ -67,6 +69,13 @@ class CCMonitorApp extends StatelessWidget {
         themeMode: ThemeMode.system,
         theme: AppTheme.light,
         darkTheme: AppTheme.dark,
+        supportedLocales: const [Locale('en'), Locale('zh')],
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
         home: _StartupGate(
           apiClient: apiClient,
         ),
