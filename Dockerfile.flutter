@@ -66,8 +66,8 @@ RUN if [ -n "$HTTP_PROXY" ]; then \
     && yes | sdkmanager $SDK_FLAGS --licenses > /dev/null \
     && sdkmanager $SDK_FLAGS --install \
          "platform-tools" \
-         "build-tools;34.0.0" \
-         "platforms;android-34"
+         "build-tools;36.0.0" \
+         "platforms;android-36"
 
 # ------------------------------------------------------------------
 # Gradle proxy (written at build time, used at run time if env var is set)
@@ -92,9 +92,9 @@ PREFLIGHT
 RUN chmod +x /usr/local/bin/preflight
 
 # ------------------------------------------------------------------
-# Flutter SDK
+# Flutter SDK (pinned to match GitHub Actions runner)
 # ------------------------------------------------------------------
-RUN git clone https://github.com/flutter/flutter.git -b stable /opt/flutter --depth 1
+RUN git clone https://github.com/flutter/flutter.git -b 3.44.8 /opt/flutter --depth 1
 ENV PATH="/opt/flutter/bin:$PATH"
 
 RUN flutter config --no-analytics \
