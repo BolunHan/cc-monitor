@@ -17,6 +17,7 @@ class NotificationService {
   static bool _initialized = false;
   static bool _soundEnabled = true;
   static bool _vibrateEnabled = true;
+  static String _serverLabel = '';
 
   static bool get soundEnabled => _soundEnabled;
   static bool get vibrateEnabled => _vibrateEnabled;
@@ -44,12 +45,10 @@ class NotificationService {
       onDidReceiveNotificationResponse: _onTap,
     );
 
-    // Create channels
     final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
 
     if (androidPlugin != null) {
-      // Sticky channel — min importance, no sound, persistent
       await androidPlugin.createNotificationChannel(
         const AndroidNotificationChannel(
           _channelStickyId,
@@ -61,7 +60,6 @@ class NotificationService {
         ),
       );
 
-      // Alert channel — high importance, sound + vibration (configurable)
       await androidPlugin.createNotificationChannel(
         AndroidNotificationChannel(
           _channelAlertId,
@@ -81,25 +79,31 @@ class NotificationService {
     _vibrateEnabled = vibrate;
   }
 
-  /// Update the sticky notification with current session counts.
-  /// Shows a traffic-light style indicator: 🔵working 🟡approval 🟢review
+  /// Update the ongoing notification with session counts + server info.
   static Future<void> updateSticky({
     required int working,
     required int pendingApproval,
     required int pendingReview,
+    String serverLabel = '',
   }) async {
-    final total = working + pendingApproval + pendingReview;
-    final parts = <String>[];
-    if (working > 0) parts.add('🔵$working');
-    if (pendingApproval > 0) parts.add('🟡$pendingApproval');
-    if (pendingReview > 0) parts.add('🟢$pendingReview');
+    _serverLabel = serverLabel;
 
-    final body = parts.isNotEmpty ? parts.join('  ') : 'No active sessions';
+    final parts = <String>[];
+    if (working > 0) parts.add('$working working');
+    if (pendingApproval > 0) parts.add('$pendingApproval need approval');
+    if (pendingReview > 0) parts.add('$pendingReview completed');
+    final title = parts.isNotEmpty
+        ? 'cc-monitor: ${parts.join(' | ')}'
+        : 'cc-monitor';
+
+    final subtitle = serverLabel.isNotEmpty
+        ? 'Connected to: $serverLabel'
+        : 'No server connected';
 
     await _plugin.show(
       _stickyNotificationId,
-      'cc-monitor · $total active',
-      body,
+      title,
+      subtitle,
       NotificationDetails(
         android: AndroidNotificationDetails(
           _channelStickyId,
@@ -110,9 +114,43 @@ class NotificationService {
           showWhen: false,
           importance: Importance.low,
           priority: Priority.low,
+          actions: _buildActions(working, pendingApproval, pendingReview),
         ),
       ),
     );
+  }
+
+  static List<AndroidNotificationAction> _buildActions(
+    int working,
+    int pendingApproval,
+    int pendingReview,
+  ) {
+    // Need a PendingIntent that opens the app.
+    // flutter_local_notifications uses a broadcast receiver for actions —
+    // we just need any action that brings the user back to the app.
+    // The plugin handles the intent internally when onDidReceiveNotificationResponse
+    // fires with the action id.
+    return [
+      AndroidNotificationAction(
+        'action_working',
+        '$working working',
+        showsUserInterface: true,
+        // No icon — the text itself is the button
+        cancelNotification: false,
+      ),
+      AndroidNotificationAction(
+        'action_approval',
+        '$pendingApproval pending approval',
+        showsUserInterface: true,
+        cancelNotification: false,
+      ),
+      AndroidNotificationAction(
+        'action_completed',
+        '$pendingReview completed',
+        showsUserInterface: true,
+        cancelNotification: false,
+      ),
+    ];
   }
 
   /// Remove the sticky notification.
@@ -147,7 +185,6 @@ class NotificationService {
           priority: Priority.high,
           playSound: _soundEnabled,
           enableVibration: _vibrateEnabled,
-          sound: _soundEnabled ? null : null,  // null = default system sound
           vibrationPattern: _vibrateEnabled
               ? Int64List.fromList([0, 300, 200, 300])
               : null,
@@ -156,7 +193,5 @@ class NotificationService {
     );
   }
 
-  static void _onTap(NotificationResponse response) {
-    // Navigate to app on notification tap — handled by Flutter
-  }
+  static void _onTap(NotificationResponse response) {}
 }

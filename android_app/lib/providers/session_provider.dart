@@ -45,8 +45,17 @@ class SessionProvider extends ChangeNotifier {
       _eventLog.where((e) => _logLevel.shouldShow(e.level)).toList();
 
   SessionProvider(this._api) {
-    // Show sticky notification immediately (even before SSE connects)
     _updateStickyNotification();
+  }
+
+  /// Call after server is configured — updates the notification subtitle.
+  void notifyServerConnected(String host, int port) {
+    NotificationService.updateSticky(
+      working: _notifyWorking,
+      pendingApproval: _notifyApproval,
+      pendingReview: _notifyReview,
+      serverLabel: '$host:$port',
+    );
   }
 
   Future<void> setLogLevel(LogLevel level) async {
@@ -92,6 +101,7 @@ class SessionProvider extends ChangeNotifier {
 
   void connectSse() {
     if (!_api.isConfigured) return;
+    _refreshServerLabel();
     _sseClient = SseClient(_api);
     _sseClient!.connect().listen((event) {
       final type = event['_event_type'] as String?;
@@ -267,7 +277,22 @@ class SessionProvider extends ChangeNotifier {
       working: _notifyWorking,
       pendingApproval: _notifyApproval,
       pendingReview: _notifyReview,
+      serverLabel: _serverLabel,
     );
+  }
+
+  String _serverLabel = '';
+
+  void _refreshServerLabel() {
+    final base = _api.dio.options.baseUrl;
+    if (base.isNotEmpty) {
+      try {
+        final uri = Uri.parse(base);
+        _serverLabel = '${uri.host}:${uri.port}';
+      } catch (_) {
+        _serverLabel = base;
+      }
+    }
   }
 
   void _categorize(List<Session> sessions) {
