@@ -1,9 +1,13 @@
 package com.ccmonitor.cc_monitor_app
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -13,6 +17,7 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val CHANNEL = "cc_monitor/notifications"
         private const val TAG = "cc-monitor:main"
+        private const val REQUEST_NOTIFICATION_PERMISSION = 1001
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -28,6 +33,26 @@ class MainActivity : FlutterActivity() {
 
         channel.setMethodCallHandler { call, result ->
             when (call.method) {
+                "requestPermission" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        if (ContextCompat.checkSelfPermission(
+                                this, Manifest.permission.POST_NOTIFICATIONS
+                            ) == PackageManager.PERMISSION_GRANTED
+                        ) {
+                            result.success(true)
+                        } else {
+                            ActivityCompat.requestPermissions(
+                                this,
+                                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                                REQUEST_NOTIFICATION_PERMISSION
+                            )
+                            result.success(false)
+                        }
+                    } else {
+                        result.success(true)
+                    }
+                }
+
                 "startService" -> {
                     Log.d(TAG, "startService called")
                     val intent = Intent(this, NotificationForegroundService::class.java)

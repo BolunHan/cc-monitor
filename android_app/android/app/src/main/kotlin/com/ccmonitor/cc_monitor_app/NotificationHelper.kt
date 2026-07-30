@@ -88,7 +88,7 @@ object NotificationHelper {
 
         // Working button
         remoteViews.setTextViewText(R.id.btn_working, "$working working")
-        remoteViews.setInt(R.id.btn_working, "setAlpha", if (working > 0) 255 else 100)
+        remoteViews.setFloat(R.id.btn_working, "setAlpha", if (working > 0) 1.0f else 0.4f)
         remoteViews.setOnClickPendingIntent(
             R.id.btn_working,
             buildActionPendingIntent(context, ACTION_WORKING, 100)
@@ -96,7 +96,7 @@ object NotificationHelper {
 
         // Approval button
         remoteViews.setTextViewText(R.id.btn_approval, "$approval pending")
-        remoteViews.setInt(R.id.btn_approval, "setAlpha", if (approval > 0) 255 else 100)
+        remoteViews.setFloat(R.id.btn_approval, "setAlpha", if (approval > 0) 1.0f else 0.4f)
         remoteViews.setOnClickPendingIntent(
             R.id.btn_approval,
             buildActionPendingIntent(context, ACTION_APPROVAL, 101)
@@ -104,7 +104,7 @@ object NotificationHelper {
 
         // Completed button
         remoteViews.setTextViewText(R.id.btn_completed, "$completed done")
-        remoteViews.setInt(R.id.btn_completed, "setAlpha", if (completed > 0) 255 else 100)
+        remoteViews.setFloat(R.id.btn_completed, "setAlpha", if (completed > 0) 1.0f else 0.4f)
         remoteViews.setOnClickPendingIntent(
             R.id.btn_completed,
             buildActionPendingIntent(context, ACTION_COMPLETED, 102)

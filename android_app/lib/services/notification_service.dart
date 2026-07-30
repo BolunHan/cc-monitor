@@ -13,10 +13,9 @@ class NotificationService {
   static bool get soundEnabled => _soundEnabled;
   static bool get vibrateEnabled => _vibrateEnabled;
 
-  static Future<void> requestPermission() async {
-    // Permission is handled by the native Android POST_NOTIFICATIONS runtime
-    // request. The foreground service will trigger the system permission dialog
-    // when it first starts on Android 13+.
+  static Future<bool> requestPermission() async {
+    final granted = await _channel.invokeMethod<bool>('requestPermission');
+    return granted ?? false;
   }
 
   static Future<void> init() async {
@@ -26,6 +25,8 @@ class NotificationService {
       }
     });
 
+    // Request notification permission before starting service
+    await _channel.invokeMethod('requestPermission');
     await _channel.invokeMethod('startService');
   }
 
