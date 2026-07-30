@@ -5,9 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class NotificationService {
-  static const _channelStickyId = 'cc_monitor_sticky';
+  // Bump channel IDs to force recreation (old channels may have wrong settings)
+  static const _channelStickyId = 'cc_monitor_sticky_v2';
   static const _channelStickyName = 'Session Monitor';
-  static const _channelAlertId = 'cc_monitor_alerts';
+  static const _channelAlertId = 'cc_monitor_alerts_v2';
   static const _channelAlertName = 'Session Alerts';
   static const _stickyNotificationId = 1;
 
@@ -17,7 +18,6 @@ class NotificationService {
   static bool _initialized = false;
   static bool _soundEnabled = true;
   static bool _vibrateEnabled = true;
-  static String _serverLabel = '';
 
   static bool get soundEnabled => _soundEnabled;
   static bool get vibrateEnabled => _vibrateEnabled;
@@ -34,11 +34,7 @@ class NotificationService {
     if (_initialized) return;
 
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const iosInit = DarwinInitializationSettings();
-    const initSettings = InitializationSettings(
-      android: androidInit,
-      iOS: iosInit,
-    );
+    const initSettings = InitializationSettings(android: androidInit);
 
     await _plugin.initialize(
       initSettings,
@@ -49,6 +45,10 @@ class NotificationService {
         AndroidFlutterLocalNotificationsPlugin>();
 
     if (androidPlugin != null) {
+      // Delete old channels to recreate with correct settings
+      await androidPlugin.deleteNotificationChannel('cc_monitor_sticky');
+      await androidPlugin.deleteNotificationChannel('cc_monitor_alerts');
+
       await androidPlugin.createNotificationChannel(
         const AndroidNotificationChannel(
           _channelStickyId,
@@ -61,12 +61,12 @@ class NotificationService {
       );
 
       await androidPlugin.createNotificationChannel(
-        AndroidNotificationChannel(
+        const AndroidNotificationChannel(
           _channelAlertId,
           _channelAlertName,
           importance: Importance.high,
-          playSound: _soundEnabled,
-          enableVibration: _vibrateEnabled,
+          playSound: true,
+          enableVibration: true,
         ),
       );
     }
@@ -86,8 +86,6 @@ class NotificationService {
     required int pendingReview,
     String serverLabel = '',
   }) async {
-    _serverLabel = serverLabel;
-
     final parts = <String>[];
     if (working > 0) parts.add('$working working');
     if (pendingApproval > 0) parts.add('$pendingApproval pending');
@@ -151,7 +149,6 @@ class NotificationService {
     ];
   }
 
-  /// Remove the sticky notification.
   static Future<void> cancelSticky() async {
     await _plugin.cancel(_stickyNotificationId);
   }
@@ -184,8 +181,9 @@ class NotificationService {
           playSound: _soundEnabled,
           enableVibration: _vibrateEnabled,
           vibrationPattern: _vibrateEnabled
-              ? Int64List.fromList([0, 300, 200, 300])
+              ? Int64List.fromList([0, 200, 100, 200])
               : null,
+          category: AndroidNotificationCategory.alarm,
         ),
       ),
     );
