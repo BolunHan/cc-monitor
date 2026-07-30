@@ -29,7 +29,7 @@
                 <option value="en">EN</option>
                 <option value="zh-CN">中文</option>
             </select>
-            <button class="btn btn--icon" id="btn-pair" title="Pair Device">⧉</button>
+            <button class="btn btn--icon" id="btn-pair" title="Pair Device">⧉<span class="pair-dot hidden" id="pair-dot"></span></button>
             <button class="btn btn--icon" id="btn-settings" title="Settings">⚙</button>
         </div>
     </header>
@@ -73,6 +73,7 @@
             </div>
             <button class="btn btn--primary" id="btn-save-settings" data-i18n="settings.save">Save &amp; Reconnect</button>
             <span class="settings-panel__feedback" id="settings-feedback"></span>
+            <div class="settings-panel__cert-note" id="settings-cert-note" data-i18n="settings.cert_note"></div>
             <hr class="settings-panel__divider">
             <div class="settings-panel__row">
                 <span class="settings-panel__label-text" data-i18n="settings.hook_status">Global hooks</span>

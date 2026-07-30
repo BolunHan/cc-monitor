@@ -469,10 +469,12 @@ function loadSessionsView() {
         // Pairing/device push events — refresh relevant sections in real time
         es.addEventListener("pairing_request", () => {
             pollPairingRequests();
+            updatePairIndicator();
         });
 
         es.addEventListener("pairing_resolved", () => {
             pollPairingRequests();
+            updatePairIndicator();
         });
 
         es.addEventListener("device_update", () => {
@@ -1139,10 +1141,40 @@ function loadSessionsView() {
         I18n.setLang(langSwitch.value);
     });
 
+    // ---- Pairing indicator (background poll) ----
+
+    const pairDot = document.getElementById("pair-dot");
+
+    async function updatePairIndicator() {
+        try {
+            const resp = await apiFetch("/api/auth/pair/requests");
+            if (!resp.ok) return;
+            const data = await resp.json();
+            const count = (data.requests || []).length;
+            if (pairDot) pairDot.classList.toggle("hidden", count === 0);
+        } catch (_) {}
+    }
+
+    let _pairIndicatorTimer = null;
+
+    function startPairIndicator() {
+        updatePairIndicator();
+        _pairIndicatorTimer = setInterval(updatePairIndicator, 15000);
+    }
+
     // ---- Initialise ----
 
     requestNotificationPermission();
     populateSettingsInputs();
+
+    // Show cert note when dashboard is hosted remotely (not localhost)
+    if (!isLocalhost()) {
+        const certNote = document.getElementById("settings-cert-note");
+        if (certNote) certNote.style.display = "block";
+    }
+
+    // Start background pairing poll for the indicator dot
+    startPairIndicator();
 
     // Load i18n first, then bootstrap
     (async () => {

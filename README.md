@@ -51,7 +51,11 @@ curl -skSL https://<server-ip>:9876/static/install-hooks.sh | SERVER_URL=https:/
 ### 3. Open Dashboard
 
 - **Local:** [http://localhost:9876](http://localhost:9876)
-- **Remote:** [https://bolunhan.github.io/cc-monitor/](https://bolunhan.github.io/cc-monitor/) (point settings to your server)
+- **Remote (GitHub Pages):** [https://bolunhan.github.io/cc-monitor/](https://bolunhan.github.io/cc-monitor/) — open Settings, set **Server URL** to your server IP, set **Port** to `9876`, then **Save & Reconnect**
+
+> **🔐 Self-signed certificate:** The server uses a self-signed TLS certificate. When connecting from a remote dashboard (GitHub Pages), you must trust the certificate first — otherwise the browser blocks the connection.
+>
+> **One-time step:** Open `https://<your-server-ip>:9876` directly in a new tab. Click **Advanced** → **Proceed to site** (or **Accept the Risk and Continue**). Once the certificate is trusted, return to the dashboard and reconnect.
 
 ## Session States
 

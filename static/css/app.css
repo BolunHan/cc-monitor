@@ -139,6 +139,7 @@ body {
 }
 
 .btn--icon {
+    position: relative;
     width: 34px;
     height: 34px;
     padding: 0;
@@ -847,4 +848,35 @@ body {
 
 .lang-switch:focus-visible {
   outline: 1px solid var(--color-accent);
+}
+
+/* ---- Pairing indicator dot ---- */
+
+.pair-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: 1.5px solid var(--color-bg);
+}
+
+.pair-dot.hidden {
+  display: none;
+}
+
+/* ---- Settings cert note ---- */
+
+.settings-panel__cert-note {
+  display: none;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-top: 8px;
+  line-height: 1.5;
 }

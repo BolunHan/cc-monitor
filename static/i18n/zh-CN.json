@@ -20,6 +20,7 @@
   "settings.server_url": "服务器 URL",
   "settings.port": "端口",
   "settings.save": "保存并重连",
+  "settings.cert_note": "🔐 本地服务器使用自签名 TLS 证书。如果连接失败，请先在浏览器新标签页中打开服务器 URL 并接受证书（高级 → 继续访问），然后返回此处。",
   "settings.saved": "✓ 已保存，重连中…",
   "settings.url_required": "✗ 服务器 URL 不能为空",
   "settings.hook_status": "全局钩子",
