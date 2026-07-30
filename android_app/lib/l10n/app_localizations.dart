@@ -326,6 +326,42 @@ abstract class AppLocalizations {
   /// **'cc-monitor App'**
   String get settingsAbout;
 
+  /// No description provided for @settingsLanguage.
+  ///
+  /// In en, this message translates to:
+  /// **'Language'**
+  String get settingsLanguage;
+
+  /// No description provided for @settingsLanguageSystem.
+  ///
+  /// In en, this message translates to:
+  /// **'System default'**
+  String get settingsLanguageSystem;
+
+  /// No description provided for @settingsServers.
+  ///
+  /// In en, this message translates to:
+  /// **'Servers'**
+  String get settingsServers;
+
+  /// No description provided for @settingsActive.
+  ///
+  /// In en, this message translates to:
+  /// **'Active'**
+  String get settingsActive;
+
+  /// No description provided for @settingsInactive.
+  ///
+  /// In en, this message translates to:
+  /// **'Inactive'**
+  String get settingsInactive;
+
+  /// No description provided for @settingsDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Forget'**
+  String get settingsDelete;
+
   /// No description provided for @connectTitle.
   ///
   /// In en, this message translates to:

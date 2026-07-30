@@ -142,6 +142,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsAbout => 'cc-monitor App';
 
   @override
+  String get settingsLanguage => 'Language';
+
+  @override
+  String get settingsLanguageSystem => 'System default';
+
+  @override
+  String get settingsServers => 'Servers';
+
+  @override
+  String get settingsActive => 'Active';
+
+  @override
+  String get settingsInactive => 'Inactive';
+
+  @override
+  String get settingsDelete => 'Forget';
+
+  @override
   String get connectTitle => 'Connect to Server';
 
   @override

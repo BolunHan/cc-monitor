@@ -141,6 +141,24 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsAbout => 'cc-monitor 应用';
 
   @override
+  String get settingsLanguage => '语言';
+
+  @override
+  String get settingsLanguageSystem => '跟随系统';
+
+  @override
+  String get settingsServers => '服务器';
+
+  @override
+  String get settingsActive => '活跃';
+
+  @override
+  String get settingsInactive => '未连接';
+
+  @override
+  String get settingsDelete => '移除';
+
+  @override
   String get connectTitle => '连接服务器';
 
   @override
