@@ -30,7 +30,8 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get disconnectedBanner => 'Disconnected — token revoked or server unreachable.\nRemove this server from the sidebar.';
+  String get disconnectedBanner =>
+      'Disconnected — token revoked or server unreachable.\nRemove this server from the sidebar.';
 
   @override
   String get stateWorking => 'working';
@@ -189,7 +190,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get scanFound => 'Found! Opening...';
 
   @override
-  String get scanHint => 'Point camera at the QR code shown on the web dashboard';
+  String get scanHint =>
+      'Point camera at the QR code shown on the web dashboard';
 
   @override
   String get sessionTitle => 'Session';

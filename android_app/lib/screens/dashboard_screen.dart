@@ -50,7 +50,6 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   @override
   Widget build(BuildContext context) {
-    final store = context.read<SecureStore>();
     final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
@@ -62,7 +61,6 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
         ],
       ),
-      drawer: _ServerDrawer(store: store),
       body: Consumer<SessionProvider>(
         builder: (context, provider, _) {
           if (provider.loading) {
@@ -247,104 +245,6 @@ class _SessionCard extends StatelessWidget {
     if (diff.inMinutes < 60) return l10n.timeMinutesAgo(diff.inMinutes);
     if (diff.inHours < 24) return l10n.timeHoursAgo(diff.inHours);
     return l10n.timeDaysAgo(diff.inDays);
-  }
-}
-
-class _ServerDrawer extends StatefulWidget {
-  final SecureStore store;
-  const _ServerDrawer({required this.store});
-
-  @override
-  State<_ServerDrawer> createState() => _ServerDrawerState();
-}
-
-class _ServerDrawerState extends State<_ServerDrawer> {
-  List<ServerEntry> _servers = [];
-  ServerEntry? _active;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final servers = await widget.store.getServers();
-    final active = await widget.store.getActive();
-    setState(() { _servers = servers; _active = active; });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
-    return Drawer(
-      child: Column(
-        children: [
-          DrawerHeader(
-            decoration: const BoxDecoration(color: Colors.indigo),
-            child: SizedBox(
-              width: double.infinity,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  const Icon(Icons.dns, color: Colors.white70, size: 32),
-                  const SizedBox(height: 8),
-                  Text(l10n.servers, style: const TextStyle(color: Colors.white, fontSize: 18)),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            child: _servers.isEmpty
-                ? Center(child: Text(l10n.noServersPaired, style: const TextStyle(color: Colors.grey)))
-                : ListView.builder(
-                    itemCount: _servers.length,
-                    itemBuilder: (context, index) {
-                      final s = _servers[index];
-                      final isActive = _active != null && s.host == _active!.host && s.port == _active!.port;
-                      final connected = context.read<SessionProvider>().connected;
-                      return ListTile(
-                        leading: Icon(
-                          isActive
-                              ? (connected ? Icons.check_circle : Icons.warning_amber_rounded)
-                              : Icons.circle_outlined,
-                          color: isActive ? (connected ? Colors.green : Colors.orange) : Colors.grey,
-                        ),
-                        title: Text('${s.host}:${s.port}',
-                            style: TextStyle(fontWeight: isActive ? FontWeight.bold : FontWeight.normal)),
-                        subtitle: Text(s.displayId, style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline, size: 18),
-                          onPressed: () async {
-                            await widget.store.removeServer(s.host, s.port);
-                            _load();
-                          },
-                        ),
-                        onTap: () async {
-                          await widget.store.setActive(s.host, s.port);
-                          final api = context.read<ApiClient>();
-                          await api.configureFromStore();
-                          context.read<SessionProvider>().loadSessions();
-                          Navigator.pop(context);
-                        },
-                      );
-                    },
-                  ),
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.add),
-            title: Text(l10n.addServer),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.pushNamed(context, '/servers');
-            },
-          ),
-          const SizedBox(height: 16),
-        ],
-      ),
-    );
   }
 }
 

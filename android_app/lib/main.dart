@@ -34,33 +34,59 @@ void main() async {
   final apiClient = ApiClient(store: secureStore);
   final pairingService = PairingService(apiClient, secureStore);
 
+  // Read persisted locale override
+  final savedLocale = await secureStore.getLocale();
+
   runApp(CCMonitorApp(
     secureStore: secureStore,
     apiClient: apiClient,
     pairingService: pairingService,
+    savedLocale: savedLocale,
   ));
 }
 
-class CCMonitorApp extends StatelessWidget {
+class CCMonitorApp extends StatefulWidget {
   final SecureStore secureStore;
   final ApiClient apiClient;
   final PairingService pairingService;
+  final String? savedLocale;
 
   const CCMonitorApp({
     super.key,
     required this.secureStore,
     required this.apiClient,
     required this.pairingService,
+    this.savedLocale,
   });
+
+  @override
+  State<CCMonitorApp> createState() => _CCMonitorAppState();
+}
+
+class _CCMonitorAppState extends State<CCMonitorApp> {
+  String? _localeOverride;
+
+  @override
+  void initState() {
+    super.initState();
+    _localeOverride = widget.savedLocale;
+  }
+
+  Locale? _resolveLocale(String? override) {
+    if (override != null && override.isNotEmpty) {
+      return Locale(override);
+    }
+    return null; // use system default
+  }
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        Provider.value(value: secureStore),
-        Provider.value(value: apiClient),
-        Provider.value(value: pairingService),
-        ChangeNotifierProvider(create: (_) => SessionProvider(apiClient)),
+        Provider.value(value: widget.secureStore),
+        Provider.value(value: widget.apiClient),
+        Provider.value(value: widget.pairingService),
+        ChangeNotifierProvider(create: (_) => SessionProvider(widget.apiClient)),
         ChangeNotifierProvider(create: (_) => PairingProvider()),
       ],
       child: MaterialApp(
@@ -69,6 +95,7 @@ class CCMonitorApp extends StatelessWidget {
         themeMode: ThemeMode.system,
         theme: AppTheme.light,
         darkTheme: AppTheme.dark,
+        locale: _resolveLocale(_localeOverride),
         supportedLocales: const [Locale('en'), Locale('zh')],
         localizationsDelegates: const [
           AppLocalizations.delegate,
@@ -77,7 +104,7 @@ class CCMonitorApp extends StatelessWidget {
           GlobalCupertinoLocalizations.delegate,
         ],
         home: _StartupGate(
-          apiClient: apiClient,
+          apiClient: widget.apiClient,
         ),
         onGenerateRoute: (settings) {
           switch (settings.name) {
@@ -92,7 +119,11 @@ class CCMonitorApp extends StatelessWidget {
               );
             case '/settings':
               return MaterialPageRoute(
-                builder: (_) => const SettingsScreen(),
+                builder: (_) => SettingsScreen(
+                  onLocaleChanged: (locale) {
+                    setState(() => _localeOverride = locale);
+                  },
+                ),
               );
             case '/servers':
               return MaterialPageRoute(

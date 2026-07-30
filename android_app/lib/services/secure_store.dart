@@ -60,6 +60,7 @@ class SecureStore {
   static const _keyLogLevel = 'cc_monitor_log_level';
   static const _keyNotifySound = 'cc_monitor_notify_sound';
   static const _keyNotifyVibrate = 'cc_monitor_notify_vibrate';
+  static const _keyLocale = 'cc_monitor_locale';
 
   final FlutterSecureStorage _storage;
   SecureStore() : _storage = const FlutterSecureStorage();
@@ -175,6 +176,18 @@ class SecureStore {
 
   Future<void> setNotifyVibrate(bool value) async {
     await _storage.write(key: _keyNotifyVibrate, value: value.toString());
+  }
+
+  // ---- locale ----
+
+  Future<String?> getLocale() async => await _storage.read(key: _keyLocale);
+
+  Future<void> setLocale(String? locale) async {
+    if (locale == null) {
+      await _storage.delete(key: _keyLocale);
+    } else {
+      await _storage.write(key: _keyLocale, value: locale);
+    }
   }
 
   Future<void> clear() async => await _storage.deleteAll();
