@@ -12,7 +12,7 @@ const I18n = (() => {
 
     async function load(lang) {
         try {
-            const resp = await fetch('./static/i18n/' + lang + '.json');
+            const resp = await fetch('./i18n/' + lang + '.json');
             if (!resp.ok) throw new Error('not found');
             _data = await resp.json();
             _lang = lang;
@@ -82,14 +82,19 @@ function loadSessionsView() {
 
     // ---- Server URL ----
 
+    function ensureProtocol(url) {
+        if (/^https?:\/\//i.test(url)) return url;
+        return "https://" + url;
+    }
+
     function getServerUrl() {
         const stored = localStorage.getItem(STORAGE_KEY_URL);
-        if (stored) return stored.replace(/\/+$/, "");
+        if (stored) return ensureProtocol(stored).replace(/\/+$/, "");
         return window.location.origin;
     }
 
     function setServerUrl(url) {
-        localStorage.setItem(STORAGE_KEY_URL, url.replace(/\/+$/, ""));
+        localStorage.setItem(STORAGE_KEY_URL, ensureProtocol(url).replace(/\/+$/, ""));
     }
 
     function apiUrl(path) {
