@@ -9,11 +9,13 @@
 
 <a name="english"></a>
 
-# 🚦 cc-monitor — Cyber Traffic Light for Claude Code
+# 🚦 cc-monitor — Cyber Traffic Light for Claude Code<br><small>Claude Code 赛博红绿灯</small>
 
 [**→ Open Dashboard**](https://bolunhan.github.io/cc-monitor/)
+
 [![Deploy GH Pages](https://github.com/BolunHan/cc-monitor/actions/workflows/deploy-gh-pages.yml/badge.svg)](https://github.com/BolunHan/cc-monitor/actions/workflows/deploy-gh-pages.yml)
 [![Build Docker](https://github.com/BolunHan/cc-monitor/actions/workflows/build-docker.yml/badge.svg)](https://github.com/BolunHan/cc-monitor/actions/workflows/build-docker.yml)
+[![Build APK](https://github.com/BolunHan/cc-monitor/actions/workflows/build-apk.yml/badge.svg)](https://github.com/BolunHan/cc-monitor/actions/workflows/build-apk.yml)
 
 **Know when Claude needs you — before you waste time staring at the screen.**
 
@@ -25,10 +27,11 @@ Physical "Claude Code traffic light" gadgets sell for serious money. cc-monitor 
 
 ## ⚠️ Security Warning
 
-**Only install this tool from a trusted source.** The hook installer modifies `~/.claude/settings.json` — Claude Code's global configuration file. Installing hooks from an untrusted server gives it persistent access to your Claude Code sessions.
+**Only install this tool from a trusted source.** The hook installer modifies `~/.claude/settings.json` — Claude Code's global configuration file. **A malicious hook script can steal your Claude API token** and gain full access to your Anthropic account. Never install hooks from a server you don't control.
 
 - **Always inspect** the install script before running it: `curl -skSL <url>/static/install-hooks.sh | less`
 - **Verify the source** — this repo is the only official distribution
+- **Do NOT use sudo** — the hook scripts do not require root privileges and only modify your user-level Claude Code settings
 - **Use localhost** when the server runs on the same machine (no auth required)
 
 ---
@@ -218,8 +221,10 @@ cc-monitor --port 9876    # Start dev server
 # 🚦 cc-monitor — Claude Code 赛博红绿灯
 
 [**→ 打开仪表盘**](https://bolunhan.github.io/cc-monitor/)
+
 [![Deploy GH Pages](https://github.com/BolunHan/cc-monitor/actions/workflows/deploy-gh-pages.yml/badge.svg)](https://github.com/BolunHan/cc-monitor/actions/workflows/deploy-gh-pages.yml)
 [![Build Docker](https://github.com/BolunHan/cc-monitor/actions/workflows/build-docker.yml/badge.svg)](https://github.com/BolunHan/cc-monitor/actions/workflows/build-docker.yml)
+[![Build APK](https://github.com/BolunHan/cc-monitor/actions/workflows/build-apk.yml/badge.svg)](https://github.com/BolunHan/cc-monitor/actions/workflows/build-apk.yml)
 
 **Claude 需要你的时候，第一时间知道 — 不再白白盯着屏幕浪费时间。**
 
@@ -231,10 +236,11 @@ cc-monitor --port 9876    # Start dev server
 
 ## ⚠️ 安全警告
 
-**仅从可信来源安装此工具。** Hook 安装脚本会修改 `~/.claude/settings.json` — Claude Code 的全局配置文件。从不可信的服务器安装 hook 将使其获得对你 Claude Code 会话的持久访问权限。
+**仅从可信来源安装此工具。** Hook 安装脚本会修改 `~/.claude/settings.json` — Claude Code 的全局配置文件。**恶意 hook 脚本可以窃取你的 Claude API token**，获得对你 Anthropic 账户的完全访问权限。切勿从不受你控制的服务器安装 hook。
 
 - **务必先检查**安装脚本：`curl -skSL <url>/static/install-hooks.sh | less`
 - **验证来源** — 此仓库是唯一的官方分发渠道
+- **切勿使用 sudo** — hook 脚本无需 root 权限，仅修改用户级别的 Claude Code 配置
 - **优先使用 localhost** — 当服务器运行在同一台机器上时无需认证
 
 ---
