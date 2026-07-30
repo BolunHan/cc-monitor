@@ -705,6 +705,8 @@ def create_app(
         app.mount("/css", StaticFiles(directory=str(_STATIC_DIR / "css")), name="css")
     if (_STATIC_DIR / "js").is_dir():
         app.mount("/js", StaticFiles(directory=str(_STATIC_DIR / "js")), name="js")
+    if (_STATIC_DIR / "i18n").is_dir():
+        app.mount("/i18n", StaticFiles(directory=str(_STATIC_DIR / "i18n")), name="i18n")
     _hooks_dir = _PROJECT_ROOT / "hooks"
     if _hooks_dir.is_dir():
         app.mount("/hooks", StaticFiles(directory=str(_hooks_dir)), name="hooks")
