@@ -146,10 +146,8 @@ object NotificationHelper {
                 (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
         )
 
-        // Set color hint for notification background (used by system on some Android versions)
         return NotificationCompat.Builder(context, CHANNEL_ONGOING)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
             .setCustomContentView(remoteViews)
             .setCustomBigContentView(remoteViews)
             .setOngoing(true)
@@ -157,7 +155,6 @@ object NotificationHelper {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
-            .setColor(0xFF1a1d27.toInt())
             .build()
     }
 
