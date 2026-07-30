@@ -38,20 +38,24 @@ Physical "Claude Code traffic light" gadgets sell for serious money. cc-monitor 
 
 ## Quick Start
 
-### Option A: Docker (no clone needed)
+### Option A: Docker from GHCR (no clone needed)
+
+Pulls the pre-built image from GitHub Container Registry:
 
 ```bash
-# Create a compose file
 mkdir cc-monitor && cd cc-monitor
 curl -O https://raw.githubusercontent.com/BolunHan/cc-monitor/main/docker-compose.yaml
 docker compose up -d
 ```
 
-### Option B: Clone & Docker
+### Option B: Docker local build (clone repo)
+
+Build the image yourself from source:
 
 ```bash
 git clone https://github.com/BolunHan/cc-monitor.git
 cd cc-monitor
+docker build -t ghcr.io/bolunhan/cc-monitor:latest .
 docker compose up -d
 ```
 
@@ -253,17 +257,22 @@ cc-monitor --port 9876    # Start dev server
 
 ### 方案 A：Docker（无需克隆仓库）
 
+从 GitHub Container Registry 拉取预构建镜像：
+
 ```bash
 mkdir cc-monitor && cd cc-monitor
 curl -O https://raw.githubusercontent.com/BolunHan/cc-monitor/main/docker-compose.yaml
 docker compose up -d
 ```
 
-### 方案 B：克隆仓库 + Docker
+### 方案 B：Docker 本地构建（克隆仓库）
+
+从源码自行构建镜像：
 
 ```bash
 git clone https://github.com/BolunHan/cc-monitor.git
 cd cc-monitor
+docker build -t ghcr.io/bolunhan/cc-monitor:latest .
 docker compose up -d
 ```
 

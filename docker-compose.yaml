@@ -1,6 +1,6 @@
 services:
   cc-monitor:
-    image: cc-monitor:latest
+    image: ghcr.io/bolunhan/cc-monitor:latest
     container_name: cc-monitor
     network_mode: host
     restart: unless-stopped
