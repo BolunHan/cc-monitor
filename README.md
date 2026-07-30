@@ -151,11 +151,15 @@ Open **Settings** (⚙) from the dashboard. You'll see:
 ## How It Works
 
 ```
-Claude Code (hooks) ──POST──→ cc-monitor Server ──SSE──→ Web Dashboard
-                              │                         Android App
-                              ├─ State files (~/.cc-monitor/)
-                              ├─ mDNS (LAN discovery)
-                              └─ TLS + Token Auth
+Claude Code                    cc-monitor                  Web Dashboard
+  (hooks)                        Server                    Android App
+     |                             |  |
+     |  POST /api/event            |  |  SSE stream
+     +-----------------------------+  +---------------------->
+                                   |
+                                   +-- State files (~/.cc-monitor/)
+                                   +-- mDNS (LAN discovery)
+                                   +-- TLS + Token Auth
 ```
 
 The server listens for 7 Claude Code hook events, tracks session state in memory, persists to disk, and pushes real-time updates to all connected clients via Server-Sent Events. The web dashboard and Android app render live session cards with color-coded states.
@@ -195,15 +199,15 @@ For the full technical reference, see [API Reference](#api-reference) and [Archi
 
 ```
 cc-monitor/
-├── src/cc_monitor/       # Python package (FastAPI server)
-├── hooks/                # Hook scripts (stdlib-only, no deps)
-├── static/               # Web dashboard (vanilla HTML/CSS/JS)
-├── scripts/              # install-hooks.sh, uninstall-hooks.sh
-├── android_app/          # Flutter Android app
-├── tests/                # pytest suite (145 tests)
-├── Dockerfile            # Python server image
-├── Dockerfile.flutter    # Flutter build image
-└── docker-compose.yaml   # Docker deployment
+|--  src/cc_monitor/       # Python package (FastAPI server)
+|--  hooks/                # Hook scripts (stdlib-only, no deps)
+|--  static/               # Web dashboard (vanilla HTML/CSS/JS)
+|--  scripts/              # install-hooks.sh, uninstall-hooks.sh
+|--  android_app/          # Flutter Android app
+|--  tests/                # pytest suite (145 tests)
+|--  Dockerfile            # Python server image
+|--  Dockerfile.flutter    # Flutter build image
++--  docker-compose.yaml   # Docker deployment
 ```
 
 ## Development
@@ -359,11 +363,15 @@ adb install cc-monitor-app-release.apk
 ## 工作原理
 
 ```
-Claude Code (hooks) ──POST──→ cc-monitor Server ──SSE──→ Web 仪表盘
-                              │                         Android 应用
-                              ├─ 状态文件 (~/.cc-monitor/)
-                              ├─ mDNS (局域网发现)
-                              └─ TLS + Token 认证
+Claude Code                    cc-monitor                  Web 仪表盘
+  (hooks)                        Server                    Android 应用
+     |                             |  |
+     |  POST /api/event            |  |  SSE stream
+     +-----------------------------+  +---------------------->
+                                   |
+                                   +-- 状态文件 (~/.cc-monitor/)
+                                   +-- mDNS (局域网发现)
+                                   +-- TLS + Token 认证
 ```
 
 服务器监听 7 个 Claude Code hook 事件，在内存中追踪会话状态，持久化到磁盘，并通过 Server-Sent Events 向所有连接的客户端推送实时更新。Web 仪表盘和 Android 应用渲染带有颜色编码状态的实时会话卡片。
@@ -400,15 +408,15 @@ Claude Code (hooks) ──POST──→ cc-monitor Server ──SSE──→ Web
 
 ```
 cc-monitor/
-├── src/cc_monitor/       # Python 包（FastAPI 服务器）
-├── hooks/                # Hook 脚本（纯 stdlib，无依赖）
-├── static/               # Web 仪表盘（原生 HTML/CSS/JS）
-├── scripts/              # install-hooks.sh, uninstall-hooks.sh
-├── android_app/          # Flutter Android 应用
-├── tests/                # pytest 测试套件（145 个测试）
-├── Dockerfile            # Python 服务器镜像
-├── Dockerfile.flutter    # Flutter 构建镜像
-└── docker-compose.yaml   # Docker 部署
+|--  src/cc_monitor/       # Python 包（FastAPI 服务器）
+|--  hooks/                # Hook 脚本（纯 stdlib，无依赖）
+|--  static/               # Web 仪表盘（原生 HTML/CSS/JS）
+|--  scripts/              # install-hooks.sh, uninstall-hooks.sh
+|--  android_app/          # Flutter Android 应用
+|--  tests/                # pytest 测试套件（145 个测试）
+|--  Dockerfile            # Python 服务器镜像
+|--  Dockerfile.flutter    # Flutter 构建镜像
++--  docker-compose.yaml   # Docker 部署
 ```
 
 ## 开发
