@@ -6,7 +6,13 @@ __pycache__/
 .claude/
 
 # Flutter generated
-android_app/android/
+android_app/android/.gradle/
+android_app/android/.kotlin/
+android_app/android/app/build/
+android_app/android/app/debug/
+android_app/android/app/profile/
+android_app/android/app/release/
+android_app/android/local.properties
 android_app/build/
 android_app/.dart_tool/
 android_app/.flutter-plugins*

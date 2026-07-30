@@ -45,17 +45,13 @@ class SessionProvider extends ChangeNotifier {
       _eventLog.where((e) => _logLevel.shouldShow(e.level)).toList();
 
   SessionProvider(this._api) {
-    _updateStickyNotification();
+    _syncToNativeNotification();
   }
 
   /// Call after server is configured — updates the notification subtitle.
   void notifyServerConnected(String host, int port) {
-    NotificationService.updateSticky(
-      working: _notifyWorking,
-      pendingApproval: _notifyApproval,
-      pendingReview: _notifyReview,
-      serverLabel: '$host:$port',
-    );
+    _refreshServerLabel();
+    _syncToNativeNotification();
   }
 
   Future<void> setLogLevel(LogLevel level) async {
@@ -97,6 +93,7 @@ class SessionProvider extends ChangeNotifier {
 
     _loading = false;
     notifyListeners();
+    _syncToNativeNotification();
   }
 
   void connectSse() {
@@ -191,7 +188,7 @@ class SessionProvider extends ChangeNotifier {
     _notifyWorking = 0;
     _notifyApproval = 0;
     _notifyReview = 0;
-    _updateStickyNotification();
+    _syncToNativeNotification();
     _sseClient?.disconnect();
     _sseClient = null;
     _heartbeatTimer?.cancel();
@@ -243,7 +240,7 @@ class SessionProvider extends ChangeNotifier {
 
     // Update sticky notification counts
     _updateNotifyCounts();
-    _updateStickyNotification();
+    _syncToNativeNotification();
 
     notifyListeners();
   }
@@ -272,7 +269,7 @@ class SessionProvider extends ChangeNotifier {
     _notifyReview = review;
   }
 
-  void _updateStickyNotification() {
+  void _syncToNativeNotification() {
     NotificationService.updateSticky(
       working: _notifyWorking,
       pendingApproval: _notifyApproval,
@@ -307,7 +304,7 @@ class SessionProvider extends ChangeNotifier {
       _prevState.putIfAbsent(s.sessionId, () => s.state);
     }
     _updateNotifyCounts();
-    _updateStickyNotification();
+    _syncToNativeNotification();
   }
 
   @override

@@ -1,21 +1,12 @@
-import 'dart:io';
-import 'dart:typed_data';
-
-import 'package:flutter/material.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'dart:async';
+import 'package:flutter/services.dart';
 
 class NotificationService {
-  // Bump channel IDs to force recreation (old channels may have wrong settings)
-  static const _channelStickyId = 'cc_monitor_sticky_v2';
-  static const _channelStickyName = 'Session Monitor';
-  static const _channelAlertId = 'cc_monitor_alerts_v2';
-  static const _channelAlertName = 'Session Alerts';
-  static const _stickyNotificationId = 1;
+  static const _channel = MethodChannel('cc_monitor/notifications');
 
-  static final FlutterLocalNotificationsPlugin _plugin =
-      FlutterLocalNotificationsPlugin();
+  static final _actionTapController = StreamController<String>.broadcast();
+  static Stream<String> get onActionTap => _actionTapController.stream;
 
-  static bool _initialized = false;
   static bool _soundEnabled = true;
   static bool _vibrateEnabled = true;
 
@@ -23,171 +14,55 @@ class NotificationService {
   static bool get vibrateEnabled => _vibrateEnabled;
 
   static Future<void> requestPermission() async {
-    if (Platform.isAndroid) {
-      final android = _plugin.resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin>();
-      await android?.requestNotificationsPermission();
-    }
+    // Permission is handled by the native Android POST_NOTIFICATIONS runtime
+    // request. The foreground service will trigger the system permission dialog
+    // when it first starts on Android 13+.
   }
 
   static Future<void> init() async {
-    if (_initialized) return;
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'onActionTap') {
+        _actionTapController.add(call.arguments as String);
+      }
+    });
 
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const initSettings = InitializationSettings(android: androidInit);
-
-    await _plugin.initialize(
-      initSettings,
-      onDidReceiveNotificationResponse: _onTap,
-    );
-
-    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-
-    if (androidPlugin != null) {
-      // Delete old channels to recreate with correct settings
-      await androidPlugin.deleteNotificationChannel('cc_monitor_sticky');
-      await androidPlugin.deleteNotificationChannel('cc_monitor_alerts');
-
-      await androidPlugin.createNotificationChannel(
-        const AndroidNotificationChannel(
-          _channelStickyId,
-          _channelStickyName,
-          importance: Importance.low,
-          playSound: false,
-          enableVibration: false,
-          showBadge: false,
-        ),
-      );
-
-      await androidPlugin.createNotificationChannel(
-        const AndroidNotificationChannel(
-          _channelAlertId,
-          _channelAlertName,
-          importance: Importance.high,
-          playSound: true,
-          enableVibration: true,
-        ),
-      );
-    }
-
-    _initialized = true;
+    await _channel.invokeMethod('startService');
   }
 
   static void updateSettings({required bool sound, required bool vibrate}) {
     _soundEnabled = sound;
     _vibrateEnabled = vibrate;
+    _channel.invokeMethod('updateSettings', {
+      'sound': sound,
+      'vibrate': vibrate,
+    });
   }
 
-  /// Update the ongoing notification with session counts + server info.
   static Future<void> updateSticky({
     required int working,
     required int pendingApproval,
     required int pendingReview,
     String serverLabel = '',
   }) async {
-    final parts = <String>[];
-    if (working > 0) parts.add('$working working');
-    if (pendingApproval > 0) parts.add('$pendingApproval pending');
-    if (pendingReview > 0) parts.add('$pendingReview completed');
-    final title = parts.isNotEmpty
-        ? 'cc-monitor: ${parts.join(' | ')}'
-        : 'cc-monitor';
-
-    final subtitle = serverLabel.isNotEmpty
-        ? 'Connected to: $serverLabel'
-        : 'No server connected';
-
-    await _plugin.show(
-      _stickyNotificationId,
-      title,
-      subtitle,
-      NotificationDetails(
-        android: AndroidNotificationDetails(
-          _channelStickyId,
-          _channelStickyName,
-          icon: '@mipmap/ic_launcher',
-          ongoing: true,
-          autoCancel: false,
-          showWhen: false,
-          importance: Importance.low,
-          priority: Priority.low,
-          color: const Color(0xFF22C55E),
-          actions: _buildActions(working, pendingApproval, pendingReview),
-        ),
-      ),
-    );
-  }
-
-  static List<AndroidNotificationAction> _buildActions(
-    int working,
-    int pendingApproval,
-    int pendingReview,
-  ) {
-    return [
-      AndroidNotificationAction(
-        'action_working',
-        '$working working',
-        showsUserInterface: true,
-        cancelNotification: false,
-        titleColor: const Color(0xFF58A6FF),
-      ),
-      AndroidNotificationAction(
-        'action_approval',
-        '$pendingApproval pending',
-        showsUserInterface: true,
-        cancelNotification: false,
-        titleColor: const Color(0xFFD97706),
-      ),
-      AndroidNotificationAction(
-        'action_completed',
-        '$pendingReview completed',
-        showsUserInterface: true,
-        cancelNotification: false,
-        titleColor: const Color(0xFF22C55E),
-      ),
-    ];
+    await _channel.invokeMethod('updateSticky', {
+      'working': working,
+      'approval': pendingApproval,
+      'completed': pendingReview,
+      'serverLabel': serverLabel,
+    });
   }
 
   static Future<void> cancelSticky() async {
-    await _plugin.cancel(_stickyNotificationId);
+    await _channel.invokeMethod('stopService');
   }
 
-  /// Fire an alert notification for a state transition.
   static Future<void> showAlert({
     required String sessionName,
     required String state,
   }) async {
-    const stateLabels = {
-      'pending_approval': ['⚠ Approval Needed', 'Claude needs permission to proceed'],
-      'pending_review': ['✅ Response Ready', 'Claude finished — review the output'],
-      'all_done': ['🏁 Session Ended', 'Claude Code session completed'],
-    };
-
-    final label = stateLabels[state] ?? ['State Change', 'Session is now $state'];
-    final id = DateTime.now().millisecondsSinceEpoch % 100000;
-
-    await _plugin.show(
-      id,
-      label[0],
-      '$sessionName · ${label[1]}',
-      NotificationDetails(
-        android: AndroidNotificationDetails(
-          _channelAlertId,
-          _channelAlertName,
-          icon: '@mipmap/ic_launcher',
-          importance: Importance.high,
-          priority: Priority.high,
-          playSound: _soundEnabled,
-          enableVibration: _vibrateEnabled,
-          vibrationPattern: _vibrateEnabled
-              ? Int64List.fromList([0, 200, 100, 200])
-              : null,
-          category: AndroidNotificationCategory.alarm,
-        ),
-      ),
-    );
+    await _channel.invokeMethod('showAlert', {
+      'sessionName': sessionName,
+      'state': state,
+    });
   }
-
-  static void _onTap(NotificationResponse response) {}
 }
