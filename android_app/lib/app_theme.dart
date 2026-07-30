@@ -1,17 +1,25 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // cc-monitor brand palette
-  static const _bg = Color(0xFF0D1117);
-  static const _surface = Color(0xFF161B22);
+  // cc-monitor brand palette — dark
+  static const _bgDark = Color(0xFF0D1117);
+  static const _surfaceDark = Color(0xFF161B22);
+  static const _textDark = Color(0xFFE6EDF3);
+  static const _mutedDark = Color(0xFF8B949E);
+  static const _borderDark = Color(0xFF30363D);
+
+  // cc-monitor brand palette — light
+  static const _bgLight = Color(0xFFF6F8FA);
+  static const _surfaceLight = Color(0xFFFFFFFF);
+  static const _textLight = Color(0xFF1A1D27);
+  static const _mutedLight = Color(0xFF656D76);
+  static const _borderLight = Color(0xFFD0D7DE);
+
+  // Shared accent colors
   static const _accent = Color(0xFF22C55E);
-  static const _accentDim = Color(0xFF1A7F3E);
   static const _amber = Color(0xFFD97706);
   static const _red = Color(0xFFDA3633);
   static const _blue = Color(0xFF58A6FF);
-  static const _text = Color(0xFFE6EDF3);
-  static const _muted = Color(0xFF8B949E);
-  static const _border = Color(0xFF30363D);
 
   static ThemeData get dark => ThemeData(
         useMaterial3: true,
@@ -19,57 +27,117 @@ class AppTheme {
         colorScheme: const ColorScheme.dark(
           primary: _accent,
           secondary: _blue,
-          surface: _surface,
+          surface: _surfaceDark,
           error: _red,
-          onPrimary: _bg,
-          onSecondary: _bg,
-          onSurface: _text,
-          onError: _text,
+          onPrimary: _bgDark,
+          onSecondary: _bgDark,
+          onSurface: _textDark,
+          onError: _textDark,
         ),
-        scaffoldBackgroundColor: _bg,
+        scaffoldBackgroundColor: _bgDark,
         appBarTheme: const AppBarTheme(
-          backgroundColor: _surface,
-          foregroundColor: _text,
+          backgroundColor: _surfaceDark,
+          foregroundColor: _textDark,
           elevation: 0,
           scrolledUnderElevation: 1,
           centerTitle: false,
           titleTextStyle: TextStyle(
-            color: _text, fontSize: 18, fontWeight: FontWeight.w600,
+            color: _textDark, fontSize: 18, fontWeight: FontWeight.w600,
           ),
         ),
         cardTheme: CardThemeData(
-          color: _surface,
+          color: _surfaceDark,
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(10),
-            side: const BorderSide(color: _border, width: 0.5),
+            side: const BorderSide(color: _borderDark, width: 0.5),
           ),
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         ),
         tabBarTheme: TabBarThemeData(
-          labelColor: _text,
-          unselectedLabelColor: _muted,
+          labelColor: _textDark,
+          unselectedLabelColor: _mutedDark,
           indicatorColor: _accent,
-          dividerColor: _border,
+          dividerColor: _borderDark,
         ),
         drawerTheme: const DrawerThemeData(
-          backgroundColor: _surface,
+          backgroundColor: _surfaceDark,
         ),
-        dividerColor: _border,
-        iconTheme: const IconThemeData(color: _muted),
+        dividerColor: _borderDark,
+        iconTheme: const IconThemeData(color: _mutedDark),
         textTheme: const TextTheme(
-          bodySmall: TextStyle(color: _muted, fontSize: 12),
-          bodyMedium: TextStyle(color: _text, fontSize: 14),
+          bodySmall: TextStyle(color: _mutedDark, fontSize: 12),
+          bodyMedium: TextStyle(color: _textDark, fontSize: 14),
         ),
         snackBarTheme: SnackBarThemeData(
-          backgroundColor: _surface,
-          contentTextStyle: const TextStyle(color: _text),
+          backgroundColor: _surfaceDark,
+          contentTextStyle: const TextStyle(color: _textDark),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           behavior: SnackBarBehavior.floating,
         ),
         floatingActionButtonTheme: const FloatingActionButtonThemeData(
           backgroundColor: _accent,
-          foregroundColor: _bg,
+          foregroundColor: _bgDark,
+        ),
+      );
+
+  static ThemeData get light => ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.light,
+        colorScheme: const ColorScheme.light(
+          primary: _accent,
+          secondary: _blue,
+          surface: _surfaceLight,
+          error: _red,
+          onPrimary: _surfaceLight,
+          onSecondary: _surfaceLight,
+          onSurface: _textLight,
+          onError: _surfaceLight,
+        ),
+        scaffoldBackgroundColor: _bgLight,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: _surfaceLight,
+          foregroundColor: _textLight,
+          elevation: 0,
+          scrolledUnderElevation: 1,
+          centerTitle: false,
+          titleTextStyle: TextStyle(
+            color: _textLight, fontSize: 18, fontWeight: FontWeight.w600,
+          ),
+        ),
+        cardTheme: CardThemeData(
+          color: _surfaceLight,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: const BorderSide(color: _borderLight, width: 0.5),
+          ),
+          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        ),
+        tabBarTheme: TabBarThemeData(
+          labelColor: _textLight,
+          unselectedLabelColor: _mutedLight,
+          indicatorColor: _accent,
+          dividerColor: _borderLight,
+        ),
+        drawerTheme: const DrawerThemeData(
+          backgroundColor: _surfaceLight,
+        ),
+        dividerColor: _borderLight,
+        iconTheme: const IconThemeData(color: _mutedLight),
+        textTheme: const TextTheme(
+          bodySmall: TextStyle(color: _mutedLight, fontSize: 12),
+          bodyMedium: TextStyle(color: _textLight, fontSize: 14),
+        ),
+        snackBarTheme: SnackBarThemeData(
+          backgroundColor: _surfaceLight,
+          contentTextStyle: const TextStyle(color: _textLight),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          behavior: SnackBarBehavior.floating,
+        ),
+        floatingActionButtonTheme: const FloatingActionButtonThemeData(
+          backgroundColor: _accent,
+          foregroundColor: _surfaceLight,
         ),
       );
 
@@ -79,9 +147,9 @@ class AppTheme {
       'working' => _amber,
       'pending_review' => _blue,
       'pending_approval' => _red,
-      'idle' => _muted,
+      'idle' => _mutedDark,
       'all_done' => _accent,
-      _ => _muted,
+      _ => _mutedDark,
     };
   }
 
@@ -90,9 +158,9 @@ class AppTheme {
       'working' => _amber.withAlpha(30),
       'pending_review' => _blue.withAlpha(30),
       'pending_approval' => _red.withAlpha(30),
-      'idle' => _muted.withAlpha(20),
+      'idle' => _mutedDark.withAlpha(20),
       'all_done' => _accent.withAlpha(30),
-      _ => _muted.withAlpha(20),
+      _ => _mutedDark.withAlpha(20),
     };
   }
 }
