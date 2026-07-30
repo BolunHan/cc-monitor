@@ -4,6 +4,69 @@
  * and connect to a cc-monitor server running elsewhere.
  */
 (() => {
+// ---- I18n ----
+
+const I18n = (() => {
+    let _lang = 'en';
+    let _data = null;
+
+    async function load(lang) {
+        try {
+            const resp = await fetch('./static/i18n/' + lang + '.json');
+            if (!resp.ok) throw new Error('not found');
+            _data = await resp.json();
+            _lang = lang;
+        } catch (_) {
+            if (lang !== 'en') return load('en');
+            _data = null;
+        }
+    }
+
+    function t(key, vars) {
+        let s = (_data && _data[key]) || key;
+        if (vars) {
+            for (const [k, v] of Object.entries(vars)) {
+                s = s.replace('{' + k + '}', v);
+            }
+        }
+        return s;
+    }
+
+    function renderAll() {
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+            const k = el.dataset.i18n;
+            if (k) el.textContent = t(k);
+        });
+        // Re-render dynamic content tied to data
+        loadSessionsView();
+    }
+
+    async function setLang(lang) {
+        localStorage.setItem('cc-monitor-lang', lang);
+        await load(lang);
+        renderAll();
+        loadSessions();
+        loadVersion();
+        checkHooksStatus();
+    }
+
+    function current() { return _lang; }
+
+    return { load, t, renderAll, setLang, current };
+})();
+
+function loadSessionsView() {
+    // Re-render all cards with current language
+    cards.forEach((meta, sid) => {
+        const prev = prevStates.get(sid);
+        if (prev) {
+            const session = { session_id: sid, state: prev.state, archived: prev.archived, cwd: meta.cwd, raw_event: meta.rawEvent, raw_detail: meta.rawDetail, summary: meta.summary, cc_monitor_uid: meta.uid, updated_at: meta.updatedAt };
+            updateCard(session);
+        }
+    });
+    updateCounts();
+}
+
     const STORAGE_KEY_URL = "cc-monitor-server-url";
     const STORAGE_KEY_TOKEN = "cc-monitor-auth-token";
     const STORAGE_KEY_CLIENT_ID = "cc-monitor-client-id";
@@ -104,14 +167,14 @@
         const basename = dirBasename(session.cwd) || session.session_id.substring(0, 8);
         let title, body;
         if (session.state === "pending_review") {
-            title = `${basename} — Pending Review`;
-            body = "Claude finished responding. Review the output.";
+            title = I18n.t("notify.pending_review.title", {name: basename});
+            body = I18n.t("notify.pending_review.body");
         } else if (session.state === "idle") {
-            title = `${basename} — Task Complete`;
-            body = "Claude Code is idle, waiting for your input.";
+            title = I18n.t("notify.idle.title", {name: basename});
+            body = I18n.t("notify.idle.body");
         } else {
-            title = `${basename} — Pending Approval`;
-            body = "Claude Code needs permission to proceed.";
+            title = I18n.t("notify.pending_approval.title", {name: basename});
+            body = I18n.t("notify.pending_approval.body");
         }
         try {
             new Notification(title, { body, tag: session.session_id });
@@ -122,7 +185,7 @@
 
     function setConnected(state) {
         if (indicator) indicator.classList.toggle("connected", state);
-        if (label) label.textContent = state ? "connected" : "disconnected";
+        if (label) label.textContent = state ? I18n.t("connection.connected") : I18n.t("connection.disconnected");
     }
 
     // ---- Utilities ----
@@ -131,12 +194,12 @@
         const then = new Date(isoString);
         const now = new Date();
         const seconds = Math.floor((now - then) / 1000);
-        if (seconds < 5) return "just now";
-        if (seconds < 60) return `${seconds}s ago`;
+        if (seconds < 5) return I18n.t("time.just_now");
+        if (seconds < 60) return I18n.t("time.seconds_ago", {n: seconds});
         const minutes = Math.floor(seconds / 60);
-        if (minutes < 60) return `${minutes}m ago`;
+        if (minutes < 60) return I18n.t("time.minutes_ago", {n: minutes});
         const hours = Math.floor(minutes / 60);
-        return `${hours}h ago`;
+        return I18n.t("time.hours_ago", {n: hours});
     }
 
     function escapeHtml(str) {
@@ -236,16 +299,16 @@
         const section = getSection(session);
         const isArchived = section === "archive";
         const badgeState = isArchived ? "archived" : session.state;
-        const badgeLabel = isArchived ? "archived" : session.state.replace("_", " ");
+        const badgeLabel = isArchived ? I18n.t("state.archived") : I18n.t("state." + session.state);
 
         let actions = "";
         if (section === "active" || section === "complete") {
-            actions += `<button class="btn--card btn--card-archive" data-action="archive" data-sid="${escapeHtml(session.session_id)}">Archive</button>`;
+            actions += `<button class="btn--card btn--card-archive" data-action="archive" data-sid="${escapeHtml(session.session_id)}">${I18n.t("card.archive")}</button>`;
         } else {
-            actions += `<button class="btn--card btn--card-unarchive" data-action="unarchive" data-sid="${escapeHtml(session.session_id)}">Unarchive</button>`;
+            actions += `<button class="btn--card btn--card-unarchive" data-action="unarchive" data-sid="${escapeHtml(session.session_id)}">${I18n.t("card.unarchive")}</button>`;
         }
         if (section === "active") {
-            actions += `<button class="btn--card btn--card-complete" data-action="complete" data-sid="${escapeHtml(session.session_id)}">Mark Done</button>`;
+            actions += `<button class="btn--card btn--card-complete" data-action="complete" data-sid="${escapeHtml(session.session_id)}">${I18n.t("card.mark_done")}</button>`;
         }
 
         card.innerHTML = `
@@ -301,6 +364,13 @@
         placeCard(session, card);
         updateCounts();
         bindCardActions(card);
+        // Store metadata for language re-render
+        cards.get(session.session_id).cwd = session.cwd;
+        cards.get(session.session_id).rawEvent = session.raw_event;
+        cards.get(session.session_id).rawDetail = session.raw_detail;
+        cards.get(session.session_id).summary = session.summary;
+        cards.get(session.session_id).uid = session.cc_monitor_uid;
+        cards.get(session.session_id).updatedAt = session.updated_at;
     }
 
     function clearAllCards() {
@@ -431,15 +501,15 @@
             const resp = await apiFetch("/api/version");
             const data = await resp.json();
             document.getElementById("footer-version").textContent =
-                `cc-monitor v${data.version}`;
+                I18n.t("footer.version", {version: data.version});
             // Docker badge in settings
             const badge = document.getElementById("settings-docker-badge");
             if (badge) {
                 if (data.docker) {
-                    badge.textContent = "🐳 Docker";
+                    badge.textContent = I18n.t("docker_badge.docker");
                     badge.className = "settings-panel__docker-badge docker";
                 } else {
-                    badge.textContent = "🖥 Native";
+                    badge.textContent = I18n.t("docker_badge.native");
                     badge.className = "settings-panel__docker-badge native";
                 }
             }
@@ -465,7 +535,7 @@
             hooksBanner.classList.remove("hidden");
         }
         if (settingsHookStatus) {
-            settingsHookStatus.textContent = installed ? "✓ installed" : "not installed";
+            settingsHookStatus.textContent = installed ? I18n.t("hooks.installed_status") : I18n.t("hooks.not_installed_status");
             settingsHookStatus.className = "settings-panel__hook-status " + (installed ? "installed" : "not-installed");
         }
     }
@@ -485,7 +555,7 @@
 
     btnInstall.addEventListener("click", async () => {
         btnInstall.disabled = true;
-        installFeedback.textContent = "installing…";
+        installFeedback.textContent = I18n.t("hooks.installing");
         installFeedback.className = "install-feedback";
 
         // ---- Step 1: Determine if server is local or remote ----
@@ -527,18 +597,18 @@
                     installFeedback.className = "install-feedback";
                 } else {
                     console.log("[hooks] ✓ installed %d events into %s", data.installed_events, data.target);
-                    installFeedback.textContent = `✓ ${data.installed_events} hooks installed`;
+                    installFeedback.textContent = I18n.t("hooks.installed", {n: data.installed_events});
                     installFeedback.className = "install-feedback success";
                     updateHookStatusUI(true);
                 }
             } else {
                 console.error("[hooks] ✗ install failed:", data.detail);
-                installFeedback.textContent = `✗ ${data.detail}`;
+                installFeedback.textContent = I18n.t("hooks.remove_failed", {detail: data.detail});
                 installFeedback.className = "install-feedback error";
             }
         } catch (err) {
             console.error("[hooks] ✗ server unreachable:", err);
-            installFeedback.textContent = "✗ server unreachable";
+            installFeedback.textContent = I18n.t("hooks.unreachable");
             installFeedback.className = "install-feedback error";
         }
         btnInstall.disabled = false;
@@ -585,14 +655,14 @@
         const host = settingsUrl.value.trim().replace(/\/+$/, "");
         const port = settingsPort.value.trim();
         if (!host) {
-            settingsFeedback.textContent = "✗ Server URL is required";
+            settingsFeedback.textContent = I18n.t("settings.url_required");
             settingsFeedback.className = "settings-panel__feedback error";
             return;
         }
         let fullUrl = host;
         if (port) fullUrl = host + ":" + port;
         setServerUrl(fullUrl);
-        settingsFeedback.textContent = "✓ saved, reconnecting…";
+        settingsFeedback.textContent = I18n.t("settings.saved");
         settingsFeedback.className = "settings-panel__feedback success";
         setTimeout(() => {
             settingsFeedback.textContent = "";
@@ -611,7 +681,7 @@
             return;
         }
         btnUninstall.disabled = true;
-        settingsFeedback.textContent = "removing…";
+        settingsFeedback.textContent = I18n.t("hooks.removing");
         settingsFeedback.className = "settings-panel__feedback";
         try {
             const resp = await apiFetch("/api/uninstall-hooks", { method: "POST" });
@@ -623,16 +693,16 @@
                     settingsFeedback.textContent = "";
                     settingsFeedback.className = "settings-panel__feedback";
                 } else {
-                    settingsFeedback.textContent = `✓ ${data.removed_entries} hooks removed`;
+                    settingsFeedback.textContent = I18n.t("hooks.removed", {n: data.removed_entries});
                     settingsFeedback.className = "settings-panel__feedback success";
                     updateHookStatusUI(false);
                 }
             } else {
-                settingsFeedback.textContent = `✗ ${data.detail}`;
+                settingsFeedback.textContent = I18n.t("hooks.remove_failed", {detail: data.detail});
                 settingsFeedback.className = "settings-panel__feedback error";
             }
         } catch (err) {
-            settingsFeedback.textContent = "✗ server unreachable";
+            settingsFeedback.textContent = I18n.t("hooks.unreachable");
             settingsFeedback.className = "settings-panel__feedback error";
         }
         btnUninstall.disabled = false;
@@ -699,7 +769,7 @@
         try {
             const resp = await apiFetch("/api/auth/pair/qr");
             if (!resp.ok) {
-                pairQr.innerHTML = '<p class="pairing-error">Pairing not available — start server with --host 0.0.0.0</p>';
+                pairQr.innerHTML = '<p class="pairing-error">' + I18n.t("pair.error") + '</p>';
                 return;
             }
             const data = await resp.json();
@@ -714,7 +784,7 @@
                 colorLight: "#1a1d27",
             });
         } catch (err) {
-            pairQr.innerHTML = '<p class="pairing-error">Server unreachable or auth not enabled</p>';
+            pairQr.innerHTML = '<p class="pairing-error">' + I18n.t("pair.unreachable") + '</p>';
         }
     }
 
@@ -738,7 +808,7 @@
             const data = await resp.json();
             const requests = data.requests || [];
             if (requests.length === 0) {
-                pairingRequestsList.innerHTML = '<p class="pairing-empty">No pending requests</p>';
+                pairingRequestsList.innerHTML = '<p class="pairing-empty">' + I18n.t("pair.empty_requests") + '</p>';
                 return;
             }
             pairingRequestsList.innerHTML = requests.map(r => `
@@ -777,7 +847,7 @@
             const data = await resp.json();
             const devices = data.devices || [];
             if (devices.length === 0) {
-                list.innerHTML = '<p class="pairing-empty">No paired devices</p>';
+                list.innerHTML = '<p class="pairing-empty">' + I18n.t("pair.empty_devices") + '</p>';
                 return;
             }
             const myId = getClientId();
@@ -831,21 +901,20 @@
         modal.className = "modal-overlay";
         modal.innerHTML = `
             <div class="modal">
-                <h2 class="modal__title">Install cc-monitor Hooks</h2>
+                <h2 class="modal__title">${I18n.t("modal.install_title")}</h2>
                 <div class="modal__warning">
-                    ⚠ This script modifies <code>~/.claude/settings.json</code> directly.
-                    Only run installers from the trusted cc-monitor repository:<br>
+                    ${I18n.t("modal.install_warning")}<br>
                     <a href="https://github.com/BolunHan/cc-monitor" target="_blank" rel="noopener">
                         github.com/BolunHan/cc-monitor
                     </a>
                 </div>
-                <p class="modal__desc">Run this command on the machine where Claude Code runs:</p>
+                <p class="modal__desc">${I18n.t("modal.install_desc")}</p>
                 <div class="modal__cmd">
                     <code id="install-oneliner">${escapeHtml(oneLiner)}</code>
                 </div>
                 <div class="modal__actions">
-                    <button class="btn btn--primary" id="btn-copy-oneliner">Copy</button>
-                    <button class="btn" id="btn-close-modal">Close</button>
+                    <button class="btn btn--primary" id="btn-copy-oneliner">${I18n.t("modal.copy")}</button>
+                    <button class="btn" id="btn-close-modal">${I18n.t("modal.close")}</button>
                 </div>
                 <span class="modal__feedback" id="modal-feedback"></span>
             </div>
@@ -856,7 +925,7 @@
         document.getElementById("btn-copy-oneliner").addEventListener("click", () => {
             navigator.clipboard.writeText(oneLiner).then(() => {
                 const fb = document.getElementById("modal-feedback");
-                fb.textContent = "✓ copied";
+                fb.textContent = I18n.t("modal.copied");
                 fb.className = "modal__feedback success";
                 setTimeout(() => { fb.textContent = ""; fb.className = "modal__feedback"; }, 2000);
             }).catch(() => {
@@ -914,7 +983,7 @@
             requestId = data.request_id;
             pairingRequestId = requestId;
         } catch (err) {
-            pairFeedback.textContent = "✗ failed to submit pairing request";
+            pairFeedback.textContent = I18n.t("pair.failed_submit");
             pairFeedback.className = "install-feedback error";
             return;
         }
@@ -928,25 +997,24 @@
         modal.className = "modal-overlay";
         modal.innerHTML = `
             <div class="modal">
-                <h2 class="modal__title">Pair Web Dashboard</h2>
+                <h2 class="modal__title">${I18n.t("pair.modal_title")}</h2>
                 <div class="modal__warning">
-                    ⚠ This dashboard needs authorization to access the cc-monitor server.
-                    Only approve if you initiated this pairing from a trusted source:<br>
+                    ${I18n.t("pair.modal_warning")}<br>
                     <a href="https://github.com/BolunHan/cc-monitor" target="_blank" rel="noopener">
                         github.com/BolunHan/cc-monitor
                     </a>
                 </div>
-                <p class="modal__desc">Pairing code: <strong style="font-size:22px;letter-spacing:4px;">${pairingCode}</strong></p>
-                <p class="modal__desc">Approve with this command on the server machine:</p>
+                <p class="modal__desc">${I18n.t("pair.code_label")} <strong style="font-size:22px;letter-spacing:4px;">${pairingCode}</strong></p>
+                <p class="modal__desc">${I18n.t("pair.approve_hint")}</p>
                 <div class="modal__cmd">
                     <code id="pair-oneliner">${escapeHtml(approveCmd)}</code>
                 </div>
                 <div class="modal__actions">
-                    <button class="btn btn--primary" id="btn-copy-pair">Copy</button>
-                    <button class="btn" id="btn-close-pair">Close</button>
+                    <button class="btn btn--primary" id="btn-copy-pair">${I18n.t("modal.copy")}</button>
+                    <button class="btn" id="btn-close-pair">${I18n.t("modal.close")}</button>
                 </div>
                 <div class="modal__log" id="pair-log">
-                    <div class="modal__log-entry">Waiting for approval…</div>
+                    <div class="modal__log-entry">${I18n.t("pair.waiting")}</div>
                 </div>
             </div>
         `;
@@ -983,17 +1051,17 @@
                 attempts++;
                 log.innerHTML += `<div class="modal__log-entry">[${attempts}] status: ${data.status}</div>`;
                 if (data.status === "approved") {
-                    log.innerHTML += '<div class="modal__log-entry success">✓ Approved!</div>';
+                    log.innerHTML += '<div class="modal__log-entry success">' + I18n.t("pair.approved") + '</div>';
                     stopPairStatusPoll();
                     // The token was returned to the approver; re-submit to get a new one
                     // For now, close the modal — user needs to refresh
                     setTimeout(() => {
-                        log.innerHTML += '<div class="modal__log-entry">Reloading page to apply token…</div>';
+                        log.innerHTML += '<div class="modal__log-entry">' + I18n.t("pair.reloading") + '</div>';
                         // Actually, we need the token. Let's re-request.
                         reRequestToken(requestId, modal);
                     }, 1000);
                 } else if (data.status === "denied") {
-                    log.innerHTML += '<div class="modal__log-entry error">✗ Denied</div>';
+                    log.innerHTML += '<div class="modal__log-entry error">' + I18n.t("pair.denied") + '</div>';
                     stopPairStatusPoll();
                 }
             } catch (err) {
@@ -1029,7 +1097,7 @@
             });
             const data = await resp.json();
             if (data.token) {
-                log.innerHTML += '<div class="modal__log-entry success">✓ Paired! Token saved.</div>';
+                log.innerHTML += '<div class="modal__log-entry success">' + I18n.t("pair.paired") + '</div>';
                 setAuthToken(data.token);
                 updateUnauthorizedUI(false);
                 setTimeout(() => {
@@ -1045,18 +1113,29 @@
         }
     }
 
+    // ---- Language switch ----
+
+    const langSwitch = document.getElementById("lang-switch");
+
+    langSwitch.addEventListener("change", () => {
+        I18n.setLang(langSwitch.value);
+    });
+
     // ---- Initialise ----
 
     requestNotificationPermission();
     populateSettingsInputs();
-    loadVersion();
-    checkHooksStatus();
 
-    // Fetch sessions immediately via REST — don't wait for SSE to connect.
-    // SSE connects in parallel for live updates; when its 'open' fires,
-    // loadSessions() refreshes any events missed during the handshake.
-    loadSessions().then(() => {
+    // Load i18n first, then bootstrap
+    (async () => {
+        const savedLang = localStorage.getItem("cc-monitor-lang") || "en";
+        langSwitch.value = savedLang;
+        await I18n.load(savedLang);
+        I18n.renderAll();
+        loadVersion();
+        checkHooksStatus();
+        connectSSE();
+        await loadSessions();
         if (lastHeartbeat === 0) setConnected(true);
-    });
-    connectSSE();
+    })();
 })();

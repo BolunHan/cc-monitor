@@ -12,19 +12,23 @@
         <h1 class="header__title">cc-monitor</h1>
         <div class="header__actions">
             <div id="hooks-banner" class="hooks-banner hidden">
-                <span class="hooks-banner__badge">⚠ global hooks not installed</span>
-                <button class="btn btn--warning" id="btn-install-hooks">Install Global Hooks</button>
+                <span class="hooks-banner__badge" data-i18n="hooks.badge">⚠ global hooks not installed</span>
+                <button class="btn btn--warning" id="btn-install-hooks" data-i18n="hooks.install">Install Global Hooks</button>
                 <span class="install-feedback" id="install-feedback"></span>
             </div>
             <div id="unauth-banner" class="hooks-banner hidden">
-                <span class="hooks-banner__badge">🔒 unauthorized access</span>
-                <button class="btn btn--warning" id="btn-pair-device">Pair</button>
+                <span class="hooks-banner__badge" data-i18n="unauth.badge">🔒 unauthorized access</span>
+                <button class="btn btn--warning" id="btn-pair-device" data-i18n="unauth.pair">Pair</button>
                 <span class="install-feedback" id="pair-feedback"></span>
             </div>
             <div class="header__status">
                 <span class="connection-indicator" id="connection-indicator" title="SSE connection status"></span>
-                <span class="connection-label" id="connection-label">connecting</span>
+                <span class="connection-label" id="connection-label" data-i18n="connection.connecting">connecting</span>
             </div>
+            <select id="lang-switch" class="lang-switch" aria-label="Language">
+                <option value="en">EN</option>
+                <option value="zh-CN">中文</option>
+            </select>
             <button class="btn btn--icon" id="btn-pair" title="Pair Device">⧉</button>
             <button class="btn btn--icon" id="btn-settings" title="Settings">⚙</button>
         </div>
@@ -32,22 +36,22 @@
 
     <div class="pairing-panel hidden" id="pairing-panel">
         <div class="pairing-panel__content">
-            <h3 class="pairing-panel__title">Pair Device</h3>
+            <h3 class="pairing-panel__title" data-i18n="pair.title">Pair Device</h3>
             <div class="pairing-panel__row">
                 <div class="pairing-panel__left">
                     <div class="pairing-panel__col-title">
-                        <span>QR Code</span>
+                        <span data-i18n="pair.qr_col_title">QR Code</span>
                         <button class="btn btn--icon btn--small" id="btn-refresh-qr" title="Refresh QR code">⟳</button>
                     </div>
                     <div id="pair-qr"></div>
-                    <p class="pairing-hint">Scan with cc-monitor Android app</p>
+                    <p class="pairing-hint" data-i18n="pair.qr_hint">Scan with cc-monitor Android app</p>
                 </div>
                 <div class="pairing-panel__sep"></div>
                 <div class="pairing-panel__right">
-                    <h4 class="pairing-requests__title">Pending Requests</h4>
+                    <h4 class="pairing-requests__title" data-i18n="pair.requests_title">Pending Requests</h4>
                     <div id="pairing-requests-list"></div>
                     <hr class="settings-panel__divider">
-                    <h4 class="pairing-requests__title">Paired Devices</h4>
+                    <h4 class="pairing-requests__title" data-i18n="pair.devices_title">Paired Devices</h4>
                     <div id="paired-devices-list"></div>
                 </div>
             </div>
@@ -56,25 +60,25 @@
 
     <div class="settings-panel hidden" id="settings-panel">
         <div class="settings-panel__content">
-            <h3 class="settings-panel__title">Settings <span class="settings-panel__docker-badge" id="settings-docker-badge"></span></h3>
+            <h3 class="settings-panel__title"><span data-i18n="settings.title">Settings</span> <span class="settings-panel__docker-badge" id="settings-docker-badge"></span></h3>
             <div class="settings-panel__fields">
                 <label class="settings-panel__label">
-                    Server URL
+                    <span data-i18n="settings.server_url">Server URL</span>
                     <input type="text" class="settings-panel__input" id="settings-url" placeholder="http://127.0.0.1">
                 </label>
                 <label class="settings-panel__label">
-                    Port
+                    <span data-i18n="settings.port">Port</span>
                     <input type="number" class="settings-panel__input settings-panel__input--short" id="settings-port" placeholder="9876">
                 </label>
             </div>
-            <button class="btn btn--primary" id="btn-save-settings">Save &amp; Reconnect</button>
+            <button class="btn btn--primary" id="btn-save-settings" data-i18n="settings.save">Save &amp; Reconnect</button>
             <span class="settings-panel__feedback" id="settings-feedback"></span>
             <hr class="settings-panel__divider">
             <div class="settings-panel__row">
-                <span class="settings-panel__label-text">Global hooks</span>
+                <span class="settings-panel__label-text" data-i18n="settings.hook_status">Global hooks</span>
                 <span class="settings-panel__hook-status" id="settings-hook-status">checking…</span>
-                <button class="btn btn--check btn--small" id="btn-check-hooks">Check</button>
-                <button class="btn btn--danger btn--small" id="btn-uninstall-hooks">Uninstall</button>
+                <button class="btn btn--check btn--small" id="btn-check-hooks" data-i18n="settings.check">Check</button>
+                <button class="btn btn--danger btn--small" id="btn-uninstall-hooks" data-i18n="settings.uninstall">Uninstall</button>
             </div>
         </div>
     </div>
@@ -84,13 +88,13 @@
         <section class="section" id="section-active">
             <div class="section__header" data-section="active">
                 <span class="section__toggle">▼</span>
-                <h2 class="section__title">Active</h2>
+                <h2 class="section__title" data-i18n="section.active">Active</h2>
                 <span class="section__count" id="count-active">0</span>
                 <span class="section__breakdown" id="breakdown-active"></span>
             </div>
             <div class="section__body" id="body-active">
                 <div class="session-grid" id="grid-active"></div>
-                <p class="empty-state" id="empty-active">No active sessions</p>
+                <p class="empty-state" id="empty-active" data-i18n="empty.active">No active sessions</p>
             </div>
         </section>
 
@@ -98,12 +102,12 @@
         <section class="section section--collapsed" id="section-complete">
             <div class="section__header" data-section="complete">
                 <span class="section__toggle">▶</span>
-                <h2 class="section__title">Complete</h2>
+                <h2 class="section__title" data-i18n="section.complete">Complete</h2>
                 <span class="section__count" id="count-complete">0</span>
             </div>
             <div class="section__body hidden" id="body-complete">
                 <div class="session-grid" id="grid-complete"></div>
-                <p class="empty-state" id="empty-complete">No completed sessions</p>
+                <p class="empty-state" id="empty-complete" data-i18n="empty.complete">No completed sessions</p>
             </div>
         </section>
 
@@ -111,12 +115,12 @@
         <section class="section section--collapsed" id="section-archive">
             <div class="section__header" data-section="archive">
                 <span class="section__toggle">▶</span>
-                <h2 class="section__title">Archived</h2>
+                <h2 class="section__title" data-i18n="section.archived">Archived</h2>
                 <span class="section__count" id="count-archive">0</span>
             </div>
             <div class="section__body hidden" id="body-archive">
                 <div class="session-grid" id="grid-archive"></div>
-                <p class="empty-state" id="empty-archive">No archived sessions</p>
+                <p class="empty-state" id="empty-archive" data-i18n="empty.archived">No archived sessions</p>
             </div>
         </section>
     </main>
