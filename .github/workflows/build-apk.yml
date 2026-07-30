@@ -50,6 +50,25 @@ jobs:
         working-directory: android_app
         run: flutter pub get
 
+      - name: Diagnostics - list Android project files
+        run: |
+          echo "=== Android project root files ==="
+          ls -la android_app/android/ || echo "MISSING"
+          echo "=== settings.gradle.kts ==="
+          cat android_app/android/settings.gradle.kts || echo "MISSING"
+          echo "=== build.gradle.kts (root) ==="
+          cat android_app/android/build.gradle.kts || echo "MISSING"
+          echo "=== gradle-wrapper.properties ==="
+          cat android_app/android/gradle/wrapper/gradle-wrapper.properties || echo "MISSING"
+          echo "=== local.properties ==="
+          cat android_app/android/local.properties || echo "MISSING"
+          echo "=== AndroidManifest.xml (first 50 lines) ==="
+          head -50 android_app/android/app/src/main/AndroidManifest.xml
+          echo "=== styles.xml ==="
+          cat android_app/android/app/src/main/res/values/styles.xml || echo "MISSING"
+          echo "=== mipmap files ==="
+          find android_app/android/app/src/main/res/mipmap-* -type f 2>/dev/null || echo "NONE"
+
       - name: Build release APK
         working-directory: android_app
         run: flutter build apk --release
