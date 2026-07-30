@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../providers/session_provider.dart';
 
 class SessionDetailScreen extends StatelessWidget {
@@ -9,6 +10,7 @@ class SessionDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Consumer<SessionProvider>(
       builder: (context, provider, _) {
         final session = [...provider.active, ...provider.complete, ...provider.archived]
@@ -17,8 +19,8 @@ class SessionDetailScreen extends StatelessWidget {
 
         if (session == null) {
           return Scaffold(
-            appBar: AppBar(title: const Text('Session')),
-            body: const Center(child: Text('Session not found')),
+            appBar: AppBar(title: Text(l10n.sessionTitle)),
+            body: Center(child: Text(l10n.sessionNotFound)),
           );
         }
 
@@ -27,34 +29,34 @@ class SessionDetailScreen extends StatelessWidget {
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _InfoRow('Session ID', session.sessionId),
+              _InfoRow(l10n.sessionId, session.sessionId),
               if (session.ccMonitorUid.isNotEmpty)
-                _InfoRow('UID', session.ccMonitorUid),
-              _InfoRow('State', session.state),
-              _InfoRow('CWD', session.cwd),
-              _InfoRow('Last Event', session.rawEvent),
+                _InfoRow(l10n.sessionUid, session.ccMonitorUid),
+              _InfoRow(l10n.sessionState, session.state),
+              _InfoRow(l10n.sessionCwd, session.cwd),
+              _InfoRow(l10n.sessionLastEvent, session.rawEvent),
               if (session.rawDetail != null)
-                _InfoRow('Detail', session.rawDetail!),
-              _InfoRow('Updated', session.updatedAt.toString()),
+                _InfoRow(l10n.sessionDetail, session.rawDetail!),
+              _InfoRow(l10n.sessionUpdated, session.updatedAt.toString()),
               const SizedBox(height: 24),
               if (!session.archived)
                 ElevatedButton.icon(
                   onPressed: () => provider.archiveSession(session.sessionId),
                   icon: const Icon(Icons.archive),
-                  label: const Text('Archive'),
+                  label: Text(l10n.archive),
                 ),
               if (session.archived)
                 ElevatedButton.icon(
                   onPressed: () => provider.unarchiveSession(session.sessionId),
                   icon: const Icon(Icons.unarchive),
-                  label: const Text('Unarchive'),
+                  label: Text(l10n.unarchive),
                 ),
               const SizedBox(height: 8),
               if (session.state != 'all_done')
                 ElevatedButton.icon(
                   onPressed: () => provider.markComplete(session.sessionId),
                   icon: const Icon(Icons.check),
-                  label: const Text('Mark Complete'),
+                  label: Text(l10n.markComplete),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                 ),
             ],

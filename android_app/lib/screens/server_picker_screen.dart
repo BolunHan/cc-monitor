@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/api_client.dart';
 import '../services/discovery_service.dart';
 import '../services/secure_store.dart';
@@ -39,8 +40,9 @@ class _ServerPickerScreenState extends State<ServerPickerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Connect to Server')),
+      appBar: AppBar(title: Text(l10n.connectTitle)),
       body: Column(
         children: [
           if (_scanning)
@@ -49,7 +51,7 @@ class _ServerPickerScreenState extends State<ServerPickerScreen> {
             child: _scanning
                 ? const Center(child: CircularProgressIndicator())
                 : _servers.isEmpty
-                    ? _buildEmpty()
+                    ? _buildEmpty(l10n)
                     : ListView.builder(
                         itemCount: _servers.length,
                         itemBuilder: (context, index) {
@@ -73,7 +75,7 @@ class _ServerPickerScreenState extends State<ServerPickerScreen> {
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.qr_code_scanner),
-                      label: const Text('Scan QR Code'),
+                      label: Text(l10n.connectScanQr),
                       onPressed: () => Navigator.pushNamed(context, '/pair'),
                     ),
                   ),
@@ -82,8 +84,8 @@ class _ServerPickerScreenState extends State<ServerPickerScreen> {
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       icon: const Icon(Icons.edit),
-                      label: const Text('Manual Entry'),
-                      onPressed: () => _showManualEntry(),
+                      label: Text(l10n.connectManual),
+                      onPressed: () => _showManualEntry(l10n),
                     ),
                   ),
                 ],
@@ -95,22 +97,22 @@ class _ServerPickerScreenState extends State<ServerPickerScreen> {
     );
   }
 
-  Widget _buildEmpty() {
+  Widget _buildEmpty(AppLocalizations l10n) {
     return ListView(
       padding: const EdgeInsets.all(32),
       children: [
         const Icon(Icons.search_off, size: 64, color: Colors.grey),
         const SizedBox(height: 16),
-        const Text(
-          'No cc-monitor servers found on LAN',
+        Text(
+          l10n.connectNoServers,
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 16),
+          style: const TextStyle(fontSize: 16),
         ),
         const SizedBox(height: 16),
         ElevatedButton.icon(
           onPressed: _scan,
           icon: const Icon(Icons.refresh),
-          label: const Text('Scan Again'),
+          label: Text(l10n.connectScanAgain),
         ),
       ],
     );
@@ -128,7 +130,7 @@ class _ServerPickerScreenState extends State<ServerPickerScreen> {
     );
   }
 
-  void _showManualEntry() {
+  void _showManualEntry(AppLocalizations l10n) {
     final hostController = TextEditingController();
     final portController = TextEditingController(text: '9876');
     final tokenController = TextEditingController();
@@ -136,29 +138,29 @@ class _ServerPickerScreenState extends State<ServerPickerScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Manual Entry'),
+        title: Text(l10n.connectManualTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: hostController,
-              decoration: const InputDecoration(labelText: 'Server IP'),
+              decoration: InputDecoration(labelText: l10n.connectServerIp),
             ),
             TextField(
               controller: portController,
-              decoration: const InputDecoration(labelText: 'Port'),
+              decoration: InputDecoration(labelText: l10n.connectPort),
               keyboardType: TextInputType.number,
             ),
             TextField(
               controller: tokenController,
-              decoration: const InputDecoration(labelText: 'Token'),
+              decoration: InputDecoration(labelText: l10n.connectToken),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(l10n.connectCancel),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -182,7 +184,7 @@ class _ServerPickerScreenState extends State<ServerPickerScreen> {
                 }
               }
             },
-            child: const Text('Connect'),
+            child: Text(l10n.connectConnect),
           ),
         ],
       ),

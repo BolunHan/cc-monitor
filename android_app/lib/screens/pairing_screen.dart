@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'connecting_screen.dart';
 
 class PairingScreen extends StatefulWidget {
@@ -96,8 +97,9 @@ class _PairingScreenState extends State<PairingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Scan QR Code')),
+      appBar: AppBar(title: Text(l10n.scanQrTitle)),
       body: Stack(
         children: [
           MobileScanner(
@@ -128,10 +130,10 @@ class _PairingScreenState extends State<PairingScreen> {
               ),
               child: Text(
                 _navigating
-                    ? 'Found! Opening...'
+                    ? l10n.scanFound
                     : _lastScan.isNotEmpty
                         ? _lastScan
-                        : 'Point camera at the QR code shown on the web dashboard',
+                        : l10n.scanHint,
                 style: const TextStyle(color: Colors.white70, fontSize: 13),
                 textAlign: TextAlign.center,
               ),

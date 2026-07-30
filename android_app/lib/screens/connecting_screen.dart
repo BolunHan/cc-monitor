@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../services/api_client.dart';
 import '../services/secure_store.dart';
 
@@ -222,8 +223,9 @@ class _ConnectingScreenState extends State<ConnectingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Connecting')),
+      appBar: AppBar(title: Text(l10n.connectingTitle)),
       body: Column(
         children: [
           Padding(
@@ -244,8 +246,8 @@ class _ConnectingScreenState extends State<ConnectingScreen> {
                 ),
                 if (widget.qrToken == null) ...[
                   const SizedBox(height: 12),
-                  const Text('Pairing Code',
-                      style: TextStyle(fontSize: 11, color: Colors.grey)),
+                  Text(l10n.pairingCodeLabel,
+                      style: const TextStyle(fontSize: 11, color: Colors.grey)),
                   const SizedBox(height: 4),
                   Text(
                     _pairingCode,
@@ -257,8 +259,8 @@ class _ConnectingScreenState extends State<ConnectingScreen> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  const Text('Verify this code on the web dashboard',
-                      style: TextStyle(fontSize: 11, color: Colors.grey)),
+                  Text(l10n.verifyCodeHint,
+                      style: const TextStyle(fontSize: 11, color: Colors.grey)),
                 ],
               ],
             ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import '../app_theme.dart';
 import '../providers/session_provider.dart';
 import '../models/session.dart';
@@ -50,9 +51,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   Widget build(BuildContext context) {
     final store = context.read<SecureStore>();
+    final l10n = AppLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('cc-monitor'),
+        title: Text(l10n.appTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
@@ -72,9 +74,9 @@ class _DashboardScreenState extends State<DashboardScreen>
               children: [
                 TabBar(
                   tabs: [
-                    Tab(text: 'Active (${provider.active.length})'),
-                    Tab(text: 'Complete (${provider.complete.length})'),
-                    Tab(text: 'Archived (${provider.archived.length})'),
+                    Tab(text: l10n.activeTab(provider.active.length)),
+                    Tab(text: l10n.completeTab(provider.complete.length)),
+                    Tab(text: l10n.archivedTab(provider.archived.length)),
                   ],
                 ),
                 Expanded(
@@ -107,14 +109,14 @@ class _DashboardScreenState extends State<DashboardScreen>
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   color: Colors.red.shade900,
-                  child: const Row(
+                  child: Row(
                     children: [
-                      Icon(Icons.cloud_off, color: Colors.white70, size: 16),
-                      SizedBox(width: 8),
+                      const Icon(Icons.cloud_off, color: Colors.white70, size: 16),
+                      const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Disconnected — token revoked or server unreachable.\nRemove this server from the sidebar.',
-                          style: TextStyle(color: Colors.white70, fontSize: 12),
+                          l10n.disconnectedBanner,
+                          style: const TextStyle(color: Colors.white70, fontSize: 12),
                         ),
                       ),
                     ],
@@ -146,7 +148,8 @@ class _SessionList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (sessions.isEmpty) {
-      return const Center(child: Text('No sessions'));
+      final l10n = AppLocalizations.of(context)!;
+      return Center(child: Text(l10n.noSessions));
     }
     return RefreshIndicator(
       onRefresh: () => context.read<SessionProvider>().loadSessions(),
@@ -187,6 +190,7 @@ class _SessionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Dismissible(
       key: Key(session.sessionId),
       background: Container(
@@ -216,22 +220,33 @@ class _SessionCard extends StatelessWidget {
           leading: CircleAvatar(backgroundColor: _stateColor(), radius: 6),
           title: Text(session.summary ?? session.cwd, maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text([
-            session.state.replaceAll('_', ' '),
+            _stateLabel(session.state, l10n),
             if (session.ccMonitorUid.isNotEmpty) session.ccMonitorUid,
           ].join(' · ')),
-          trailing: Text(_formatTime(session.updatedAt), style: Theme.of(context).textTheme.bodySmall),
+          trailing: Text(_formatTime(session.updatedAt, l10n), style: Theme.of(context).textTheme.bodySmall),
         ),
       ),
     );
   }
 
-  String _formatTime(DateTime dt) {
+  String _stateLabel(String state, AppLocalizations l10n) {
+    return switch (state) {
+      'working' => l10n.stateWorking,
+      'idle' => l10n.stateIdle,
+      'pending_approval' => l10n.statePendingApproval,
+      'pending_review' => l10n.statePendingReview,
+      'all_done' => l10n.stateAllDone,
+      _ => l10n.stateArchived,
+    };
+  }
+
+  String _formatTime(DateTime dt, AppLocalizations l10n) {
     final now = DateTime.now();
     final diff = now.difference(dt);
-    if (diff.inMinutes < 1) return 'just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    return '${diff.inDays}d ago';
+    if (diff.inMinutes < 1) return l10n.timeJustNow;
+    if (diff.inMinutes < 60) return l10n.timeMinutesAgo(diff.inMinutes);
+    if (diff.inHours < 24) return l10n.timeHoursAgo(diff.inHours);
+    return l10n.timeDaysAgo(diff.inDays);
   }
 }
 
@@ -261,27 +276,28 @@ class _ServerDrawerState extends State<_ServerDrawer> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Drawer(
       child: Column(
         children: [
-          const DrawerHeader(
-            decoration: BoxDecoration(color: Colors.indigo),
+          DrawerHeader(
+            decoration: const BoxDecoration(color: Colors.indigo),
             child: SizedBox(
               width: double.infinity,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Icon(Icons.dns, color: Colors.white70, size: 32),
-                  SizedBox(height: 8),
-                  Text('Servers', style: TextStyle(color: Colors.white, fontSize: 18)),
+                  const Icon(Icons.dns, color: Colors.white70, size: 32),
+                  const SizedBox(height: 8),
+                  Text(l10n.servers, style: const TextStyle(color: Colors.white, fontSize: 18)),
                 ],
               ),
             ),
           ),
           Expanded(
             child: _servers.isEmpty
-                ? const Center(child: Text('No servers paired', style: TextStyle(color: Colors.grey)))
+                ? Center(child: Text(l10n.noServersPaired, style: const TextStyle(color: Colors.grey)))
                 : ListView.builder(
                     itemCount: _servers.length,
                     itemBuilder: (context, index) {
@@ -319,7 +335,7 @@ class _ServerDrawerState extends State<_ServerDrawer> {
           const Divider(),
           ListTile(
             leading: const Icon(Icons.add),
-            title: const Text('Add Server'),
+            title: Text(l10n.addServer),
             onTap: () {
               Navigator.pop(context);
               Navigator.pushNamed(context, '/servers');
@@ -340,6 +356,7 @@ class _StateBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final log = provider.eventLog;
     final lastEvent = log.firstOrNull;
 
@@ -365,8 +382,8 @@ class _StateBar extends StatelessWidget {
             Expanded(
               child: Text(
                 provider.connected
-                    ? 'SSE alive | ${log.length} events | tap for log'
-                    : 'SSE disconnected | tap for log',
+                    ? l10n.sseAlive(log.length)
+                    : l10n.sseDisconnected,
                 style: const TextStyle(color: Colors.white70, fontSize: 11),
               ),
             ),
@@ -401,6 +418,7 @@ class _StateLogSheetState extends State<_StateLogSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final allLog = widget.provider.eventLog;
     final log = widget.provider.filteredEventLog;
     return Container(
@@ -412,9 +430,9 @@ class _StateLogSheetState extends State<_StateLogSheet> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('SSE Event Log (${log.length}/${allLog.length})',
+              Text(l10n.eventLogTitle(log.length, allLog.length),
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              Text(widget.provider.connected ? 'CONNECTED' : 'DISCONNECTED',
+              Text(widget.provider.connected ? l10n.eventLogConnected : l10n.eventLogDisconnected,
                   style: TextStyle(
                       color: widget.provider.connected ? Colors.green : Colors.red,
                       fontWeight: FontWeight.bold)),
@@ -423,7 +441,7 @@ class _StateLogSheetState extends State<_StateLogSheet> {
           const SizedBox(height: 8),
           Row(
             children: [
-              const Text('Level: ', style: TextStyle(fontSize: 12)),
+              Text(l10n.eventLogLevel, style: const TextStyle(fontSize: 12)),
               DropdownButton<LogLevel>(
                 value: _level,
                 isDense: true,
@@ -442,7 +460,7 @@ class _StateLogSheetState extends State<_StateLogSheet> {
           const Divider(),
           Expanded(
             child: log.isEmpty
-                ? const Center(child: Text('No events — waiting for SSE…'))
+                ? Center(child: Text(l10n.eventLogEmpty))
                 : ListView.builder(
                     itemCount: log.length,
                     itemBuilder: (_, i) {
