@@ -8,7 +8,11 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -25,11 +29,13 @@ object NotificationHelper {
 
     private var soundEnabled = true
     private var vibrateEnabled = true
+    private var defaultSoundUri: Uri? = null
 
     fun createChannels(context: Context) {
+        defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        // Ongoing channel — HIGH importance for lock screen visibility, no sound
+        // Ongoing channel — HIGH for lock screen, no sound, STATUS category
         val ongoingChannel = NotificationChannel(
             CHANNEL_ONGOING,
             "Session Monitor",
@@ -43,32 +49,32 @@ object NotificationHelper {
         }
         nm.createNotificationChannel(ongoingChannel)
 
-        // Alert channel — created with current sound/vibrate settings
+        // Alert channel
         createAlertChannel(nm)
     }
 
     private fun createAlertChannel(nm: NotificationManager) {
-        // Delete old channel so new settings take effect
         nm.deleteNotificationChannel(CHANNEL_ALERT)
+
+        // Use IMPORTANCE_MAX on API 26+ to force sound/vibration/lockscreen
+        // even on aggressive OEM skins like MIUI
+        val importance = NotificationManager.IMPORTANCE_MAX
 
         val channel = NotificationChannel(
             CHANNEL_ALERT,
             "Session Alerts",
-            NotificationManager.IMPORTANCE_HIGH
+            importance
         ).apply {
             description = "State transition alerts"
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             setShowBadge(true)
 
-            if (soundEnabled) {
+            if (soundEnabled && defaultSoundUri != null) {
                 val attrs = AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_NOTIFICATION)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                     .build()
-                setSound(
-                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
-                    attrs
-                )
+                setSound(defaultSoundUri, attrs)
             } else {
                 setSound(null, null)
             }
@@ -78,7 +84,6 @@ object NotificationHelper {
                 vibrationPattern = longArrayOf(0, 200, 100, 200)
             } else {
                 enableVibration(false)
-                vibrationPattern = null
             }
         }
         nm.createNotificationChannel(channel)
@@ -141,6 +146,7 @@ object NotificationHelper {
                 (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
         )
 
+        // Set color hint for notification background (used by system on some Android versions)
         return NotificationCompat.Builder(context, CHANNEL_ONGOING)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setStyle(NotificationCompat.DecoratedCustomViewStyle())
@@ -149,8 +155,9 @@ object NotificationHelper {
             .setOngoing(true)
             .setContentIntent(contentIntent)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setColor(0xFF1a1d27.toInt())
             .build()
     }
 
@@ -187,9 +194,15 @@ object NotificationHelper {
             else -> "State Change" to "Session is now $state"
         }
 
-        // Sound and vibration are controlled at the channel level.
-        // When the user toggles settings, the channel is recreated
-        // with the appropriate sound/vibration configuration.
+        // Direct vibration — bypasses channel-level MIUI overrides
+        if (vibrateEnabled) {
+            triggerVibration(context)
+        }
+
+        // Direct sound — bypasses channel-level MIUI overrides
+        if (soundEnabled && defaultSoundUri != null) {
+            triggerSound(context)
+        }
 
         val alertId = (System.currentTimeMillis() % 100000).toInt()
 
@@ -211,10 +224,36 @@ object NotificationHelper {
                 .setContentText("$sessionName · $body")
                 .setContentIntent(contentIntent)
                 .setAutoCancel(true)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .build()
         )
+    }
+
+    private fun triggerVibration(context: Context) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                vm.defaultVibrator.vibrate(
+                    VibrationEffect.createWaveform(longArrayOf(0, 200, 100, 200), -1)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 200, 100, 200), -1))
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun triggerSound(context: Context) {
+        try {
+            val uri = defaultSoundUri ?: return
+            val r = RingtoneManager.getRingtone(context, uri)
+            if (r != null) {
+                r.play()
+            }
+        } catch (_: Exception) {}
     }
 }
