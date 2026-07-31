@@ -529,11 +529,11 @@ function loadSessionsView() {
             <div class="detail-modal">
                 <div class="detail-modal__header">
                     <div class="detail-modal__title-row">
+                        <span class="session-card__badge badge-${badgeState}">${badgeLabel}</span>
                         <div>
                             <div class="detail-modal__title">${escapeHtml(title)}</div>
                             <div class="detail-modal__subtitle">${escapeHtml(sessionId)}</div>
                         </div>
-                        <span class="session-card__badge badge-${badgeState}">${badgeLabel}</span>
                     </div>
                     <button class="detail-modal__close" id="detail-close">✕</button>
                 </div>
@@ -685,7 +685,7 @@ function loadSessionsView() {
             const lastDot = dots[dots.length - 1].getBoundingClientRect();
             const top = firstDot.top + firstDot.height / 2 - containerRect.top + timeline.scrollTop;
             const bottom = lastDot.top + lastDot.height / 2 - containerRect.top + timeline.scrollTop;
-            rail.style.display = "";
+            rail.style.display = "block";
             rail.style.top = top + "px";
             rail.style.height = Math.max(0, bottom - top) + "px";
             rail.style.bottom = "auto";
