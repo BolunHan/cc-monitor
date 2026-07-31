@@ -91,6 +91,7 @@
   "detail.timeline.response": "Response",
   "detail.timeline.tool": "Tool",
   "detail.timeline.load_more": "Load more",
+  "detail.timeline.all_loaded": "Beginning of conversation",
   "detail.timeline.empty": "No messages yet",
   "detail.delete": "Delete Session",
   "detail.loading": "Loading…",

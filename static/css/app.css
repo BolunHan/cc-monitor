@@ -992,16 +992,22 @@ body {
 
 .detail-modal__title-row {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 2px;
   flex: 1;
   min-width: 0;
 }
 
 .detail-modal__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 18px;
   font-weight: 600;
   color: var(--color-text);
+}
+
+.detail-modal__title-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

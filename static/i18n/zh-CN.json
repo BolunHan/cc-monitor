@@ -91,6 +91,7 @@
   "detail.timeline.response": "响应",
   "detail.timeline.tool": "工具",
   "detail.timeline.load_more": "加载更多",
+  "detail.timeline.all_loaded": "对话开始",
   "detail.timeline.empty": "暂无消息",
   "detail.delete": "删除会话",
   "detail.loading": "加载中…",

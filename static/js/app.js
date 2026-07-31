@@ -536,7 +536,7 @@ function loadSessionsView() {
                 <div class="detail-modal__header">
                     <div class="detail-modal__title-row">
                         <div class="detail-modal__title">
-                            ${escapeHtml(title)}
+                            <span class="detail-modal__title-text">${escapeHtml(title)}</span>
                             <span class="session-card__badge badge-${badgeState}">${badgeLabel}</span>
                         </div>
                         <div class="detail-modal__subtitle">${escapeHtml(sessionId)}</div>
@@ -647,6 +647,7 @@ function loadSessionsView() {
     async function loadDetailMessages(sessionId, offset) {
         const msgsEl = document.getElementById("detail-timeline-msgs");
         const loadEl = document.getElementById("detail-timeline-load");
+        const tlContainer = document.getElementById("detail-timeline");
         if (!msgsEl) return;
 
         if (offset === 0) {
@@ -671,28 +672,59 @@ function loadSessionsView() {
 
             if (offset === 0 && messages.length === 0) {
                 msgsEl.innerHTML = '<div class="tl-empty">' + I18n.t("detail.timeline.empty") + '</div>';
+                if (loadEl) loadEl.innerHTML = "";
                 return;
             }
 
-            const html = messages.map(m => renderTimelineMsg(m)).join("");
+            // Server returns newest-first; reverse so oldest is at top, newest at bottom
+            const ordered = messages.slice().reverse();
+            const html = ordered.map(m => renderTimelineMsg(m)).join("");
+
             if (offset === 0) {
                 msgsEl.innerHTML = html;
+                // Scroll to bottom to show newest messages
+                requestAnimationFrame(() => {
+                    if (tlContainer) tlContainer.scrollTop = tlContainer.scrollHeight;
+                    // Ensure scroller: if still no scrollbar and more available, load more
+                    _ensureScroller(sessionId);
+                });
             } else {
+                // Prepend older messages at top
+                const prevScrollHeight = tlContainer ? tlContainer.scrollHeight : 0;
                 msgsEl.innerHTML = html + msgsEl.innerHTML;
+                // Maintain scroll position so visible content doesn't jump
+                requestAnimationFrame(() => {
+                    if (tlContainer) tlContainer.scrollTop = tlContainer.scrollHeight - prevScrollHeight;
+                });
             }
 
-            // Show remaining count in load bar
-            const remaining = total - offset - messages.length;
-            if (remaining > 0 && loadEl) {
-                loadEl.innerHTML = '<span style="font-size:11px;color:var(--color-text-muted)">' + remaining + ' more · scroll up</span>';
-            } else if (loadEl) {
-                loadEl.innerHTML = "";
+            // End marker or count hint
+            const allLoaded = _tlOffset >= total;
+            if (loadEl) {
+                if (allLoaded && total > 0) {
+                    loadEl.innerHTML = '<div style="text-align:center;padding:8px 0;font-size:11px;color:var(--color-text-muted);border-top:1px solid var(--color-border);margin-top:4px;">' + I18n.t("detail.timeline.all_loaded") + ' · ' + total + ' messages</div>';
+                } else if (total > 0) {
+                    const remaining = total - _tlOffset;
+                    loadEl.innerHTML = '<span style="font-size:11px;color:var(--color-text-muted)">' + remaining + ' more · scroll up</span>';
+                }
             }
         } catch (_) {
             _tlLoading = false;
             if (offset === 0) {
                 msgsEl.innerHTML = '<div class="tl-empty">—</div>';
             }
+        }
+    }
+
+    async function _ensureScroller(sessionId) {
+        // If content fits without scrollbar and more messages exist, keep loading
+        const tlContainer = document.getElementById("detail-timeline");
+        if (!tlContainer) return;
+        for (let i = 0; i < 10; i++) {
+            if (_tlOffset >= _tlTotal) break; // all loaded
+            if (tlContainer.scrollHeight > tlContainer.clientHeight + 5) break; // has scrollbar
+            _tlLoading = true;
+            await loadDetailMessages(sessionId, _tlOffset);
         }
     }
 
