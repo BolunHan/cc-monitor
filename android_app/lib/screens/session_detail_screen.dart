@@ -19,11 +19,12 @@ class SessionDetailScreen extends StatefulWidget {
 
 class _SessionDetailScreenState extends State<SessionDetailScreen> {
   SessionStats? _stats;
+  /// Messages stored **newest-first** (matching server order).
+  /// With reverse:true, index 0 = bottom, last index = top.
   final List<Message> _messages = [];
   int _totalMessages = 0;
-  bool _loadingMessages = false;
+  bool _loading = false;
   bool _allLoaded = false;
-  bool _initialLoadDone = false;
   int _highlightCount = 0;
   final ScrollController _scrollCtrl = ScrollController();
   static const int _pageSize = 10;
@@ -42,9 +43,15 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
     super.dispose();
   }
 
+  /// With reverse:true, maxScrollExtent = top of list (oldest).
+  /// pixels approaching maxScrollExtent means we're near the top.
   void _onScroll() {
-    if (_scrollCtrl.position.pixels < 80 &&
-        !_loadingMessages &&
+    if (!_scrollCtrl.hasClients) return;
+    final max = _scrollCtrl.position.maxScrollExtent;
+    if (max <= 0) return;
+    // Within 200px of the top → load older messages
+    if ((max - _scrollCtrl.position.pixels) < 200 &&
+        !_loading &&
         !_allLoaded) {
       _loadMore();
     }
@@ -55,30 +62,13 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
     final stats = await provider.fetchStats(widget.sessionId);
     if (!mounted) return;
     setState(() => _stats = stats);
-
-    // Load initial batch
     await _loadMessages(offset: 0);
-
-    // Ensure scrollbar fills viewport
     await _ensureScroller();
-
-    // Final scroll to very bottom
-    if (mounted && _messages.isNotEmpty) {
-      _initialLoadDone = true;
-      // Double post-frame to guarantee layout is complete
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scrollCtrl.hasClients && mounted) {
-            _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
-          }
-        });
-      });
-    }
   }
 
   Future<void> _loadMessages({required int offset}) async {
-    if (_loadingMessages) return;
-    setState(() => _loadingMessages = true);
+    if (_loading) return;
+    setState(() => _loading = true);
 
     final provider = context.read<SessionProvider>();
     final result = await provider.fetchMessages(widget.sessionId,
@@ -86,55 +76,32 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
 
     if (!mounted) return;
     if (result != null) {
-      final ordered = result.messages.reversed.toList();
-
-      // Capture scroll state BEFORE mutating data
-      final double prevPixels =
-          _scrollCtrl.hasClients ? _scrollCtrl.position.pixels : 0.0;
-      final double prevMax =
-          _scrollCtrl.hasClients ? _scrollCtrl.position.maxScrollExtent : 0.0;
-      final bool wasAtBottom = prevMax > 0 &&
-          (prevMax - prevPixels) < 50; // within 50px of bottom
+      // Server returns newest-first; we store newest-first for reverse:true
+      final batch = result.messages;
+      final isFirstBatch = offset == 0;
 
       setState(() {
-        if (offset == 0) {
+        if (isFirstBatch) {
           _messages.clear();
-          _messages.addAll(ordered);
+          _messages.addAll(batch);
         } else {
-          _messages.insertAll(0, ordered);
-          _highlightCount = ordered.length; // flash newly prepended messages
+          // Append older messages at the end (they render at the top)
+          final oldLen = _messages.length;
+          _messages.addAll(batch);
+          _highlightCount = _messages.length - oldLen;
         }
         _totalMessages = result.total;
         _allLoaded = _messages.length >= result.total;
-        _loadingMessages = false;
+        _loading = false;
       });
 
-      // Clear highlight after animation
-      if (offset > 0) {
+      if (!isFirstBatch && _highlightCount > 0) {
         Future.delayed(const Duration(milliseconds: 800), () {
           if (mounted) setState(() => _highlightCount = 0);
         });
       }
-
-      // Position handling — defer to after layout
-      if (offset > 0 && _scrollCtrl.hasClients) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!_scrollCtrl.hasClients || !mounted) return;
-            if (wasAtBottom) {
-              _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
-            } else {
-              final newMax = _scrollCtrl.position.maxScrollExtent;
-              final delta = newMax - prevMax;
-              if (delta > 0) {
-                _scrollCtrl.jumpTo(prevPixels + delta);
-              }
-            }
-          });
-        });
-      }
     } else {
-      setState(() => _loadingMessages = false);
+      setState(() => _loading = false);
     }
   }
 
@@ -142,6 +109,7 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
     await _loadMessages(offset: _messages.length);
   }
 
+  /// Keep loading until the list overflows (scrollbar appears) or all loaded.
   Future<void> _ensureScroller() async {
     for (int i = 0; i < 10; i++) {
       if (!mounted || _allLoaded) break;
@@ -149,13 +117,20 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
       if (!mounted || _allLoaded) break;
       try {
         if (_scrollCtrl.hasClients &&
-            _scrollCtrl.position.maxScrollExtent > 10) break;
+            _scrollCtrl.position.maxScrollExtent > 20) break;
       } catch (_) {
         break;
       }
       await _loadMessages(offset: _messages.length);
     }
   }
+
+  /// Newest-first index → reverse:true display index.
+  /// With reverse:true, ListView renders item 0 at the bottom.
+  /// Our _messages[0] = newest → should be at bottom ✓
+  /// _messages[last] = oldest → should be at top ✓
+  /// So reverse:true itemIndex maps directly to _messages index:
+  ///   display index 0 = _messages[0] = newest = bottom ✓
 
   Session? _findSession(SessionProvider provider) {
     return [...provider.active, ...provider.complete, ...provider.archived]
@@ -210,7 +185,7 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
                             fontSize: 11, color: Colors.grey),
                       ),
                       const Spacer(),
-                      if (_loadingMessages)
+                      if (_loading)
                         const SizedBox(
                           width: 12,
                           height: 12,
@@ -229,27 +204,35 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
   }
 
   Widget _buildTimeline(AppLocalizations l10n) {
-    if (_messages.isEmpty && _loadingMessages) {
+    if (_messages.isEmpty && _loading) {
       return const Center(child: CircularProgressIndicator());
     }
     if (_messages.isEmpty) {
       return Center(child: Text(l10n.noSessions));
     }
+
+    // reverse:true — item 0 at bottom (newest), item N-1 at top (oldest)
+    // _messages is newest-first, so _messages[0] = bottom ✓
+    // When we append older messages to end of _messages, they render at top.
+    // _highlightCount marks the N newest-appended items (at end of list = top).
+    final highlightStart = _messages.length - _highlightCount;
+
     return ListView.builder(
+      reverse: true,
       controller: _scrollCtrl,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       itemCount: _messages.length + (_allLoaded ? 1 : 0),
       itemBuilder: (context, index) {
-        if (index == 0 && _allLoaded) {
+        // With reverse:true, index 0 = bottom of screen
+        // End marker at the very top when all loaded
+        if (_allLoaded && index == _messages.length) {
           return _EndMarker(total: _totalMessages, l10n: l10n);
         }
-        final msgIndex = _allLoaded ? index - 1 : index;
-        if (msgIndex < 0 || msgIndex >= _messages.length) {
-          return const SizedBox.shrink();
-        }
-        final highlight = msgIndex < _highlightCount;
+        if (index >= _messages.length) return const SizedBox.shrink();
+        final msg = _messages[index];
+        final highlight = index >= highlightStart && _highlightCount > 0;
         return _TimelineMsg(
-          msg: _messages[msgIndex],
+          msg: msg,
           l10n: l10n,
           highlight: highlight,
         );
@@ -482,7 +465,7 @@ class _TimelineMsg extends StatelessWidget {
         dotColor = AppTheme.stateColor('all_done');
         cardColor = AppTheme.stateColor('all_done').withAlpha(15);
         break;
-      default: // tool_use
+      default:
         typeLabel = 'Tool';
         icon = Icons.build;
         dotColor = AppTheme.stateColor('working');
@@ -499,7 +482,6 @@ class _TimelineMsg extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Meta badge
             SizedBox(
               width: 56,
               child: Padding(
@@ -538,7 +520,6 @@ class _TimelineMsg extends StatelessWidget {
                 ),
               ),
             ),
-            // Gutter: dot + line
             SizedBox(
               width: 28,
               child: Column(
@@ -554,15 +535,11 @@ class _TimelineMsg extends StatelessWidget {
                     child: Icon(icon, size: 11, color: dotColor),
                   ),
                   Expanded(
-                    child: Container(
-                      width: 2,
-                      color: borderColor,
-                    ),
+                    child: Container(width: 2, color: borderColor),
                   ),
                 ],
               ),
             ),
-            // Card
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 10),
@@ -605,9 +582,8 @@ class _TimelineMsg extends StatelessWidget {
               child: Text(
                 _truncate(msg.toolInput!, 200),
                 style: TextStyle(
-                  fontSize: 11,
-                  color: isDark ? Colors.white54 : Colors.black54,
-                ),
+                    fontSize: 11,
+                    color: isDark ? Colors.white54 : Colors.black54),
               ),
             ),
           if (msg.toolOutput != null && msg.toolOutput!.isNotEmpty)
@@ -616,9 +592,8 @@ class _TimelineMsg extends StatelessWidget {
               child: Text(
                 '→ ${_truncate(msg.toolOutput!, 200)}',
                 style: TextStyle(
-                  fontSize: 11,
-                  color: isDark ? Colors.white54 : Colors.black54,
-                ),
+                    fontSize: 11,
+                    color: isDark ? Colors.white54 : Colors.black54),
               ),
             ),
         ],
