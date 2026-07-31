@@ -498,11 +498,38 @@ class StateManager:
         file_path = session_dir / "session.json"
         file_path.write_text(json.dumps(session.to_dict(), indent=2))
 
+    # Maximum age (seconds) for two identical-type messages to be
+    # considered duplicates.  Guards against double-firing when hooks
+    # are installed at both project and global level.
+    _MSG_DEDUP_WINDOW = 3.0
+
     def _save_message(self, session_id: str, msg: Message) -> None:
-        """Write a single message to msg_<ts>.json in the session dir."""
+        """Write a single message to msg_<ts>.json in the session dir.
+
+        Deduplicates: if the most recent message of the same type has
+        identical content/tool_name and was saved within the dedup
+        window, the new one is silently dropped.
+        """
         session_dir = self._session_dir(session_id)
         session_dir.mkdir(parents=True, exist_ok=True)
-        # Use high-precision timestamp as filename
+
+        # Check for duplicate
+        existing_files = sorted(session_dir.glob("msg_*.json"), reverse=True)
+        for fp in existing_files:
+            try:
+                prev = json.loads(fp.read_text())
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if prev.get("type") != msg.type:
+                continue
+            same_content = (prev.get("content") == msg.content)
+            same_tool = (prev.get("tool_name") == msg.tool_name)
+            if same_content and same_tool:
+                age = msg.timestamp - prev.get("timestamp", 0)
+                if 0 < age < self._MSG_DEDUP_WINDOW:
+                    return  # duplicate, skip
+            break  # only check the most recent message of this type
+
         ts_str = f"{msg.timestamp:.6f}"
         file_path = session_dir / f"msg_{ts_str}.json"
         file_path.write_text(json.dumps(msg.to_dict(), indent=2))
