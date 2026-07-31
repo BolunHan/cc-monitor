@@ -37,7 +37,7 @@ async def test_post_event_creates_session(test_app, tmp_data_dir):
     assert data["state"] == "working"
 
     # Verify file was written
-    state_file = tmp_data_dir / "test-session.json"
+    state_file = tmp_data_dir / "test-session" / "session.json"
     assert state_file.exists()
     assert json.loads(state_file.read_text())["state"] == "working"
 
@@ -154,3 +154,110 @@ class TestAuthEnabledServer:
                 headers={"Authorization": f"Bearer {info.token}"},
             )
         assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_get_session_messages(test_app, tmp_data_dir):
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Post events that generate messages
+        await client.post("/api/event", json={
+            "session_id": "s1", "cwd": "/a",
+            "hook_event_name": "UserPromptSubmit",
+            "prompt": "Hello world",
+        })
+        await client.post("/api/event", json={
+            "session_id": "s1", "cwd": "/a",
+            "hook_event_name": "Stop",
+            "last_assistant_message": "Hello back",
+        })
+
+        resp = await client.get("/api/session/s1/messages?offset=0&limit=5")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "messages" in data
+    assert "total" in data
+    assert data["total"] >= 2
+    types = [m["type"] for m in data["messages"]]
+    assert "user_prompt" in types or "assistant_response" in types
+
+
+@pytest.mark.asyncio
+async def test_get_session_messages_404(test_app):
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/session/nonexistent/messages")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_session_stats(test_app, tmp_data_dir):
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post("/api/event", json={
+            "session_id": "s1", "cwd": "/a",
+            "hook_event_name": "UserPromptSubmit",
+            "prompt": "Test",
+        })
+        await client.post("/api/event", json={
+            "session_id": "s1", "cwd": "/a",
+            "hook_event_name": "PostToolUse",
+            "tool_name": "Read",
+            "tool_input": {"file_path": "x.py"},
+            "tool_output": "content",
+        })
+        await client.post("/api/event", json={
+            "session_id": "s1", "cwd": "/a",
+            "hook_event_name": "Stop",
+            "last_assistant_message": "Done",
+            "usage": {"input_tokens": 100, "output_tokens": 50},
+        })
+
+        resp = await client.get("/api/session/s1/stats")
+
+    assert resp.status_code == 200
+    stats = resp.json()
+    assert stats["total_prompts"] >= 1
+    assert stats["total_tool_calls"] >= 1
+    assert stats["total_assistant_messages"] >= 1
+    assert stats["total_input_tokens"] >= 100
+    assert stats["total_output_tokens"] >= 50
+    assert "Read" in stats["tool_breakdown"]
+
+
+@pytest.mark.asyncio
+async def test_get_session_stats_404(test_app):
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/session/nonexistent/stats")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_session(test_app, tmp_data_dir):
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.post("/api/event", json={
+            "session_id": "to-delete", "cwd": "/x",
+            "hook_event_name": "PreToolUse", "tool_name": "Bash",
+        })
+
+        resp = await client.delete("/api/session/to-delete")
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "deleted"
+
+    # Verify it's gone
+    transport2 = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport2, base_url="http://test") as client:
+        resp = await client.get("/api/status/to-delete")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_session_404(test_app):
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.delete("/api/session/nonexistent")
+    assert resp.status_code == 404

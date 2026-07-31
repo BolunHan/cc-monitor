@@ -71,8 +71,9 @@ def map_event(hook_event_name: str, notification_type: str | None = None) -> str
 
 
 def write_state_file(session_id: str, data: dict) -> None:
-    """Persist session state to ~/.cc-monitor/<session_id>.json."""
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    """Persist session state to ~/.cc-monitor/<session_id>/session.json."""
+    session_dir = DATA_DIR / session_id
+    session_dir.mkdir(parents=True, exist_ok=True)
     state = {
         "session_id": session_id,
         "cwd": data.get("cwd", ""),
@@ -83,8 +84,9 @@ def write_state_file(session_id: str, data: dict) -> None:
         "raw_event": data.get("hook_event_name", ""),
         "raw_detail": data.get("tool_name") or data.get("notification_type"),
         "updated_at": datetime.now(timezone.utc).isoformat(),
+        "message_count": 0,
     }
-    file_path = DATA_DIR / f"{session_id}.json"
+    file_path = session_dir / "session.json"
     file_path.write_text(json.dumps(state, indent=2))
 
 

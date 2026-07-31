@@ -425,6 +425,317 @@ function loadSessionsView() {
                 handleCardAction(btn.dataset.action, btn.dataset.sid);
             });
         });
+        // Card click → open detail modal
+        card.addEventListener("click", (e) => {
+            // Don't open modal if clicking a button
+            if (e.target.closest("button")) return;
+            const sid = card.id.replace("card-", "");
+            openDetailModal(sid);
+        });
+    }
+
+    // ---- Detail Modal ----
+
+    const TIMELINE_MSG_LIMIT = 5;
+
+    function openDetailModal(sessionId) {
+        // Remove existing modal
+        closeDetailModal();
+
+        const meta = cards.get(sessionId);
+        const prev = prevStates.get(sessionId);
+        if (!prev) return;
+
+        const basename = meta.cwd ? dirBasename(meta.cwd) : null;
+        const title = basename || sessionId.substring(0, 8) + "…";
+        const isArchived = prev.archived;
+        const badgeState = isArchived ? "archived" : prev.state;
+        const badgeLabel = isArchived ? I18n.t("state.archived") : I18n.t("state." + prev.state);
+
+        const overlay = document.createElement("div");
+        overlay.className = "detail-overlay";
+        overlay.id = "detail-overlay";
+        overlay.innerHTML = `
+            <div class="detail-modal">
+                <div class="detail-modal__header">
+                    <div class="detail-modal__title-row">
+                        <div>
+                            <div class="detail-modal__title">${escapeHtml(title)}</div>
+                            <div class="detail-modal__subtitle">${escapeHtml(sessionId)}</div>
+                        </div>
+                        <span class="session-card__badge badge-${badgeState}">${badgeLabel}</span>
+                    </div>
+                    <button class="detail-modal__close" id="detail-close">✕</button>
+                </div>
+                <div class="detail-modal__stats" id="detail-stats">
+                    <span class="detail-stat">${I18n.t("detail.loading")}</span>
+                </div>
+                <div class="detail-modal__tools" id="detail-tools"></div>
+                <div class="detail-modal__timeline" id="detail-timeline">
+                    <div class="detail-modal__timeline-load" id="detail-timeline-load"></div>
+                    <div id="detail-timeline-msgs"></div>
+                </div>
+                <div class="detail-modal__footer">
+                    <button class="btn btn--danger btn--small" id="detail-delete">${I18n.t("detail.delete")}</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        // Close handlers
+        document.getElementById("detail-close").addEventListener("click", closeDetailModal);
+        overlay.addEventListener("click", (e) => {
+            if (e.target === overlay) closeDetailModal();
+        });
+        document.addEventListener("keydown", _detailEscHandler);
+
+        // Delete handler
+        document.getElementById("detail-delete").addEventListener("click", () => {
+            deleteSession(sessionId);
+            closeDetailModal();
+        });
+
+        // Load data
+        loadDetailStats(sessionId);
+        loadDetailMessages(sessionId, 0);
+    }
+
+    function _detailEscHandler(e) {
+        if (e.key === "Escape") closeDetailModal();
+    }
+
+    function closeDetailModal() {
+        const overlay = document.getElementById("detail-overlay");
+        if (overlay) overlay.remove();
+        document.removeEventListener("keydown", _detailEscHandler);
+    }
+
+    async function loadDetailStats(sessionId) {
+        const statsEl = document.getElementById("detail-stats");
+        const toolsEl = document.getElementById("detail-tools");
+        if (!statsEl) return;
+        try {
+            const resp = await apiFetch("/api/session/" + sessionId + "/stats");
+            if (!resp.ok) {
+                statsEl.innerHTML = '<span class="detail-stat">—</span>';
+                return;
+            }
+            const stats = await resp.json();
+            renderStats(statsEl, toolsEl, stats);
+        } catch (_) {
+            statsEl.innerHTML = '<span class="detail-stat">—</span>';
+        }
+    }
+
+    function renderStats(statsEl, toolsEl, stats) {
+        const dur = stats.duration_seconds;
+        let durStr = "—";
+        if (dur >= 3600) durStr = Math.floor(dur / 3600) + "h " + Math.floor((dur % 3600) / 60) + "m";
+        else if (dur >= 60) durStr = Math.floor(dur / 60) + "m " + (dur % 60) + "s";
+        else if (dur > 0) durStr = dur + "s";
+
+        const items = [
+            { label: I18n.t("detail.stats.prompts"), value: stats.total_prompts },
+            { label: I18n.t("detail.stats.responses"), value: stats.total_assistant_messages },
+            { label: I18n.t("detail.stats.tool_calls"), value: stats.total_tool_calls },
+            { label: I18n.t("detail.stats.input_tokens"), value: stats.total_input_tokens > 0 ? stats.total_input_tokens.toLocaleString() : "—" },
+            { label: I18n.t("detail.stats.output_tokens"), value: stats.total_output_tokens > 0 ? stats.total_output_tokens.toLocaleString() : "—" },
+            { label: I18n.t("detail.stats.duration"), value: durStr },
+        ];
+        statsEl.innerHTML = items.map(i =>
+            '<span class="detail-stat">' + escapeHtml(i.label) + ' <span class="detail-stat__value">' + escapeHtml(String(i.value)) + '</span></span>'
+        ).join("");
+
+        // Tool breakdown
+        const tb = stats.tool_breakdown || {};
+        const entries = Object.entries(tb).sort((a, b) => b[1] - a[1]);
+        if (entries.length > 0) {
+            toolsEl.innerHTML = entries.map(([name, count]) =>
+                '<span class="detail-tool-chip">' + escapeHtml(name) + ' ×' + count + '</span>'
+            ).join("");
+        } else {
+            toolsEl.innerHTML = "";
+        }
+    }
+
+    async function loadDetailMessages(sessionId, offset) {
+        const msgsEl = document.getElementById("detail-timeline-msgs");
+        const loadEl = document.getElementById("detail-timeline-load");
+        if (!msgsEl) return;
+
+        if (offset === 0) {
+            msgsEl.innerHTML = '<div class="timeline-msg" style="justify-content:center;color:var(--color-text-muted)">' + I18n.t("detail.loading") + '</div>';
+        }
+
+        try {
+            const resp = await apiFetch("/api/session/" + sessionId + "/messages?offset=" + offset + "&limit=" + TIMELINE_MSG_LIMIT);
+            if (!resp.ok) {
+                msgsEl.innerHTML = '<div class="timeline-msg" style="justify-content:center;color:var(--color-text-muted)">—</div>';
+                return;
+            }
+            const data = await resp.json();
+            const messages = data.messages || [];
+            const total = data.total || 0;
+
+            if (offset === 0 && messages.length === 0) {
+                msgsEl.innerHTML = '<div class="timeline-msg" style="justify-content:center;color:var(--color-text-muted)">' + I18n.t("detail.timeline.empty") + '</div>';
+                if (loadEl) loadEl.innerHTML = "";
+                return;
+            }
+
+            const html = messages.map(m => renderTimelineMsg(m)).join("");
+            if (offset === 0) {
+                msgsEl.innerHTML = html;
+            } else {
+                msgsEl.innerHTML = html + msgsEl.innerHTML;
+            }
+
+            // Load more button
+            const remaining = total - offset - messages.length;
+            if (remaining > 0 && loadEl) {
+                loadEl.innerHTML = '<button class="btn btn--small" id="btn-load-more">' + I18n.t("detail.timeline.load_more") + ' (' + remaining + ' more)</button>';
+                document.getElementById("btn-load-more").addEventListener("click", () => {
+                    loadDetailMessages(sessionId, offset + TIMELINE_MSG_LIMIT);
+                });
+            } else if (loadEl) {
+                loadEl.innerHTML = "";
+            }
+        } catch (_) {
+            if (offset === 0) {
+                msgsEl.innerHTML = '<div class="timeline-msg" style="justify-content:center;color:var(--color-text-muted)">—</div>';
+            }
+        }
+    }
+
+    function renderTimelineMsg(m) {
+        let icon, iconClass, typeLabel;
+        if (m.type === "user_prompt") {
+            icon = "📤";
+            iconClass = "timeline-msg__icon--prompt";
+            typeLabel = I18n.t("detail.timeline.prompt");
+        } else if (m.type === "assistant_response") {
+            icon = "📥";
+            iconClass = "timeline-msg__icon--response";
+            typeLabel = I18n.t("detail.timeline.response");
+        } else {
+            icon = "🔧";
+            iconClass = "timeline-msg__icon--tool";
+            typeLabel = I18n.t("detail.timeline.tool");
+        }
+
+        const time = new Date(m.timestamp * 1000);
+        const timeStr = time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+        let bodyHtml = "";
+        if (m.type === "tool_use") {
+            bodyHtml = '<div class="timeline-msg__text">' + escapeHtml(m.tool_name || "tool") + '</div>';
+            if (m.tool_input) {
+                bodyHtml += '<div class="timeline-msg__text timeline-msg__text--dim">' + escapeHtml(truncate(m.tool_input, 200)) + '</div>';
+            }
+            if (m.tool_output) {
+                bodyHtml += '<div class="timeline-msg__text timeline-msg__text--dim">→ ' + escapeHtml(truncate(m.tool_output, 200)) + '</div>';
+            }
+        } else {
+            bodyHtml = '<div class="timeline-msg__text">' + escapeHtml(m.content || "(empty)") + '</div>';
+        }
+
+        return `
+            <div class="timeline-msg">
+                <div class="timeline-msg__icon ${iconClass}" title="${typeLabel}">${icon}</div>
+                <div class="timeline-msg__body">
+                    <div class="timeline-msg__time">${timeStr} · ${typeLabel}</div>
+                    ${bodyHtml}
+                </div>
+            </div>
+        `;
+    }
+
+    // ---- Delete Session ----
+
+    let _deleteTimers = {};  // sessionId → timerId
+
+    function deleteSession(sessionId) {
+        // Optimistic removal from UI
+        const cardEl = document.getElementById("card-" + sessionId);
+        if (cardEl) {
+            cardEl.style.opacity = "0.3";
+            cardEl.style.pointerEvents = "none";
+        }
+        cards.delete(sessionId);
+        prevStates.delete(sessionId);
+        updateCounts();
+
+        // Show undo toast
+        const undoMs = 5000;
+        showToast(
+            I18n.t("toast.deleted"),
+            I18n.t("toast.undo"),
+            undoMs,
+            () => {
+                // Undo — restore the card
+                if (_deleteTimers[sessionId]) {
+                    clearTimeout(_deleteTimers[sessionId]);
+                    delete _deleteTimers[sessionId];
+                }
+                // Re-fetch sessions to restore card
+                loadSessions();
+                showToast(I18n.t("toast.undone"), null, 2000);
+            },
+            () => {
+                // Timer expired — actually delete
+                delete _deleteTimers[sessionId];
+                apiFetch("/api/session/" + sessionId, { method: "DELETE" }).catch(() => {});
+                // Restore card opacity just in case, then remove
+                if (cardEl) cardEl.remove();
+            }
+        );
+
+        _deleteTimers[sessionId] = setTimeout(() => {
+            if (_deleteTimers[sessionId]) {
+                _deleteTimers[sessionId] = null;
+                apiFetch("/api/session/" + sessionId, { method: "DELETE" }).catch(() => {});
+                if (cardEl) cardEl.remove();
+            }
+        }, undoMs);
+    }
+
+    function showToast(message, undoLabel, durationMs, onUndo, onExpire) {
+        // Remove existing toast
+        const old = document.getElementById("cc-toast");
+        if (old) old.remove();
+
+        const toast = document.createElement("div");
+        toast.className = "toast";
+        toast.id = "cc-toast";
+        toast.innerHTML = '<span>' + escapeHtml(message) + '</span>';
+        if (undoLabel) {
+            const btn = document.createElement("button");
+            btn.className = "toast__undo";
+            btn.textContent = undoLabel;
+            btn.addEventListener("click", () => {
+                toast.remove();
+                if (onUndo) onUndo();
+            });
+            toast.appendChild(btn);
+        }
+        document.body.appendChild(toast);
+
+        if (durationMs && onExpire && !undoLabel) {
+            setTimeout(() => {
+                if (document.getElementById("cc-toast") === toast) {
+                    toast.classList.add("toast--fadeout");
+                    setTimeout(() => toast.remove(), 300);
+                }
+                onExpire();
+            }, durationMs);
+        } else if (durationMs && !undoLabel) {
+            setTimeout(() => {
+                if (document.getElementById("cc-toast") === toast) {
+                    toast.classList.add("toast--fadeout");
+                    setTimeout(() => toast.remove(), 300);
+                }
+            }, durationMs);
+        }
     }
 
     // ---- SSE Connection ----

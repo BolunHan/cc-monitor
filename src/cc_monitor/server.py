@@ -359,6 +359,37 @@ def create_app(
             raise HTTPException(status_code=404, detail="Session not found")
         return JSONResponse(session.to_dict())
 
+    @app.get("/api/session/{session_id}/messages")
+    async def get_session_messages(
+        session_id: str, offset: int = 0, limit: int = 5,
+    ):
+        """Return paginated messages for a session, newest first."""
+        if manager.get(session_id) is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        messages, total = manager.get_messages(session_id, offset=offset, limit=limit)
+        return JSONResponse({
+            "messages": [m.to_dict() for m in messages],
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+        })
+
+    @app.get("/api/session/{session_id}/stats")
+    async def get_session_stats(session_id: str):
+        """Return computed stats for a session."""
+        stats = manager.get_stats(session_id)
+        if stats is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return JSONResponse(stats)
+
+    @app.delete("/api/session/{session_id}")
+    async def delete_session(session_id: str):
+        """Permanently delete a session and all its messages."""
+        deleted = manager.delete_session(session_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return JSONResponse({"status": "deleted", "session_id": session_id})
+
     # ---- Hook installation ----
 
     # Compute the URL hooks should use to reach this server.

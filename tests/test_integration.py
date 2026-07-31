@@ -74,7 +74,7 @@ async def test_full_lifecycle(test_app, tmp_data_dir):
         assert data["sessions"][0]["state"] == "all_done"
 
     # ---- Verify file persistence ----
-    state_file = tmp_data_dir / "lifecycle.json"
+    state_file = tmp_data_dir / "lifecycle" / "session.json"
     assert state_file.exists()
     assert json.loads(state_file.read_text())["state"] == "all_done"
 

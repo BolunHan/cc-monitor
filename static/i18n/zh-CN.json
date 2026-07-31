@@ -78,5 +78,22 @@
   "pair.approve_hint": "在服务器机器上运行此命令批准：",
   "footer.version": "cc-monitor v{version}",
   "docker_badge.docker": "🐳 Docker",
-  "docker_badge.native": "🖥 原生"
+  "docker_badge.native": "🖥 原生",
+  "detail.stats.prompts": "提示",
+  "detail.stats.responses": "响应",
+  "detail.stats.tool_calls": "工具调用",
+  "detail.stats.input_tokens": "输入 token",
+  "detail.stats.output_tokens": "输出 token",
+  "detail.stats.duration": "持续时间",
+  "detail.timeline.prompt": "提示",
+  "detail.timeline.response": "响应",
+  "detail.timeline.tool": "工具",
+  "detail.timeline.load_more": "加载更多",
+  "detail.timeline.empty": "暂无消息",
+  "detail.delete": "删除会话",
+  "detail.loading": "加载中…",
+  "toast.deleted": "会话已删除",
+  "toast.undo": "撤销",
+  "toast.undone": "会话已恢复",
+  "card.delete": "删除"
 }
