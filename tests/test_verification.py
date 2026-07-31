@@ -449,11 +449,11 @@ class TestStaticFiles:
             assert state in resp.text, f"STATE_EMOJI missing {state}"
 
     def test_js_breakdown_in_update_counts(self, server):
-        """updateCounts must compute per-state breakdown for active section."""
+        """updateCounts must compute per-state badge breakdown for active section."""
         resp = httpx.get(f"{server}/js/app.js")
         assert "breakdown-active" in resp.text
-        assert "STATE_EMOJI" in resp.text
-        assert "parts.push" in resp.text
+        assert "breakdown-badge" in resp.text
+        assert "badge-" in resp.text
 
     def test_index_has_breakdown_element(self, server):
         """Active section header must have breakdown span."""

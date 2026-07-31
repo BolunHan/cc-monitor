@@ -246,11 +246,13 @@ class StateManager:
         # --- build message(s) ---
         msg_or_list = self._event_to_message(raw)
         if msg_or_list is not None:
-            if isinstance(msg_or_list, list):
-                for m in msg_or_list:
-                    self._save_message(session_id, m)
-            else:
-                self._save_message(session_id, msg_or_list)
+            msgs = msg_or_list if isinstance(msg_or_list, list) else [msg_or_list]
+            for m in msgs:
+                self._save_message(session_id, m)
+                # Broadcast each new message to SSE subscribers
+                payload = m.to_dict()
+                payload["session_id"] = session_id
+                asyncio.ensure_future(self._broadcast_message(payload))
 
         # --- update session ---
         summary = None
@@ -684,6 +686,17 @@ class StateManager:
             )
 
         return None
+
+    async def _broadcast_message(self, payload: dict) -> None:
+        """Send a message_update event to all SSE subscribers."""
+        dead: list[asyncio.Queue] = []
+        for q in self._queues:
+            try:
+                q.put_nowait({"type": "message_update", "data": payload})
+            except asyncio.QueueFull:
+                dead.append(q)
+        for q in dead:
+            self.unsubscribe(q)
 
     async def _broadcast(self, session: SessionState) -> None:
         """Send a state_update event to all SSE subscribers."""

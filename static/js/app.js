@@ -287,16 +287,22 @@ function loadSessionsView() {
             const el = getCount(sec);
             if (el) el.textContent = counts[sec];
         }
-        // Active section emoji breakdown
+        // Active section badge breakdown
         const bd = document.getElementById("breakdown-active");
         if (bd) {
-            const parts = [];
             const ab = breakdown["active"] || {};
-            for (const [state, emoji] of Object.entries(STATE_EMOJI)) {
+            const labels = {
+                working: I18n.t("state.working"),
+                idle: I18n.t("state.idle"),
+                pending_approval: I18n.t("state.pending_approval"),
+                pending_review: I18n.t("state.pending_review"),
+                all_done: I18n.t("state.all_done"),
+            };
+            bd.innerHTML = Object.entries(labels).map(([state, label]) => {
                 const n = ab[state] || 0;
-                if (n > 0) parts.push(`${emoji}${n}`);
-            }
-            bd.textContent = parts.length > 0 ? "| " + parts.join(" ") : "";
+                if (n === 0) return "";
+                return '<span class="session-card__badge badge-' + state + ' breakdown-badge">' + label + ' ' + n + '</span>';
+            }).join("");
         }
     }
 
@@ -716,6 +722,18 @@ function loadSessionsView() {
         }
     }
 
+    function appendTimelineMsg(m) {
+        const msgsEl = document.getElementById("detail-timeline-msgs");
+        const tlContainer = document.getElementById("detail-timeline");
+        if (!msgsEl) return;
+        const wasAtBottom = tlContainer && (tlContainer.scrollHeight - tlContainer.scrollTop - tlContainer.clientHeight) < 60;
+        const html = renderTimelineMsg(m);
+        msgsEl.insertAdjacentHTML("beforeend", html);
+        if (wasAtBottom && tlContainer) {
+            requestAnimationFrame(() => { tlContainer.scrollTop = tlContainer.scrollHeight; });
+        }
+    }
+
     async function _ensureScroller(sessionId) {
         // If content fits without scrollbar and more messages exist, keep loading
         const tlContainer = document.getElementById("detail-timeline");
@@ -1000,6 +1018,18 @@ function loadSessionsView() {
         es.addEventListener("device_update", () => {
             loadPairedDevices();
             if (typeof loadPairingQR === "function") loadPairingQR();
+        });
+
+        es.addEventListener("message_update", (e) => {
+            try {
+                const msg = JSON.parse(e.data);
+                const sid = msg.session_id;
+                if (sid && document.getElementById("detail-overlay") && _tlSessionId === sid) {
+                    // Append to open timeline
+                    appendTimelineMsg(msg);
+                }
+                lastHeartbeat = Date.now();
+            } catch (_) {}
         });
 
         es.addEventListener("hooks_status_update", (e) => {
