@@ -737,14 +737,16 @@ function loadSessionsView() {
         const tlContainer = document.getElementById("detail-timeline");
         if (!msgsEl) return;
 
-        // Replace matching preliminary skeleton
+        // Replace matching skeleton with completed message
         if (!m.preliminary) {
-            const existing = msgsEl.querySelectorAll(".tl-msg--preliminary");
-            for (const el of existing) {
-                const ck = el.dataset.correlationKey;
-                if (ck === (m.tool_name || (m.type === "thinking" ? "thinking" : null))) {
-                    el.remove();
-                    break;
+            const ck = m.tool_name || (m.type === "thinking" ? "thinking" : null);
+            if (ck) {
+                const skeletons = msgsEl.querySelectorAll(".tl-msg--preliminary");
+                for (const el of skeletons) {
+                    if (el.dataset.correlationKey === ck) {
+                        el.remove();
+                        break;
+                    }
                 }
             }
         }

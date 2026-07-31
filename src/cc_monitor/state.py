@@ -260,6 +260,10 @@ class StateManager:
         if msg_or_list is not None:
             msgs = msg_or_list if isinstance(msg_or_list, list) else [msg_or_list]
             for m in msgs:
+                # Remove matching skeleton before saving completed message
+                ck = m.correlation_key
+                if ck and not m.preliminary:
+                    self._remove_skeletons(session_id, ck)
                 self._save_message(session_id, m)
                 # Broadcast each new message to SSE subscribers
                 payload = m.to_dict()
@@ -553,6 +557,23 @@ class StateManager:
         ts_str = f"{msg.timestamp:.6f}"
         file_path = session_dir / f"msg_{ts_str}.json"
         file_path.write_text(json.dumps(msg.to_dict(), indent=2))
+
+    def _remove_skeletons(self, session_id: str, correlation_key: str) -> None:
+        """Delete preliminary message files matching the given correlation key."""
+        session_dir = self._session_dir(session_id)
+        if not session_dir.is_dir():
+            return
+        for fp in sorted(session_dir.glob("msg_*.json")):
+            try:
+                data = json.loads(fp.read_text())
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if data.get("preliminary"):
+                # Match tool_name for tools, type for thinking
+                ck = data.get("tool_name") if data.get("type") == "tool_use" else data.get("type")
+                if ck == correlation_key:
+                    fp.unlink()
+                    logger.debug("Removed skeleton %s for %s", fp.name, correlation_key)
 
     def _count_messages(self, session_id: str) -> int:
         """Count message files in a session directory."""
