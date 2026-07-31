@@ -506,7 +506,13 @@ function loadSessionsView() {
 
     // ---- Detail Modal ----
 
-    const TIMELINE_MSG_LIMIT = 5;
+    const TIMELINE_MSG_LIMIT = 10;
+
+    // Waterfall auto-load state (per open modal)
+    let _tlSessionId = null;
+    let _tlOffset = 0;
+    let _tlTotal = 0;
+    let _tlLoading = false;
 
     function openDetailModal(sessionId) {
         // Remove existing modal
@@ -529,11 +535,11 @@ function loadSessionsView() {
             <div class="detail-modal">
                 <div class="detail-modal__header">
                     <div class="detail-modal__title-row">
-                        <span class="session-card__badge badge-${badgeState}">${badgeLabel}</span>
-                        <div>
-                            <div class="detail-modal__title">${escapeHtml(title)}</div>
-                            <div class="detail-modal__subtitle">${escapeHtml(sessionId)}</div>
+                        <div class="detail-modal__title">
+                            ${escapeHtml(title)}
+                            <span class="session-card__badge badge-${badgeState}">${badgeLabel}</span>
                         </div>
+                        <div class="detail-modal__subtitle">${escapeHtml(sessionId)}</div>
                     </div>
                     <button class="detail-modal__close" id="detail-close">✕</button>
                 </div>
@@ -556,6 +562,21 @@ function loadSessionsView() {
         });
         document.addEventListener("keydown", _detailEscHandler);
 
+        // Waterfall auto-load on scroll
+        _tlSessionId = sessionId;
+        _tlOffset = 0;
+        _tlTotal = 0;
+        _tlLoading = false;
+        const tlContainer = document.getElementById("detail-timeline");
+        tlContainer.addEventListener("scroll", () => {
+            if (_tlLoading) return;
+            if (_tlOffset >= _tlTotal) return;
+            if (tlContainer.scrollTop < 80) {
+                _tlLoading = true;
+                loadDetailMessages(_tlSessionId, _tlOffset);
+            }
+        });
+
         // Load data
         loadDetailStats(sessionId);
         loadDetailMessages(sessionId, 0);
@@ -569,6 +590,10 @@ function loadSessionsView() {
         const overlay = document.getElementById("detail-overlay");
         if (overlay) overlay.remove();
         document.removeEventListener("keydown", _detailEscHandler);
+        _tlSessionId = null;
+        _tlOffset = 0;
+        _tlTotal = 0;
+        _tlLoading = false;
     }
 
     async function loadDetailStats(sessionId) {
@@ -631,16 +656,21 @@ function loadSessionsView() {
         try {
             const resp = await apiFetch("/api/session/" + sessionId + "/messages?offset=" + offset + "&limit=" + TIMELINE_MSG_LIMIT);
             if (!resp.ok) {
-                msgsEl.innerHTML = '<div class="tl-empty">—</div>';
+                if (offset === 0) msgsEl.innerHTML = '<div class="tl-empty">—</div>';
+                _tlLoading = false;
                 return;
             }
             const data = await resp.json();
             const messages = data.messages || [];
             const total = data.total || 0;
 
+            // Update tracking
+            _tlTotal = total;
+            _tlOffset = offset + messages.length;
+            _tlLoading = false;
+
             if (offset === 0 && messages.length === 0) {
                 msgsEl.innerHTML = '<div class="tl-empty">' + I18n.t("detail.timeline.empty") + '</div>';
-                if (loadEl) loadEl.innerHTML = "";
                 return;
             }
 
@@ -651,17 +681,15 @@ function loadSessionsView() {
                 msgsEl.innerHTML = html + msgsEl.innerHTML;
             }
 
-            // Load more button
+            // Show remaining count in load bar
             const remaining = total - offset - messages.length;
             if (remaining > 0 && loadEl) {
-                loadEl.innerHTML = '<button class="btn btn--small" id="btn-load-more">' + I18n.t("detail.timeline.load_more") + ' (' + remaining + ' more)</button>';
-                document.getElementById("btn-load-more").addEventListener("click", () => {
-                    loadDetailMessages(sessionId, offset + TIMELINE_MSG_LIMIT);
-                });
+                loadEl.innerHTML = '<span style="font-size:11px;color:var(--color-text-muted)">' + remaining + ' more · scroll up</span>';
             } else if (loadEl) {
                 loadEl.innerHTML = "";
             }
         } catch (_) {
+            _tlLoading = false;
             if (offset === 0) {
                 msgsEl.innerHTML = '<div class="tl-empty">—</div>';
             }
