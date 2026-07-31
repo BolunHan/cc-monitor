@@ -28,14 +28,15 @@ class Message:
     """A single message in a session conversation timeline."""
 
     timestamp: float  # unix timestamp (time.time())
-    type: Literal["user_prompt", "assistant_response", "tool_use", "thinking"]
+    type: Literal["user_prompt", "assistant_response", "tool_use", "thinking", "pending_approval"]
     content: str | None = None
     tool_name: str | None = None
     tool_input: str | None = None
     tool_output: str | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
-    preliminary: bool = False
+    skeleton: bool = False
+    source: str | None = None  # hook event name that produced this message
 
     def to_dict(self) -> dict:
         return {
@@ -47,7 +48,8 @@ class Message:
             "tool_output": self.tool_output,
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
-            "preliminary": self.preliminary or None,  # omit if False for compactness
+            "skeleton": self.skeleton or None,  # omit if False for compactness
+            "source": self.source,
         }
 
     @property
@@ -57,10 +59,14 @@ class Message:
             return self.tool_name
         if self.type == "thinking":
             return "thinking"
+        if self.type == "pending_approval":
+            return "pending_approval"
         return None
 
     @classmethod
     def from_dict(cls, data: dict) -> "Message":
+        # Backward compat: "preliminary" was renamed to "skeleton"
+        skeleton = data.get("skeleton", data.get("preliminary", False)) or False
         return cls(
             timestamp=data["timestamp"],
             type=data["type"],
@@ -70,7 +76,8 @@ class Message:
             tool_output=data.get("tool_output"),
             input_tokens=data.get("input_tokens"),
             output_tokens=data.get("output_tokens"),
-            preliminary=data.get("preliminary", False) or False,
+            skeleton=skeleton,
+            source=data.get("source"),
         )
 
 
@@ -260,12 +267,18 @@ class StateManager:
         if msg_or_list is not None:
             msgs = msg_or_list if isinstance(msg_or_list, list) else [msg_or_list]
             for m in msgs:
-                # Remove matching skeleton before saving completed message
                 ck = m.correlation_key
-                if ck and not m.preliminary:
-                    self._remove_skeletons(session_id, ck)
-                self._save_message(session_id, m)
-                # Broadcast each new message to SSE subscribers
+                if ck and not m.skeleton:
+                    if m.type == "thinking":
+                        # Consolidate: update skeleton file in-place, no new file
+                        self._update_skeleton(session_id, ck, m)
+                    else:
+                        # Replace: remove skeleton, save real message
+                        self._remove_skeletons(session_id, ck)
+                        self._save_message(session_id, m)
+                else:
+                    self._save_message(session_id, m)
+                # Broadcast each message to SSE subscribers
                 payload = m.to_dict()
                 payload["session_id"] = session_id
                 asyncio.ensure_future(self._broadcast_message(payload))
@@ -382,6 +395,8 @@ class StateManager:
                 total_assistant += 1
             elif mtype == "thinking":
                 pass  # counted as part of the response
+            elif mtype == "pending_approval":
+                pass  # not a content message
             elif mtype == "tool_use":
                 total_tool_calls += 1
                 tn = m.get("tool_name", "unknown")
@@ -559,7 +574,7 @@ class StateManager:
         file_path.write_text(json.dumps(msg.to_dict(), indent=2))
 
     def _remove_skeletons(self, session_id: str, correlation_key: str) -> None:
-        """Delete preliminary message files matching the given correlation key."""
+        """Delete skeleton message files matching the given correlation key."""
         session_dir = self._session_dir(session_id)
         if not session_dir.is_dir():
             return
@@ -568,12 +583,46 @@ class StateManager:
                 data = json.loads(fp.read_text())
             except (json.JSONDecodeError, ValueError):
                 continue
-            if data.get("preliminary"):
-                # Match tool_name for tools, type for thinking
-                ck = data.get("tool_name") if data.get("type") == "tool_use" else data.get("type")
+            if data.get("skeleton") or data.get("preliminary"):
+                # Match tool_name for tools, type otherwise
+                if data.get("type") == "tool_use":
+                    ck = data.get("tool_name")
+                elif data.get("type") == "pending_approval":
+                    ck = "pending_approval"
+                else:
+                    ck = data.get("type")
                 if ck == correlation_key:
                     fp.unlink()
                     logger.debug("Removed skeleton %s for %s", fp.name, correlation_key)
+
+    def _update_skeleton(
+        self, session_id: str, correlation_key: str, update: Message
+    ) -> None:
+        """Update an existing skeleton file in-place — used for thinking
+        consolidation.  No-op if no matching skeleton is found."""
+        session_dir = self._session_dir(session_id)
+        if not session_dir.is_dir():
+            return
+        for fp in sorted(session_dir.glob("msg_*.json"), reverse=True):
+            try:
+                data = json.loads(fp.read_text())
+            except (json.JSONDecodeError, ValueError):
+                continue
+            if not (data.get("skeleton") or data.get("preliminary")):
+                continue
+            if data.get("type") != correlation_key:
+                continue
+            # Found the skeleton — update it in-place
+            merged = update.to_dict()
+            # Preserve original timestamp and type
+            merged["timestamp"] = data["timestamp"]
+            merged["type"] = data["type"]
+            # Merge content: keep skeleton content if update has none
+            if not merged.get("content"):
+                merged["content"] = data.get("content")
+            fp.write_text(json.dumps(merged, indent=2))
+            logger.debug("Consolidated skeleton %s for %s", fp.name, correlation_key)
+            return
 
     def _count_messages(self, session_id: str) -> int:
         """Count message files in a session directory."""
@@ -644,8 +693,8 @@ class StateManager:
         return max(1, int(len(text) / 3.5))
 
     @staticmethod
-    def _event_to_message(raw: dict) -> Message | None:
-        """Create a Message from a hook event dict. Returns None if not applicable."""
+    def _event_to_message(raw: dict) -> Message | list[Message] | None:
+        """Create Message(s) from a hook event dict. Returns None if not applicable."""
         hook_event_name = raw.get("hook_event_name", "")
         ts = time.time()
 
@@ -658,13 +707,14 @@ class StateManager:
                     type="user_prompt",
                     content=prompt.strip() if prompt else None,
                     input_tokens=in_tok,
-                    output_tokens=None,
+                    source="UserPromptSubmit",
                 ),
                 Message(
                     timestamp=ts + 0.0001,
                     type="thinking",
                     content="Thinking…",
-                    preliminary=True,
+                    skeleton=True,
+                    source="UserPromptSubmit",
                 ),
             ]
 
@@ -675,18 +725,22 @@ class StateManager:
                 type="tool_use",
                 tool_name=tool_name or None,
                 content="Executing…",
-                preliminary=True,
+                skeleton=True,
+                source="PreToolUse",
             )
 
         if hook_event_name == "Stop":
             msg_text = raw.get("last_assistant_message", "")
             in_tok, out_tok = StateManager._extract_tokens(raw)
-            # Return a list: [thinking, assistant_response] — caller handles
+            # Thinking message consolidates the skeleton (no new file — caller
+            # updates the skeleton file in-place).  assistant_response is new.
             return [
                 Message(
-                    timestamp=ts - 0.001,  # thinking just before response
+                    timestamp=ts - 0.001,
                     type="thinking",
                     input_tokens=in_tok,
+                    skeleton=False,
+                    source="Stop",
                 ),
                 Message(
                     timestamp=ts,
@@ -694,6 +748,7 @@ class StateManager:
                     content=msg_text.strip() if msg_text else None,
                     input_tokens=in_tok,
                     output_tokens=out_tok,
+                    source="Stop",
                 ),
             ]
 
@@ -734,7 +789,30 @@ class StateManager:
                 tool_input=tool_input,
                 tool_output=tool_output,
                 input_tokens=(ti_tokens + to_tokens) or None,
+                source="PostToolUse",
             )
+
+        if hook_event_name == "PermissionRequest":
+            tool_name = raw.get("tool_name", "")
+            return Message(
+                timestamp=ts,
+                type="pending_approval",
+                tool_name=tool_name or None,
+                content="Waiting for approval…",
+                skeleton=True,
+                source="PermissionRequest",
+            )
+
+        if hook_event_name == "Notification":
+            notification_type = raw.get("notification_type", "")
+            if notification_type == "permission_prompt":
+                return Message(
+                    timestamp=ts,
+                    type="pending_approval",
+                    content="Waiting for approval…",
+                    skeleton=True,
+                    source="Notification",
+                )
 
         return None
 

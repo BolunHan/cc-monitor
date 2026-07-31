@@ -1169,11 +1169,13 @@ body {
   margin-top: 1px;
 }
 
-/* Preliminary skeleton messages */
+/* Skeleton messages */
+.tl-msg--skeleton .tl-msg__meta-card--skeleton,
 .tl-msg--preliminary .tl-msg__meta-card--preliminary {
   animation: skeleton-pulse 1.5s ease-in-out infinite;
 }
 
+.tl-msg--skeleton .tl-msg__card,
 .tl-msg--preliminary .tl-msg__card {
   animation: skeleton-pulse 1.5s ease-in-out infinite;
 }
@@ -1255,6 +1257,25 @@ body {
 .tl-msg__card--tool {
   background: color-mix(in srgb, var(--color-working) 5%, var(--color-bg));
   border-color: color-mix(in srgb, var(--color-working) 16%, transparent);
+}
+
+.tl-msg__card--approval {
+  background: color-mix(in srgb, var(--color-pending) 6%, var(--color-bg));
+  border-color: color-mix(in srgb, var(--color-pending) 22%, transparent);
+}
+
+.tl-msg__meta-type--approval { color: var(--color-pending); }
+
+.tl-msg__dot--approval { border-color: var(--color-pending); }
+
+/* Source footer */
+.tl-msg__footer {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
+  font-size: 10px;
+  color: var(--color-text-muted);
+  letter-spacing: 0.03em;
 }
 
 .tl-msg__title {

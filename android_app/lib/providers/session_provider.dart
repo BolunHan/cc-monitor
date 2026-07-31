@@ -46,6 +46,11 @@ class SessionProvider extends ChangeNotifier {
   List<SseEventEntry> get filteredEventLog =>
       _eventLog.where((e) => _logLevel.shouldShow(e.level)).toList();
 
+  /// Real-time message updates stream for detail screen.
+  final StreamController<Message> _messageCtrl =
+      StreamController<Message>.broadcast();
+  Stream<Message> get messageStream => _messageCtrl.stream;
+
   SessionProvider(this._api) {
     _syncToNativeNotification();
   }
@@ -112,6 +117,9 @@ class SessionProvider extends ChangeNotifier {
         _connected = true;
       } else if (type == 'heartbeat') {
         _connected = true;
+      } else if (type == 'message_update') {
+        final msg = Message.fromJson(event);
+        _messageCtrl.add(msg);
       } else if (type == 'device_update') {
         _logEvent('ACTION', 'device_update → checking token…', level: LogLevel.info);
         _checkTokenValid();
@@ -356,6 +364,7 @@ class SessionProvider extends ChangeNotifier {
   void dispose() {
     _heartbeatTimer?.cancel();
     _sseClient?.disconnect();
+    _messageCtrl.close();
     super.dispose();
   }
 }

@@ -28,16 +28,68 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
   int _highlightCount = 0;
   final ScrollController _scrollCtrl = ScrollController();
   static const int _pageSize = 10;
+  StreamSubscription<Message>? _msgSub;
 
   @override
   void initState() {
     super.initState();
     _scrollCtrl.addListener(_onScroll);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadData();
+      _subscribeToMessages();
+    });
+  }
+
+  void _subscribeToMessages() {
+    final provider = context.read<SessionProvider>();
+    _msgSub = provider.messageStream.listen((msg) {
+      _onMessageUpdate(msg);
+    });
+  }
+
+  void _onMessageUpdate(Message m) {
+    if (!mounted) return;
+    // Defer to post-frame to avoid setState during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _applyMessage(m);
+      });
+    });
+  }
+
+  void _applyMessage(Message m) {
+    if (!m.skeleton) {
+      // Consolidation: find matching skeleton by correlation key
+      final ck = m.toolName ?? (m.isThinking ? 'thinking' : (m.isPendingApproval ? 'pending_approval' : null));
+      if (ck != null) {
+        final skelIdx = _messages.indexWhere((msg) =>
+            msg.skeleton &&
+            ((msg.isTool && msg.toolName == ck) ||
+             (msg.isThinking && ck == 'thinking') ||
+             (msg.isPendingApproval && ck == 'pending_approval')));
+        if (skelIdx >= 0) {
+          if (m.isThinking) {
+            // Consolidate: replace skeleton with real message at same position
+            _messages[skelIdx] = m;
+          } else {
+            // Replace: remove skeleton, add real message
+            _messages.removeAt(skelIdx);
+            _messages.insert(0, m);
+          }
+          _totalMessages++;
+          return;
+        }
+      }
+    }
+    // New message — insert at beginning (newest)
+    _messages.insert(0, m);
+    _totalMessages++;
   }
 
   @override
   void dispose() {
+    _msgSub?.cancel();
     _scrollCtrl.removeListener(_onScroll);
     _scrollCtrl.dispose();
     super.dispose();
@@ -481,6 +533,12 @@ class _TimelineMsg extends StatelessWidget {
         cardColor = Colors.transparent;
         tokenLabel = _fmtToken(msg.inputTokens);
         break;
+      case 'pending_approval':
+        typeLabel = 'Approval';
+        icon = Icons.hourglass_empty;
+        dotColor = AppTheme.stateColor('pending_approval');
+        cardColor = AppTheme.stateColor('pending_approval').withAlpha(15);
+        break;
       default:
         typeLabel = 'Tool';
         icon = Icons.build;
@@ -490,149 +548,139 @@ class _TimelineMsg extends StatelessWidget {
             (msg.inputTokens ?? 0) + (msg.outputTokens ?? 0));
     }
 
-    final metaCard = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.white10 : Colors.black.withAlpha(8),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: borderColor, width: 0.5),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(timeStr,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.white60 : Colors.black54)),
-          const SizedBox(height: 1),
-          Text(typeLabel,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 7,
-                  fontWeight: FontWeight.w600,
-                  color: dotColor)),
-          if (tokenLabel != null) ...[
+    final metaCard = _SkeletonPulse(
+      skeleton: msg.skeleton,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.white10 : Colors.black.withAlpha(8),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: borderColor, width: 0.5),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(timeStr,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white60 : Colors.black54)),
             const SizedBox(height: 1),
-            Text(tokenLabel!,
+            Text(typeLabel,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                     fontSize: 7,
-                    color: isDark ? Colors.white38 : Colors.black38)),
+                    fontWeight: FontWeight.w600,
+                    color: dotColor)),
+            if (tokenLabel != null) ...[
+              const SizedBox(height: 1),
+              Text(tokenLabel!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 7,
+                      color: isDark ? Colors.white38 : Colors.black38)),
+            ],
           ],
-        ],
+        ),
       ),
     );
 
-    // Thinking gets a minimal row — no card
-    if (msg.type == 'thinking') {
-      return AnimatedContainer(
-        duration: const Duration(milliseconds: 600),
-        curve: Curves.easeOut,
-        color: highlight
-            ? (isDark ? Colors.white.withAlpha(12) : Colors.black.withAlpha(8))
-            : Colors.transparent,
-        child: IntrinsicHeight(
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(width: 56, child: Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: metaCard,
-                )),
-                SizedBox(
-                  width: 28,
-                  child: Column(
-                    children: [
-                      Container(
-                        width: 20,
-                        height: 20,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Theme.of(context).scaffoldBackgroundColor,
-                          border: Border.all(color: dotColor, width: 2),
-                        ),
-                        child: Icon(Icons.psychology, size: 11, color: dotColor),
-                      ),
-                      Expanded(
-                        child: Container(width: 2, color: borderColor),
-                      ),
-                    ],
+    // Source footer
+    final footer = msg.source != null && msg.source!.isNotEmpty
+        ? Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Container(
+              padding: const EdgeInsets.only(top: 4),
+              decoration: BoxDecoration(
+                border: Border(
+                  top: BorderSide(
+                    color: isDark ? Colors.white12 : Colors.black12,
+                    width: 0.5,
                   ),
                 ),
-                const Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(left: 8, top: 4),
-                    child: Text('Thinking…',
-                        style: TextStyle(fontSize: 12, color: Colors.grey,
-                            fontStyle: FontStyle.italic)),
-                  ),
+              ),
+              child: Text(
+                msg.source!,
+                style: TextStyle(
+                  fontSize: 9,
+                  color: isDark ? Colors.white38 : Colors.black38,
+                  letterSpacing: 0.3,
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
-      );
-    }
+          )
+        : null;
 
+    // Full card for all types (thinking included)
     return AnimatedContainer(
       duration: const Duration(milliseconds: 600),
       curve: Curves.easeOut,
       color: highlight
           ? (isDark ? Colors.white.withAlpha(12) : Colors.black.withAlpha(8))
           : Colors.transparent,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 56,
-              child: Padding(
-                padding: const EdgeInsets.only(right: 6, top: 2),
-                child: metaCard,
-              ),
-            ),
-            SizedBox(
-              width: 28,
-              child: Column(
-                children: [
-                  Container(
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Theme.of(context).scaffoldBackgroundColor,
-                      border: Border.all(color: dotColor, width: 2),
-                    ),
-                    child: Icon(icon, size: 11, color: dotColor),
-                  ),
-                  Expanded(
-                    child: Container(width: 2, color: borderColor),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: cardColor,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: dotColor.withAlpha(50),
-                      width: 0.5,
-                    ),
-                  ),
-                  child: _buildCardContent(isDark),
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 56,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 6, top: 2),
+                  child: metaCard,
                 ),
               ),
-            ),
-          ],
+              SizedBox(
+                width: 28,
+                child: Column(
+                  children: [
+                    Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Theme.of(context).scaffoldBackgroundColor,
+                        border: Border.all(color: dotColor, width: 2),
+                      ),
+                      child: Icon(icon, size: 11, color: dotColor),
+                    ),
+                    Expanded(
+                      child: Container(width: 2, color: borderColor),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: _SkeletonPulse(
+                    skeleton: msg.skeleton,
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: cardColor,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: dotColor.withAlpha(msg.skeleton ? 30 : 50),
+                          width: 0.5,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildCardContent(isDark),
+                          if (footer != null) footer,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -674,6 +722,44 @@ class _TimelineMsg extends StatelessWidget {
         ],
       );
     }
+    if (msg.isPendingApproval) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (msg.toolName != null && msg.toolName!.isNotEmpty)
+            Text(
+              msg.toolName!,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+          Text(
+            msg.content?.isNotEmpty == true ? msg.content! : 'Waiting for approval…',
+            style: TextStyle(
+              fontSize: 11,
+              color: isDark ? Colors.white54 : Colors.black54,
+            ),
+          ),
+        ],
+      );
+    }
+    if (msg.isThinking) {
+      if (msg.skeleton) {
+        return const Text('Thinking…',
+            style: TextStyle(fontSize: 12, color: Colors.grey,
+                fontStyle: FontStyle.italic));
+      } else if (msg.inputTokens != null && msg.inputTokens! > 0) {
+        return Text('Thinking · ${_fmtToken(msg.inputTokens)} tokens',
+            style: const TextStyle(fontSize: 12, color: Colors.grey,
+                fontStyle: FontStyle.italic));
+      } else {
+        return const Text('Thinking',
+            style: TextStyle(fontSize: 12, color: Colors.grey,
+                fontStyle: FontStyle.italic));
+      }
+    }
     return Text(
       msg.content?.isNotEmpty == true ? msg.content! : '(empty)',
       style: TextStyle(
@@ -693,5 +779,49 @@ class _TimelineMsg extends StatelessWidget {
   String _truncate(String s, int maxLen) {
     if (s.length <= maxLen) return s;
     return '${s.substring(0, maxLen)}…';
+  }
+}
+
+// ---- Skeleton pulse wrapper ----
+
+class _SkeletonPulse extends StatefulWidget {
+  final Widget child;
+  final bool skeleton;
+
+  const _SkeletonPulse({required this.child, this.skeleton = false});
+
+  @override
+  State<_SkeletonPulse> createState() => _SkeletonPulseState();
+}
+
+class _SkeletonPulseState extends State<_SkeletonPulse>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 750),
+    )..repeat(reverse: true);
+    _anim = Tween<double>(begin: 1.0, end: 0.5).animate(_ctrl);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.skeleton) return widget.child;
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (context, child) => Opacity(opacity: _anim.value, child: child),
+      child: widget.child,
+    );
   }
 }

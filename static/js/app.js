@@ -737,14 +737,44 @@ function loadSessionsView() {
         const tlContainer = document.getElementById("detail-timeline");
         if (!msgsEl) return;
 
-        // Replace matching skeleton with completed message
-        if (!m.preliminary) {
-            const ck = m.tool_name || (m.type === "thinking" ? "thinking" : null);
+        if (!m.skeleton) {
+            // Real message — consolidate or replace matching skeleton
+            const ck = m.tool_name || (
+                m.type === "thinking" ? "thinking" :
+                m.type === "pending_approval" ? "pending_approval" : null
+            );
             if (ck) {
-                const skeletons = msgsEl.querySelectorAll(".tl-msg--preliminary");
+                const skeletons = msgsEl.querySelectorAll(".tl-msg--skeleton");
                 for (const el of skeletons) {
                     if (el.dataset.correlationKey === ck) {
-                        el.remove();
+                        if (m.type === "thinking") {
+                            // Consolidate: update skeleton card in-place
+                            el.classList.remove("tl-msg--skeleton");
+                            const metaCard = el.querySelector(".tl-msg__meta-card");
+                            if (metaCard) metaCard.classList.remove("tl-msg__meta-card--skeleton");
+                            const card = el.querySelector(".tl-msg__card");
+                            if (card) {
+                                const footer = card.querySelector(".tl-msg__footer");
+                                const newHtml = renderTimelineMsg(m);
+                                const tmp = document.createElement("div");
+                                tmp.innerHTML = newHtml;
+                                const newCard = tmp.querySelector(".tl-msg__card");
+                                const newFooter = tmp.querySelector(".tl-msg__footer");
+                                if (newCard) {
+                                    card.innerHTML = newCard.innerHTML;
+                                    // Update meta card tokens
+                                    const newMetaCard = tmp.querySelector(".tl-msg__meta-card");
+                                    if (newMetaCard) {
+                                        const oldMeta = el.querySelector(".tl-msg__meta-card");
+                                        if (oldMeta) oldMeta.innerHTML = newMetaCard.innerHTML;
+                                    }
+                                }
+                            }
+                            return;
+                        } else {
+                            // Replace: remove skeleton, append real message
+                            el.remove();
+                        }
                         break;
                     }
                 }
@@ -812,6 +842,12 @@ function loadSessionsView() {
             cardClass = "";
             tokenStr = fmtToken(m.input_tokens);
             typeSuffix = "thinking";
+        } else if (m.type === "pending_approval") {
+            typeLabel = "Approval";
+            dotIcon = "⏳";
+            dotClass = "tl-msg__dot--approval";
+            cardClass = "tl-msg__card--approval";
+            typeSuffix = "approval";
         } else {
             typeLabel = I18n.t("detail.timeline.tool");
             dotIcon = "🔧";
@@ -821,26 +857,7 @@ function loadSessionsView() {
             typeSuffix = "tool";
         }
 
-        // Thinking: minimal row
-        if (m.type === "thinking") {
-            return `
-                <div class="tl-msg tl-msg--thinking">
-                    <div class="tl-msg__meta">
-                        <div class="tl-msg__meta-card">
-                            <span class="tl-msg__meta-time">${timeStr}</span>
-                            <span class="tl-msg__meta-type tl-msg__meta-type--thinking">Thinking</span>
-                            ${tokenStr ? '<span class="tl-msg__meta-token">' + tokenStr + '</span>' : ""}
-                        </div>
-                    </div>
-                    <div class="tl-msg__gutter">
-                        <div class="tl-msg__dot ${dotClass}">🧠</div>
-                        <div class="tl-msg__line"></div>
-                    </div>
-                    <div class="tl-msg__card" style="background:transparent;border-color:transparent;font-style:italic;color:var(--color-text-muted);font-size:12px;padding-top:6px;">Thinking…</div>
-                </div>
-            `;
-        }
-
+        // Body content
         let bodyHtml = "";
         if (m.type === "tool_use") {
             bodyHtml = '<div class="tl-msg__title">' + escapeHtml(m.tool_name || "tool") + '</div>';
@@ -850,18 +867,39 @@ function loadSessionsView() {
             if (m.tool_output) {
                 bodyHtml += '<div class="tl-msg__text tl-msg__text--dim">→ ' + escapeHtml(truncate(m.tool_output, 200)) + '</div>';
             }
+        } else if (m.type === "thinking") {
+            if (m.skeleton) {
+                bodyHtml = '<div class="tl-msg__text" style="font-style:italic;color:var(--color-text-muted);">Thinking…</div>';
+            } else if (m.input_tokens) {
+                bodyHtml = '<div class="tl-msg__text" style="font-style:italic;color:var(--color-text-muted);">Thinking · ' + fmtToken(m.input_tokens) + ' tokens</div>';
+            } else {
+                bodyHtml = '<div class="tl-msg__text" style="font-style:italic;color:var(--color-text-muted);">Thinking</div>';
+            }
+        } else if (m.type === "pending_approval") {
+            bodyHtml = '<div class="tl-msg__title">' + escapeHtml(m.tool_name || "Approval needed") + '</div>';
+            bodyHtml += '<div class="tl-msg__text tl-msg__text--dim">' + escapeHtml(m.content || "Waiting for approval…") + '</div>';
         } else {
             bodyHtml = '<div class="tl-msg__text">' + escapeHtml(m.content || "(empty)") + '</div>';
         }
 
-        const preClass = m.preliminary ? " tl-msg--preliminary" : "";
-        const ck = m.tool_name || (m.type === "thinking" ? "thinking" : null);
+        // Source footer
+        let footerHtml = "";
+        if (m.source) {
+            footerHtml = '<div class="tl-msg__footer">' + escapeHtml(m.source) + '</div>';
+        }
+
+        // Skeleton class and correlation key
+        const skelClass = m.skeleton ? " tl-msg--skeleton" : "";
+        const ck = m.tool_name || (
+            m.type === "thinking" ? "thinking" :
+            m.type === "pending_approval" ? "pending_approval" : null
+        );
         const ckAttr = ck ? ' data-correlation-key="' + escapeHtml(ck) + '"' : "";
 
         return `
-            <div class="tl-msg${preClass}"${ckAttr}>
+            <div class="tl-msg${skelClass}"${ckAttr}>
                 <div class="tl-msg__meta">
-                    <div class="tl-msg__meta-card${m.preliminary ? " tl-msg__meta-card--preliminary" : ""}">
+                    <div class="tl-msg__meta-card${m.skeleton ? " tl-msg__meta-card--skeleton" : ""}">
                         <span class="tl-msg__meta-time">${timeStr}</span>
                         <span class="tl-msg__meta-type tl-msg__meta-type--${typeSuffix}">${typeLabel}</span>
                         ${tokenStr ? '<span class="tl-msg__meta-token">' + tokenStr + '</span>' : ""}
@@ -873,6 +911,7 @@ function loadSessionsView() {
                 </div>
                 <div class="tl-msg__card ${cardClass}">
                     ${bodyHtml}
+                    ${footerHtml}
                 </div>
             </div>
         `;
