@@ -440,11 +440,12 @@ class _TimelineMsg extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final time = DateTime.fromMillisecondsSinceEpoch(
+    final utc = DateTime.fromMillisecondsSinceEpoch(
         (msg.timestamp * 1000).round(),
         isUtc: true);
+    final local = utc.toLocal();
     final timeStr =
-        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+        '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final borderColor = isDark ? Colors.white12 : Colors.black12;
 
