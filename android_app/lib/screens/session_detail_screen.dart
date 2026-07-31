@@ -81,6 +81,18 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
         _allLoaded = _messages.length >= result.total;
         _loadingMessages = false;
       });
+      // Preserve scroll position when prepending older messages
+      if (offset > 0 && _scrollCtrl.hasClients) {
+        final prevExtent = _scrollCtrl.position.maxScrollExtent;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollCtrl.hasClients && mounted) {
+            final newExtent = _scrollCtrl.position.maxScrollExtent;
+            if (newExtent > prevExtent) {
+              _scrollCtrl.jumpTo(newExtent - prevExtent);
+            }
+          }
+        });
+      }
     } else {
       setState(() => _loadingMessages = false);
     }
