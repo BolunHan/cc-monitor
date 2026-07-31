@@ -23,6 +23,8 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
   int _totalMessages = 0;
   bool _loadingMessages = false;
   bool _allLoaded = false;
+  bool _initialLoadDone = false;
+  int _highlightCount = 0;
   final ScrollController _scrollCtrl = ScrollController();
   static const int _pageSize = 10;
 
@@ -53,9 +55,25 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
     final stats = await provider.fetchStats(widget.sessionId);
     if (!mounted) return;
     setState(() => _stats = stats);
+
+    // Load initial batch
     await _loadMessages(offset: 0);
-    // Ensure scrollbar
-    _ensureScroller();
+
+    // Ensure scrollbar fills viewport
+    await _ensureScroller();
+
+    // Final scroll to very bottom
+    if (mounted && _messages.isNotEmpty) {
+      _initialLoadDone = true;
+      // Double post-frame to guarantee layout is complete
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollCtrl.hasClients && mounted) {
+            _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
+          }
+        });
+      });
+    }
   }
 
   Future<void> _loadMessages({required int offset}) async {
@@ -68,13 +86,15 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
 
     if (!mounted) return;
     if (result != null) {
-      // Server returns newest-first; reverse for display (oldest top)
       final ordered = result.messages.reversed.toList();
 
-      // Capture scroll extent BEFORE mutating list (extent is from prev layout)
-      final double prevExtent = (offset > 0 && _scrollCtrl.hasClients)
-          ? _scrollCtrl.position.maxScrollExtent
-          : 0.0;
+      // Capture scroll state BEFORE mutating data
+      final double prevPixels =
+          _scrollCtrl.hasClients ? _scrollCtrl.position.pixels : 0.0;
+      final double prevMax =
+          _scrollCtrl.hasClients ? _scrollCtrl.position.maxScrollExtent : 0.0;
+      final bool wasAtBottom = prevMax > 0 &&
+          (prevMax - prevPixels) < 50; // within 50px of bottom
 
       setState(() {
         if (offset == 0) {
@@ -82,29 +102,35 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
           _messages.addAll(ordered);
         } else {
           _messages.insertAll(0, ordered);
+          _highlightCount = ordered.length; // flash newly prepended messages
         }
         _totalMessages = result.total;
         _allLoaded = _messages.length >= result.total;
         _loadingMessages = false;
       });
 
-      if (offset == 0) {
-        // Initial load — scroll to bottom (newest messages)
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scrollCtrl.hasClients && mounted) {
-            _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
-          }
+      // Clear highlight after animation
+      if (offset > 0) {
+        Future.delayed(const Duration(milliseconds: 800), () {
+          if (mounted) setState(() => _highlightCount = 0);
         });
-      } else if (prevExtent > 0) {
-        // Prepend — keep visible content anchored
+      }
+
+      // Position handling — defer to after layout
+      if (offset > 0 && _scrollCtrl.hasClients) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scrollCtrl.hasClients && mounted) {
-            final newExtent = _scrollCtrl.position.maxScrollExtent;
-            final delta = newExtent - prevExtent;
-            if (delta > 0) {
-              _scrollCtrl.jumpTo(delta);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!_scrollCtrl.hasClients || !mounted) return;
+            if (wasAtBottom) {
+              _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
+            } else {
+              final newMax = _scrollCtrl.position.maxScrollExtent;
+              final delta = newMax - prevMax;
+              if (delta > 0) {
+                _scrollCtrl.jumpTo(prevPixels + delta);
+              }
             }
-          }
+          });
         });
       }
     } else {
@@ -118,18 +144,15 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
 
   Future<void> _ensureScroller() async {
     for (int i = 0; i < 10; i++) {
-      if (!mounted) return;
-      if (_allLoaded) break;
-      await Future.delayed(const Duration(milliseconds: 100));
-      if (!mounted) return;
-      // Check if content overflows
+      if (!mounted || _allLoaded) break;
+      await Future.delayed(const Duration(milliseconds: 200));
+      if (!mounted || _allLoaded) break;
       try {
         if (_scrollCtrl.hasClients &&
             _scrollCtrl.position.maxScrollExtent > 10) break;
       } catch (_) {
         break;
       }
-      if (_allLoaded) break;
       await _loadMessages(offset: _messages.length);
     }
   }
@@ -224,7 +247,12 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
         if (msgIndex < 0 || msgIndex >= _messages.length) {
           return const SizedBox.shrink();
         }
-        return _TimelineMsg(msg: _messages[msgIndex], l10n: l10n);
+        final highlight = msgIndex < _highlightCount;
+        return _TimelineMsg(
+          msg: _messages[msgIndex],
+          l10n: l10n,
+          highlight: highlight,
+        );
       },
     );
   }
@@ -420,7 +448,12 @@ class _EndMarker extends StatelessWidget {
 class _TimelineMsg extends StatelessWidget {
   final Message msg;
   final AppLocalizations l10n;
-  const _TimelineMsg({required this.msg, required this.l10n});
+  final bool highlight;
+  const _TimelineMsg({
+    required this.msg,
+    required this.l10n,
+    this.highlight = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -456,90 +489,99 @@ class _TimelineMsg extends StatelessWidget {
         cardColor = AppTheme.stateColor('working').withAlpha(12);
     }
 
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Meta badge
-          SizedBox(
-            width: 56,
-            child: Padding(
-              padding: const EdgeInsets.only(right: 6, top: 2),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeOut,
+      color: highlight
+          ? (isDark ? Colors.white.withAlpha(12) : Colors.black.withAlpha(8))
+          : Colors.transparent,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Meta badge
+            SizedBox(
+              width: 56,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 6, top: 2),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? Colors.white10
+                            : Colors.black.withAlpha(8),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: borderColor, width: 0.5),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(timeStr,
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark
+                                      ? Colors.white60
+                                      : Colors.black54)),
+                          Text(typeLabel,
+                              style: TextStyle(
+                                  fontSize: 7,
+                                  fontWeight: FontWeight.w600,
+                                  color: dotColor)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Gutter: dot + line
+            SizedBox(
+              width: 28,
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    width: 20,
+                    height: 20,
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.white10 : Colors.black.withAlpha(8),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: borderColor, width: 0.5),
+                      shape: BoxShape.circle,
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      border: Border.all(color: dotColor, width: 2),
                     ),
-                    child: Column(
-                      children: [
-                        Text(timeStr,
-                            style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: isDark
-                                    ? Colors.white60
-                                    : Colors.black54)),
-                        Text(typeLabel,
-                            style: TextStyle(
-                                fontSize: 7,
-                                fontWeight: FontWeight.w600,
-                                color: dotColor)),
-                      ],
+                    child: Icon(icon, size: 11, color: dotColor),
+                  ),
+                  Expanded(
+                    child: Container(
+                      width: 2,
+                      color: borderColor,
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-          // Gutter: dot + line
-          SizedBox(
-            width: 28,
-            child: Column(
-              children: [
-                Container(
-                  width: 20,
-                  height: 20,
+            // Card
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Container(
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Theme.of(context).scaffoldBackgroundColor,
-                    border: Border.all(color: dotColor, width: 2),
+                    color: cardColor,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: dotColor.withAlpha(50),
+                      width: 0.5,
+                    ),
                   ),
-                  child: Icon(icon, size: 11, color: dotColor),
+                  child: _buildCardContent(isDark),
                 ),
-                Expanded(
-                  child: Container(
-                    width: 2,
-                    color: borderColor,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Card
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: cardColor,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: dotColor.withAlpha(50),
-                    width: 0.5,
-                  ),
-                ),
-                child: _buildCardContent(isDark),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
