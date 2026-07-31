@@ -891,11 +891,59 @@ body {
 
 .btn--card-delete {
   margin-left: auto;
+  position: relative;
+  overflow: hidden;
 }
 
 .btn--card-delete:hover {
   border-color: var(--color-danger);
   color: var(--color-danger);
+}
+
+.btn--card-delete.counting {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+  pointer-events: none;
+}
+
+.btn--card-delete.counting::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(239, 68, 68, 0.2);
+  animation: delete-sweep 5s linear forwards;
+  z-index: 0;
+}
+
+.btn--card-delete.counting .btn--card-label {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes delete-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.btn--card-undo {
+  margin-left: auto;
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn--card-undo::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(239, 68, 68, 0.2);
+  z-index: 0;
+}
+
+.btn--card-undo .btn--card-label {
+  position: relative;
+  z-index: 1;
 }
 
 /* ---- Detail Modal ---- */
@@ -1036,18 +1084,19 @@ body {
   white-space: nowrap;
 }
 
-/* ---- Detail Modal: Timeline ---- */
+/* ---- Detail Modal: Timeline (Design B — center gutter) ---- */
 
 .detail-modal__timeline {
   flex: 1;
   overflow-y: auto;
-  padding: 0 24px;
+  padding: 8px 24px 16px;
   min-height: 0;
+  position: relative;
 }
 
 .detail-modal__timeline-load {
   text-align: center;
-  padding: 8px 0;
+  padding: 8px 0 12px;
 }
 
 .detail-modal__timeline-load button {
@@ -1055,59 +1104,119 @@ body {
   padding: 4px 16px;
 }
 
-.timeline-msg {
+/* Vertical rail */
+.timeline__rail {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--color-border);
+  transform: translateX(-50%);
+  border-radius: 1px;
+}
+
+/* Message row */
+.tl-msg {
   display: flex;
-  gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-  font-size: 13px;
-  line-height: 1.5;
+  align-items: flex-start;
+  margin-bottom: 14px;
+  position: relative;
 }
 
-.timeline-msg:last-child {
-  border-bottom: none;
-}
-
-.timeline-msg__icon {
-  flex-shrink: 0;
-  width: 24px;
-  text-align: center;
-  font-size: 14px;
-  margin-top: 1px;
-}
-
-.timeline-msg__icon--prompt {
-  color: var(--color-pending);
-}
-
-.timeline-msg__icon--response {
-  color: var(--color-done);
-}
-
-.timeline-msg__icon--tool {
-  color: var(--color-working);
-}
-
-.timeline-msg__body {
+.tl-msg__spacer {
   flex: 1;
   min-width: 0;
 }
 
-.timeline-msg__time {
-  font-size: 11px;
-  color: var(--color-text-muted);
+/* Dot on the rail */
+.tl-msg__dot {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  z-index: 1;
+  margin: 0 6px;
+}
+
+.tl-msg__dot--prompt {
+  border-color: var(--color-pending);
+}
+
+.tl-msg__dot--response {
+  border-color: var(--color-done);
+}
+
+.tl-msg__dot--tool {
+  border-color: var(--color-working);
+}
+
+/* Card */
+.tl-msg__card {
+  flex: 1;
+  min-width: 0;
+  max-width: calc(50% - 28px);
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+.tl-msg__card--prompt {
+  border-color: color-mix(in srgb, var(--color-pending) 30%, transparent);
+}
+
+.tl-msg__card--response {
+  border-color: color-mix(in srgb, var(--color-done) 25%, transparent);
+}
+
+.tl-msg__card--tool {
+  border-color: color-mix(in srgb, var(--color-working) 20%, transparent);
+}
+
+/* Ordering: for right-aligned (prompts), spacer comes before dot, card after */
+/* .tl-msg--left:  [card] [dot] [spacer] */
+/* .tl-msg--right: [spacer] [dot] [card] */
+
+.tl-msg__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
   margin-bottom: 2px;
 }
 
-.timeline-msg__text {
+.tl-msg__text {
+  font-size: 13px;
   color: var(--color-text);
   white-space: pre-wrap;
   word-break: break-word;
+  line-height: 1.5;
 }
 
-.timeline-msg__text--dim {
+.tl-msg__text--dim {
   color: var(--color-text-muted);
   font-size: 12px;
+  margin-top: 2px;
+}
+
+.tl-msg__meta {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 6px;
+}
+
+/* Empty state */
+.tl-empty {
+  text-align: center;
+  color: var(--color-text-muted);
+  padding: 32px 0;
+  font-size: 14px;
 }
 
 /* ---- Detail Modal: Footer ---- */
@@ -1121,7 +1230,7 @@ body {
   flex-shrink: 0;
 }
 
-/* ---- Toast ---- */
+/* ---- Toast (removed) ---- */
 
 .toast {
   position: fixed;

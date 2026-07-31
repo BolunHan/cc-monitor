@@ -328,6 +328,7 @@ function loadSessionsView() {
         if (section === "active") {
             actions += `<button class="btn--card btn--card-complete" data-action="complete" data-sid="${escapeHtml(session.session_id)}">${I18n.t("card.mark_done")}</button>`;
         }
+        actions += `<button class="btn--card btn--card-delete" data-action="delete" data-sid="${escapeHtml(session.session_id)}"><span class="btn--card-label">${I18n.t("card.delete")}</span></button>`;
 
         card.innerHTML = `
             <div class="session-card__body">
@@ -405,7 +406,13 @@ function loadSessionsView() {
 
     // ---- Card actions ----
 
-    async function handleCardAction(action, sessionId) {
+    let _deleteTimers = {};  // sessionId → {timerId, undo: fn}
+
+    async function handleCardAction(action, sessionId, btnEl) {
+        if (action === "delete") {
+            startDeleteCountdown(sessionId, btnEl);
+            return;
+        }
         try {
             const resp = await apiFetch(`/api/session/${sessionId}/${action}`, {method: "POST"});
             if (resp.ok) {
@@ -418,11 +425,70 @@ function loadSessionsView() {
         }
     }
 
+    function startDeleteCountdown(sessionId, btnEl) {
+        // Cancel any existing countdown for this session
+        if (_deleteTimers[sessionId]) {
+            clearTimeout(_deleteTimers[sessionId].timerId);
+            delete _deleteTimers[sessionId];
+        }
+
+        const DELETE_DELAY = 5000;
+        const label = btnEl.querySelector(".btn--card-label");
+        const originalText = label ? label.textContent : btnEl.textContent;
+
+        // Switch to counting state
+        btnEl.classList.add("counting");
+        btnEl.style.pointerEvents = "auto";  // allow clicking to undo
+        if (label) label.textContent = I18n.t("toast.undo");
+
+        let undone = false;
+        const undo = () => {
+            undone = true;
+            btnEl.classList.remove("counting");
+            btnEl.style.pointerEvents = "";
+            if (label) label.textContent = originalText;
+            if (_deleteTimers[sessionId]) {
+                clearTimeout(_deleteTimers[sessionId].timerId);
+                delete _deleteTimers[sessionId];
+            }
+        };
+
+        btnEl._undoFn = undo;
+
+        const timerId = setTimeout(() => {
+            if (undone) return;
+            delete _deleteTimers[sessionId];
+            // Actually delete via API
+            apiFetch("/api/session/" + sessionId, { method: "DELETE" }).then(() => {
+                // Remove card from DOM
+                const cardEl = document.getElementById("card-" + sessionId);
+                if (cardEl) {
+                    cardEl.style.opacity = "0";
+                    cardEl.style.transition = "opacity 0.3s";
+                    setTimeout(() => cardEl.remove(), 300);
+                }
+                cards.delete(sessionId);
+                prevStates.delete(sessionId);
+                updateCounts();
+            }).catch(() => {
+                // Revert on failure
+                undo();
+            });
+        }, DELETE_DELAY);
+
+        _deleteTimers[sessionId] = { timerId, undo };
+    }
+
     function bindCardActions(card) {
         card.querySelectorAll("[data-action]").forEach(btn => {
             btn.addEventListener("click", (e) => {
                 e.stopPropagation();
-                handleCardAction(btn.dataset.action, btn.dataset.sid);
+                // If counting, undo instead
+                if (btn.dataset.action === "delete" && btn.classList.contains("counting")) {
+                    if (btn._undoFn) btn._undoFn();
+                    return;
+                }
+                handleCardAction(btn.dataset.action, btn.dataset.sid, btn);
             });
         });
         // Card click → open detail modal
@@ -472,11 +538,9 @@ function loadSessionsView() {
                 </div>
                 <div class="detail-modal__tools" id="detail-tools"></div>
                 <div class="detail-modal__timeline" id="detail-timeline">
+                    <div class="timeline__rail"></div>
                     <div class="detail-modal__timeline-load" id="detail-timeline-load"></div>
                     <div id="detail-timeline-msgs"></div>
-                </div>
-                <div class="detail-modal__footer">
-                    <button class="btn btn--danger btn--small" id="detail-delete">${I18n.t("detail.delete")}</button>
                 </div>
             </div>
         `;
@@ -488,12 +552,6 @@ function loadSessionsView() {
             if (e.target === overlay) closeDetailModal();
         });
         document.addEventListener("keydown", _detailEscHandler);
-
-        // Delete handler
-        document.getElementById("detail-delete").addEventListener("click", () => {
-            deleteSession(sessionId);
-            closeDetailModal();
-        });
 
         // Load data
         loadDetailStats(sessionId);
@@ -564,13 +622,13 @@ function loadSessionsView() {
         if (!msgsEl) return;
 
         if (offset === 0) {
-            msgsEl.innerHTML = '<div class="timeline-msg" style="justify-content:center;color:var(--color-text-muted)">' + I18n.t("detail.loading") + '</div>';
+            msgsEl.innerHTML = '<div class="tl-empty">' + I18n.t("detail.loading") + '</div>';
         }
 
         try {
             const resp = await apiFetch("/api/session/" + sessionId + "/messages?offset=" + offset + "&limit=" + TIMELINE_MSG_LIMIT);
             if (!resp.ok) {
-                msgsEl.innerHTML = '<div class="timeline-msg" style="justify-content:center;color:var(--color-text-muted)">—</div>';
+                msgsEl.innerHTML = '<div class="tl-empty">—</div>';
                 return;
             }
             const data = await resp.json();
@@ -578,7 +636,7 @@ function loadSessionsView() {
             const total = data.total || 0;
 
             if (offset === 0 && messages.length === 0) {
-                msgsEl.innerHTML = '<div class="timeline-msg" style="justify-content:center;color:var(--color-text-muted)">' + I18n.t("detail.timeline.empty") + '</div>';
+                msgsEl.innerHTML = '<div class="tl-empty">' + I18n.t("detail.timeline.empty") + '</div>';
                 if (loadEl) loadEl.innerHTML = "";
                 return;
             }
@@ -602,139 +660,53 @@ function loadSessionsView() {
             }
         } catch (_) {
             if (offset === 0) {
-                msgsEl.innerHTML = '<div class="timeline-msg" style="justify-content:center;color:var(--color-text-muted)">—</div>';
+                msgsEl.innerHTML = '<div class="tl-empty">—</div>';
             }
         }
     }
 
     function renderTimelineMsg(m) {
-        let icon, iconClass, typeLabel;
-        if (m.type === "user_prompt") {
-            icon = "📤";
-            iconClass = "timeline-msg__icon--prompt";
-            typeLabel = I18n.t("detail.timeline.prompt");
-        } else if (m.type === "assistant_response") {
-            icon = "📥";
-            iconClass = "timeline-msg__icon--response";
-            typeLabel = I18n.t("detail.timeline.response");
-        } else {
-            icon = "🔧";
-            iconClass = "timeline-msg__icon--tool";
-            typeLabel = I18n.t("detail.timeline.tool");
-        }
-
         const time = new Date(m.timestamp * 1000);
         const timeStr = time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-        let bodyHtml = "";
-        if (m.type === "tool_use") {
-            bodyHtml = '<div class="timeline-msg__text">' + escapeHtml(m.tool_name || "tool") + '</div>';
-            if (m.tool_input) {
-                bodyHtml += '<div class="timeline-msg__text timeline-msg__text--dim">' + escapeHtml(truncate(m.tool_input, 200)) + '</div>';
-            }
-            if (m.tool_output) {
-                bodyHtml += '<div class="timeline-msg__text timeline-msg__text--dim">→ ' + escapeHtml(truncate(m.tool_output, 200)) + '</div>';
-            }
-        } else {
-            bodyHtml = '<div class="timeline-msg__text">' + escapeHtml(m.content || "(empty)") + '</div>';
-        }
-
-        return `
-            <div class="timeline-msg">
-                <div class="timeline-msg__icon ${iconClass}" title="${typeLabel}">${icon}</div>
-                <div class="timeline-msg__body">
-                    <div class="timeline-msg__time">${timeStr} · ${typeLabel}</div>
-                    ${bodyHtml}
+        if (m.type === "user_prompt") {
+            // Right-aligned: spacer → dot → card
+            return `
+                <div class="tl-msg">
+                    <div class="tl-msg__spacer"></div>
+                    <div class="tl-msg__dot tl-msg__dot--prompt" title="${I18n.t("detail.timeline.prompt")}">📤</div>
+                    <div class="tl-msg__card tl-msg__card--prompt">
+                        <div class="tl-msg__text">${escapeHtml(m.content || "(empty)")}</div>
+                        <div class="tl-msg__meta">${timeStr} · ${I18n.t("detail.timeline.prompt")}</div>
+                    </div>
                 </div>
-            </div>
-        `;
-    }
-
-    // ---- Delete Session ----
-
-    let _deleteTimers = {};  // sessionId → timerId
-
-    function deleteSession(sessionId) {
-        // Optimistic removal from UI
-        const cardEl = document.getElementById("card-" + sessionId);
-        if (cardEl) {
-            cardEl.style.opacity = "0.3";
-            cardEl.style.pointerEvents = "none";
-        }
-        cards.delete(sessionId);
-        prevStates.delete(sessionId);
-        updateCounts();
-
-        // Show undo toast
-        const undoMs = 5000;
-        showToast(
-            I18n.t("toast.deleted"),
-            I18n.t("toast.undo"),
-            undoMs,
-            () => {
-                // Undo — restore the card
-                if (_deleteTimers[sessionId]) {
-                    clearTimeout(_deleteTimers[sessionId]);
-                    delete _deleteTimers[sessionId];
-                }
-                // Re-fetch sessions to restore card
-                loadSessions();
-                showToast(I18n.t("toast.undone"), null, 2000);
-            },
-            () => {
-                // Timer expired — actually delete
-                delete _deleteTimers[sessionId];
-                apiFetch("/api/session/" + sessionId, { method: "DELETE" }).catch(() => {});
-                // Restore card opacity just in case, then remove
-                if (cardEl) cardEl.remove();
-            }
-        );
-
-        _deleteTimers[sessionId] = setTimeout(() => {
-            if (_deleteTimers[sessionId]) {
-                _deleteTimers[sessionId] = null;
-                apiFetch("/api/session/" + sessionId, { method: "DELETE" }).catch(() => {});
-                if (cardEl) cardEl.remove();
-            }
-        }, undoMs);
-    }
-
-    function showToast(message, undoLabel, durationMs, onUndo, onExpire) {
-        // Remove existing toast
-        const old = document.getElementById("cc-toast");
-        if (old) old.remove();
-
-        const toast = document.createElement("div");
-        toast.className = "toast";
-        toast.id = "cc-toast";
-        toast.innerHTML = '<span>' + escapeHtml(message) + '</span>';
-        if (undoLabel) {
-            const btn = document.createElement("button");
-            btn.className = "toast__undo";
-            btn.textContent = undoLabel;
-            btn.addEventListener("click", () => {
-                toast.remove();
-                if (onUndo) onUndo();
-            });
-            toast.appendChild(btn);
-        }
-        document.body.appendChild(toast);
-
-        if (durationMs && onExpire && !undoLabel) {
-            setTimeout(() => {
-                if (document.getElementById("cc-toast") === toast) {
-                    toast.classList.add("toast--fadeout");
-                    setTimeout(() => toast.remove(), 300);
-                }
-                onExpire();
-            }, durationMs);
-        } else if (durationMs && !undoLabel) {
-            setTimeout(() => {
-                if (document.getElementById("cc-toast") === toast) {
-                    toast.classList.add("toast--fadeout");
-                    setTimeout(() => toast.remove(), 300);
-                }
-            }, durationMs);
+            `;
+        } else if (m.type === "assistant_response") {
+            // Left-aligned: card → dot → spacer
+            return `
+                <div class="tl-msg">
+                    <div class="tl-msg__card tl-msg__card--response">
+                        <div class="tl-msg__text">${escapeHtml(m.content || "(empty)")}</div>
+                        <div class="tl-msg__meta">${timeStr} · ${I18n.t("detail.timeline.response")}</div>
+                    </div>
+                    <div class="tl-msg__dot tl-msg__dot--response" title="${I18n.t("detail.timeline.response")}">📥</div>
+                    <div class="tl-msg__spacer"></div>
+                </div>
+            `;
+        } else {
+            // Tool: left-aligned same as response
+            return `
+                <div class="tl-msg">
+                    <div class="tl-msg__card tl-msg__card--tool">
+                        <div class="tl-msg__title">${escapeHtml(m.tool_name || "tool")}</div>
+                        ${m.tool_input ? '<div class="tl-msg__text tl-msg__text--dim">' + escapeHtml(truncate(m.tool_input, 200)) + '</div>' : ""}
+                        ${m.tool_output ? '<div class="tl-msg__text tl-msg__text--dim">→ ' + escapeHtml(truncate(m.tool_output, 200)) + '</div>' : ""}
+                        <div class="tl-msg__meta">${timeStr} · ${I18n.t("detail.timeline.tool")}</div>
+                    </div>
+                    <div class="tl-msg__dot tl-msg__dot--tool" title="${I18n.t("detail.timeline.tool")}">🔧</div>
+                    <div class="tl-msg__spacer"></div>
+                </div>
+            `;
         }
     }
 
