@@ -477,7 +477,7 @@ class _TimelineMsg extends StatelessWidget {
       case 'thinking':
         typeLabel = 'Thinking';
         icon = Icons.psychology;
-        dotColor = Colors.grey;
+        dotColor = isDark ? Colors.white38 : Colors.black38;
         cardColor = Colors.transparent;
         tokenLabel = _fmtToken(msg.inputTokens);
         break;
@@ -541,9 +541,26 @@ class _TimelineMsg extends StatelessWidget {
                 padding: const EdgeInsets.only(right: 6),
                 child: metaCard,
               )),
-              const SizedBox(width: 28, child: Center(
-                child: Icon(Icons.psychology, size: 14, color: Colors.grey),
-              )),
+              SizedBox(
+                width: 28,
+                child: Column(
+                  children: [
+                    Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Theme.of(context).scaffoldBackgroundColor,
+                        border: Border.all(color: dotColor, width: 2),
+                      ),
+                      child: Icon(Icons.psychology, size: 11, color: dotColor),
+                    ),
+                    Expanded(
+                      child: Container(width: 2, color: borderColor),
+                    ),
+                  ],
+                ),
+              ),
               const Expanded(
                 child: Padding(
                   padding: EdgeInsets.only(left: 8, top: 4),

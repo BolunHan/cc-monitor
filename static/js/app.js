@@ -785,7 +785,7 @@ function loadSessionsView() {
                     <div class="tl-msg__meta">
                         <div class="tl-msg__meta-card">
                             <span class="tl-msg__meta-time">${timeStr}</span>
-                            <span class="tl-msg__meta-type">🧠 Thinking</span>
+                            <span class="tl-msg__meta-type tl-msg__meta-type--thinking">Thinking</span>
                             ${tokenStr ? '<span class="tl-msg__meta-token">' + tokenStr + '</span>' : ""}
                         </div>
                     </div>
