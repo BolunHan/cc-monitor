@@ -730,7 +730,16 @@ function loadSessionsView() {
 
     function renderTimelineMsg(m) {
         const time = new Date(m.timestamp * 1000);
-        const timeStr = time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        const now = new Date();
+        const isToday = time.getFullYear() === now.getFullYear() &&
+            time.getMonth() === now.getMonth() &&
+            time.getDate() === now.getDate();
+        const hm = time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        const timeStr = isToday
+            ? "Today " + hm
+            : time.getFullYear() + "-" +
+              String(time.getMonth() + 1).padStart(2, "0") + "-" +
+              String(time.getDate()).padStart(2, "0") + " " + hm;
 
         let typeKey, dotIcon, dotClass, cardClass, typeLabel;
         if (m.type === "user_prompt") {
