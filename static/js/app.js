@@ -542,7 +542,6 @@ function loadSessionsView() {
                 </div>
                 <div class="detail-modal__tools" id="detail-tools"></div>
                 <div class="detail-modal__timeline" id="detail-timeline">
-                    <div class="timeline__rail"></div>
                     <div class="detail-modal__timeline-load" id="detail-timeline-load"></div>
                     <div id="detail-timeline-msgs"></div>
                 </div>
@@ -662,34 +661,11 @@ function loadSessionsView() {
             } else if (loadEl) {
                 loadEl.innerHTML = "";
             }
-            // Fix rail after render
-            fixTimelineRail();
         } catch (_) {
             if (offset === 0) {
                 msgsEl.innerHTML = '<div class="tl-empty">—</div>';
             }
         }
-    }
-
-    function fixTimelineRail() {
-        requestAnimationFrame(() => {
-            const timeline = document.getElementById("detail-timeline");
-            const rail = timeline?.querySelector(".timeline__rail");
-            const dots = timeline?.querySelectorAll(".tl-msg__dot");
-            if (!rail || !dots || dots.length < 2) {
-                if (rail) rail.style.display = "none";
-                return;
-            }
-            const containerRect = timeline.getBoundingClientRect();
-            const firstDot = dots[0].getBoundingClientRect();
-            const lastDot = dots[dots.length - 1].getBoundingClientRect();
-            const top = firstDot.top + firstDot.height / 2 - containerRect.top + timeline.scrollTop;
-            const bottom = lastDot.top + lastDot.height / 2 - containerRect.top + timeline.scrollTop;
-            rail.style.display = "block";
-            rail.style.top = top + "px";
-            rail.style.height = Math.max(0, bottom - top) + "px";
-            rail.style.bottom = "auto";
-        });
     }
 
     function renderTimelineMsg(m) {
@@ -740,6 +716,7 @@ function loadSessionsView() {
                 </div>
                 <div class="tl-msg__gutter">
                     <div class="tl-msg__dot ${dotClass}">${dotIcon}</div>
+                    <div class="tl-msg__line"></div>
                 </div>
                 <div class="tl-msg__card ${cardClass}">
                     ${bodyHtml}
