@@ -1363,7 +1363,9 @@ function loadSessionsView() {
     // ---- Section collapse/expand ----
 
     document.querySelectorAll(".section__header").forEach(header => {
-        header.addEventListener("click", () => {
+        header.addEventListener("click", (e) => {
+            // Don't toggle when buttons inside the header are clicked
+            if (e.target.closest("button")) return;
             const section = header.closest(".section");
             const body = section.querySelector(".section__body");
             const toggle = section.querySelector(".section__toggle");
