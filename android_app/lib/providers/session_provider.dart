@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/session.dart';
+import '../models/message.dart';
+import '../models/session_stats.dart';
 import '../services/api_client.dart';
 import '../services/notification_service.dart';
 import '../services/sse_client.dart';
@@ -210,6 +212,47 @@ class SessionProvider extends ChangeNotifier {
     await loadSessions();
   }
 
+  Future<void> deleteSession(String sessionId) async {
+    await _api.delete('/api/session/$sessionId');
+    _active.removeWhere((s) => s.sessionId == sessionId);
+    _complete.removeWhere((s) => s.sessionId == sessionId);
+    _archived.removeWhere((s) => s.sessionId == sessionId);
+    _prevState.remove(sessionId);
+    _updateNotifyCounts();
+    _syncToNativeNotification();
+    notifyListeners();
+  }
+
+  Future<SessionStats?> fetchStats(String sessionId) async {
+    try {
+      final resp = await _api.get('/api/session/$sessionId/stats');
+      if (resp.statusCode == 200) {
+        return SessionStats.fromJson(resp.data as Map<String, dynamic>);
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<MessagesResult?> fetchMessages(String sessionId,
+      {int offset = 0, int limit = 10}) async {
+    try {
+      final resp = await _api.get(
+          '/api/session/$sessionId/messages?offset=$offset&limit=$limit');
+      if (resp.statusCode == 200) {
+        final data = resp.data as Map<String, dynamic>;
+        final msgs = (data['messages'] as List)
+            .map((j) => Message.fromJson(j as Map<String, dynamic>))
+            .toList();
+        return MessagesResult(
+          messages: msgs,
+          total: data['total'] as int? ?? 0,
+          offset: data['offset'] as int? ?? 0,
+        );
+      }
+    } catch (_) {}
+    return null;
+  }
+
   void _upsert(Session session) {
     _active.removeWhere((s) => s.sessionId == session.sessionId);
     _complete.removeWhere((s) => s.sessionId == session.sessionId);
@@ -323,4 +366,15 @@ class SseEventEntry {
   final String detail;
   final LogLevel level;
   SseEventEntry(this.time, this.type, this.detail, this.level);
+}
+
+class MessagesResult {
+  final List<Message> messages;
+  final int total;
+  final int offset;
+  const MessagesResult({
+    required this.messages,
+    required this.total,
+    required this.offset,
+  });
 }

@@ -169,7 +169,7 @@ class _SessionList extends StatelessWidget {
   }
 }
 
-class _SessionCard extends StatelessWidget {
+class _SessionCard extends StatefulWidget {
   final Session session;
   final Function(String)? onArchive;
   final Function(String)? onUnarchive;
@@ -184,13 +184,38 @@ class _SessionCard extends StatelessWidget {
     required this.onTap,
   });
 
-  Color _stateColor() => AppTheme.stateColor(session.state);
+  @override
+  State<_SessionCard> createState() => _SessionCardState();
+}
+
+class _SessionCardState extends State<_SessionCard> {
+  bool _deleting = false;
+  static const _deleteDelay = Duration(seconds: 5);
+
+  Color _stateColor() => AppTheme.stateColor(widget.session.state);
+
+  void _startDelete(SessionProvider provider) {
+    setState(() => _deleting = true);
+    Future.delayed(_deleteDelay, () {
+      if (mounted && _deleting) {
+        provider.deleteSession(widget.session.sessionId);
+        setState(() => _deleting = false);
+      }
+    });
+  }
+
+  void _undoDelete() {
+    setState(() => _deleting = false);
+  }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final provider = context.read<SessionProvider>();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Dismissible(
-      key: Key(session.sessionId),
+      key: Key(widget.session.sessionId),
       background: Container(
         color: Colors.orange,
         alignment: Alignment.centerLeft,
@@ -205,23 +230,48 @@ class _SessionCard extends StatelessWidget {
       ),
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
-          onArchive?.call(session.sessionId);
+          widget.onArchive?.call(widget.session.sessionId);
         } else {
-          onComplete?.call(session.sessionId);
+          widget.onComplete?.call(widget.session.sessionId);
         }
         return false;
       },
       child: Card(
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         child: ListTile(
-          onTap: onTap,
+          onTap: widget.onTap,
           leading: CircleAvatar(backgroundColor: _stateColor(), radius: 6),
-          title: Text(session.summary ?? session.cwd, maxLines: 1, overflow: TextOverflow.ellipsis),
+          title: Text(widget.session.summary ?? widget.session.cwd,
+              maxLines: 1, overflow: TextOverflow.ellipsis),
           subtitle: Text([
-            _stateLabel(session.state, l10n),
-            if (session.ccMonitorUid.isNotEmpty) session.ccMonitorUid,
+            _stateLabel(widget.session.state, l10n),
+            if (widget.session.ccMonitorUid.isNotEmpty)
+              widget.session.ccMonitorUid,
           ].join(' · ')),
-          trailing: Text(_formatTime(session.updatedAt, l10n), style: Theme.of(context).textTheme.bodySmall),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_deleting)
+                _UndoButton(
+                  onTap: _undoDelete,
+                  isDark: isDark,
+                  l10n: l10n,
+                )
+              else
+                IconButton(
+                  icon: Icon(Icons.delete_outline,
+                      size: 18, color: isDark ? Colors.white30 : Colors.black38),
+                  onPressed: () => _startDelete(provider),
+                  tooltip: 'Delete',
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                ),
+              const SizedBox(width: 4),
+              Text(_formatTime(widget.session.updatedAt, l10n),
+                  style: Theme.of(context).textTheme.bodySmall),
+            ],
+          ),
         ),
       ),
     );
@@ -413,5 +463,93 @@ class _StateLogSheetState extends State<_StateLogSheet> {
           ? Colors.orange.shade900
           : Colors.blue.shade900,
     };
+  }
+}
+
+// ---- Undo delete button with countdown ----
+
+class _UndoButton extends StatefulWidget {
+  final VoidCallback onTap;
+  final bool isDark;
+  final AppLocalizations l10n;
+
+  const _UndoButton({
+    required this.onTap,
+    required this.isDark,
+    required this.l10n,
+  });
+
+  @override
+  State<_UndoButton> createState() => _UndoButtonState();
+}
+
+class _UndoButtonState extends State<_UndoButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 5),
+    )..forward();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) {
+        final progress = _ctrl.value;
+        return GestureDetector(
+          onTap: widget.onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: Colors.red.shade400, width: 0.8),
+            ),
+            child: Stack(
+              children: [
+                // Countdown progress bar
+                Positioned.fill(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: FractionallySizedBox(
+                      widthFactor: progress,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.red.withAlpha(40),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // Text
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text(
+                    'Undo',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.red.shade400,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 }
