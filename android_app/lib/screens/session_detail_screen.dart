@@ -70,6 +70,12 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
     if (result != null) {
       // Server returns newest-first; reverse for display (oldest top)
       final ordered = result.messages.reversed.toList();
+
+      // Capture scroll extent BEFORE mutating list (extent is from prev layout)
+      final double prevExtent = (offset > 0 && _scrollCtrl.hasClients)
+          ? _scrollCtrl.position.maxScrollExtent
+          : 0.0;
+
       setState(() {
         if (offset == 0) {
           _messages.clear();
@@ -81,14 +87,22 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
         _allLoaded = _messages.length >= result.total;
         _loadingMessages = false;
       });
-      // Preserve scroll position when prepending older messages
-      if (offset > 0 && _scrollCtrl.hasClients) {
-        final prevExtent = _scrollCtrl.position.maxScrollExtent;
+
+      if (offset == 0) {
+        // Initial load — scroll to bottom (newest messages)
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollCtrl.hasClients && mounted) {
+            _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
+          }
+        });
+      } else if (prevExtent > 0) {
+        // Prepend — keep visible content anchored
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_scrollCtrl.hasClients && mounted) {
             final newExtent = _scrollCtrl.position.maxScrollExtent;
-            if (newExtent > prevExtent) {
-              _scrollCtrl.jumpTo(newExtent - prevExtent);
+            final delta = newExtent - prevExtent;
+            if (delta > 0) {
+              _scrollCtrl.jumpTo(delta);
             }
           }
         });
@@ -117,14 +131,6 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
       }
       if (_allLoaded) break;
       await _loadMessages(offset: _messages.length);
-    }
-    // Scroll to bottom (newest) on initial load
-    if (mounted && _scrollCtrl.hasClients && _messages.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollCtrl.hasClients) {
-          _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
-        }
-      });
     }
   }
 
