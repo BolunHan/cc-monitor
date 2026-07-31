@@ -216,7 +216,7 @@ class TestMessages:
             prompt="Hello, refactor this code",
         ))
         msgs, total = manager.get_messages("s1")
-        assert total == 1
+        assert total == 2  # prompt + thinking skeleton
         user_msgs = [m for m in msgs if m.type == "user_prompt"]
         assert len(user_msgs) == 1
         assert user_msgs[0].content == "Hello, refactor this code"

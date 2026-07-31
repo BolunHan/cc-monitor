@@ -35,6 +35,7 @@ class Message:
     tool_output: str | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
+    preliminary: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -46,7 +47,17 @@ class Message:
             "tool_output": self.tool_output,
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
+            "preliminary": self.preliminary or None,  # omit if False for compactness
         }
+
+    @property
+    def correlation_key(self) -> str | None:
+        """Key for matching skeletons with their completed versions."""
+        if self.type == "tool_use":
+            return self.tool_name
+        if self.type == "thinking":
+            return "thinking"
+        return None
 
     @classmethod
     def from_dict(cls, data: dict) -> "Message":
@@ -59,6 +70,7 @@ class Message:
             tool_output=data.get("tool_output"),
             input_tokens=data.get("input_tokens"),
             output_tokens=data.get("output_tokens"),
+            preliminary=data.get("preliminary", False) or False,
         )
 
 
@@ -619,12 +631,30 @@ class StateManager:
         if hook_event_name == "UserPromptSubmit":
             prompt = raw.get("prompt", "")
             in_tok, out_tok = StateManager._extract_tokens(raw)
+            return [
+                Message(
+                    timestamp=ts,
+                    type="user_prompt",
+                    content=prompt.strip() if prompt else None,
+                    input_tokens=in_tok,
+                    output_tokens=None,
+                ),
+                Message(
+                    timestamp=ts + 0.0001,
+                    type="thinking",
+                    content="Thinking…",
+                    preliminary=True,
+                ),
+            ]
+
+        if hook_event_name == "PreToolUse":
+            tool_name = raw.get("tool_name", "")
             return Message(
                 timestamp=ts,
-                type="user_prompt",
-                content=prompt.strip() if prompt else None,
-                input_tokens=in_tok,
-                output_tokens=None,  # user prompts don't have output tokens
+                type="tool_use",
+                tool_name=tool_name or None,
+                content="Executing…",
+                preliminary=True,
             )
 
         if hook_event_name == "Stop":

@@ -722,10 +722,33 @@ function loadSessionsView() {
         }
     }
 
+    function updateModalBadge(state) {
+        const badge = document.querySelector("#detail-overlay .session-card__badge");
+        if (!badge) return;
+        badge.className = "session-card__badge badge-" + state;
+        const isArchived = badge.textContent === I18n.t("state.archived");
+        if (!isArchived) {
+            badge.textContent = I18n.t("state." + state);
+        }
+    }
+
     function appendTimelineMsg(m) {
         const msgsEl = document.getElementById("detail-timeline-msgs");
         const tlContainer = document.getElementById("detail-timeline");
         if (!msgsEl) return;
+
+        // Replace matching preliminary skeleton
+        if (!m.preliminary) {
+            const existing = msgsEl.querySelectorAll(".tl-msg--preliminary");
+            for (const el of existing) {
+                const ck = el.dataset.correlationKey;
+                if (ck === (m.tool_name || (m.type === "thinking" ? "thinking" : null))) {
+                    el.remove();
+                    break;
+                }
+            }
+        }
+
         const wasAtBottom = tlContainer && (tlContainer.scrollHeight - tlContainer.scrollTop - tlContainer.clientHeight) < 60;
         const html = renderTimelineMsg(m);
         msgsEl.insertAdjacentHTML("beforeend", html);
@@ -829,10 +852,14 @@ function loadSessionsView() {
             bodyHtml = '<div class="tl-msg__text">' + escapeHtml(m.content || "(empty)") + '</div>';
         }
 
+        const preClass = m.preliminary ? " tl-msg--preliminary" : "";
+        const ck = m.tool_name || (m.type === "thinking" ? "thinking" : null);
+        const ckAttr = ck ? ' data-correlation-key="' + escapeHtml(ck) + '"' : "";
+
         return `
-            <div class="tl-msg">
+            <div class="tl-msg${preClass}"${ckAttr}>
                 <div class="tl-msg__meta">
-                    <div class="tl-msg__meta-card">
+                    <div class="tl-msg__meta-card${m.preliminary ? " tl-msg__meta-card--preliminary" : ""}">
                         <span class="tl-msg__meta-time">${timeStr}</span>
                         <span class="tl-msg__meta-type tl-msg__meta-type--${typeSuffix}">${typeLabel}</span>
                         ${tokenStr ? '<span class="tl-msg__meta-token">' + tokenStr + '</span>' : ""}
@@ -995,6 +1022,10 @@ function loadSessionsView() {
                 notify(session);
                 prevStates.set(session.session_id, {state: session.state, archived: session.archived});
                 lastHeartbeat = Date.now();
+                // Update modal badge if this session is open
+                if (session.session_id === _tlSessionId && document.getElementById("detail-overlay")) {
+                    updateModalBadge(session.state);
+                }
             } catch (err) {
                 console.error("cc-monitor: failed to parse SSE data", err);
             }
