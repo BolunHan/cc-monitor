@@ -328,6 +328,7 @@ function loadSessionsView() {
         if (section === "active") {
             actions += `<button class="btn--card btn--card-complete" data-action="complete" data-sid="${escapeHtml(session.session_id)}">${I18n.t("card.mark_done")}</button>`;
         }
+        actions += `<button class="btn--card btn--card-delete" data-action="delete" data-sid="${escapeHtml(session.session_id)}"><span class="btn--card-label">${I18n.t("card.delete")}</span></button>`;
 
         card.innerHTML = `
             <div class="session-card__body">
@@ -348,6 +349,7 @@ function loadSessionsView() {
                     <strong>event:</strong> ${escapeHtml(session.raw_event || "—")}
                     ${session.raw_detail ? ` (${escapeHtml(session.raw_detail)})` : ""}
                     ${session.cc_monitor_uid ? `<br><strong>uid:</strong> <code>${escapeHtml(session.cc_monitor_uid)}</code>` : ""}
+                    ${session.size_bytes != null ? `<br><strong>storage:</strong> ${formatBytes(session.size_bytes)}` : ""}
                 </div>
                 <div class="session-card__time">${relativeTime(session.updated_at)}</div>
             </div>
@@ -388,6 +390,7 @@ function loadSessionsView() {
         cards.get(session.session_id).rawDetail = session.raw_detail;
         cards.get(session.session_id).summary = session.summary;
         cards.get(session.session_id).uid = session.cc_monitor_uid;
+        cards.get(session.session_id).sizeBytes = session.size_bytes;
         cards.get(session.session_id).updatedAt = session.updated_at;
     }
 
@@ -405,7 +408,13 @@ function loadSessionsView() {
 
     // ---- Card actions ----
 
-    async function handleCardAction(action, sessionId) {
+    let _deleteTimers = {};  // sessionId → {timerId, undo: fn}
+
+    async function handleCardAction(action, sessionId, btnEl) {
+        if (action === "delete") {
+            startDeleteCountdown(sessionId, btnEl);
+            return;
+        }
         try {
             const resp = await apiFetch(`/api/session/${sessionId}/${action}`, {method: "POST"});
             if (resp.ok) {
@@ -418,14 +427,479 @@ function loadSessionsView() {
         }
     }
 
+    function startDeleteCountdown(sessionId, btnEl) {
+        // Cancel any existing countdown for this session
+        if (_deleteTimers[sessionId]) {
+            clearTimeout(_deleteTimers[sessionId].timerId);
+            delete _deleteTimers[sessionId];
+        }
+
+        const DELETE_DELAY = 5000;
+        const label = btnEl.querySelector(".btn--card-label");
+        const originalText = label ? label.textContent : btnEl.textContent;
+
+        // Switch to counting state
+        btnEl.classList.add("counting");
+        btnEl.style.pointerEvents = "auto";  // allow clicking to undo
+        if (label) label.textContent = I18n.t("toast.undo");
+
+        let undone = false;
+        const undo = () => {
+            undone = true;
+            btnEl.classList.remove("counting");
+            btnEl.style.pointerEvents = "";
+            if (label) label.textContent = originalText;
+            if (_deleteTimers[sessionId]) {
+                clearTimeout(_deleteTimers[sessionId].timerId);
+                delete _deleteTimers[sessionId];
+            }
+        };
+
+        btnEl._undoFn = undo;
+
+        const timerId = setTimeout(() => {
+            if (undone) return;
+            delete _deleteTimers[sessionId];
+            // Actually delete via API
+            apiFetch("/api/session/" + sessionId, { method: "DELETE" }).then(async (resp) => {
+                if (resp.ok) {
+                    const data = await resp.json();
+                    const cardEl = document.getElementById("card-" + sessionId);
+                    if (cardEl) {
+                        cardEl.style.opacity = "0";
+                        cardEl.style.transition = "opacity 0.3s";
+                        setTimeout(() => cardEl.remove(), 300);
+                    }
+                    cards.delete(sessionId);
+                    prevStates.delete(sessionId);
+                    updateCounts();
+                    showDeletePopup(1, data.messages_deleted || 0, data.bytes_freed || 0);
+                }
+            }).catch(() => {
+                undo();
+            });
+        }, DELETE_DELAY);
+
+        _deleteTimers[sessionId] = { timerId, undo };
+    }
+
     function bindCardActions(card) {
         card.querySelectorAll("[data-action]").forEach(btn => {
             btn.addEventListener("click", (e) => {
                 e.stopPropagation();
-                handleCardAction(btn.dataset.action, btn.dataset.sid);
+                // If counting, undo instead
+                if (btn.dataset.action === "delete" && btn.classList.contains("counting")) {
+                    if (btn._undoFn) btn._undoFn();
+                    return;
+                }
+                handleCardAction(btn.dataset.action, btn.dataset.sid, btn);
             });
         });
+        // Card click → open detail modal
+        card.addEventListener("click", (e) => {
+            // Don't open modal if clicking a button
+            if (e.target.closest("button")) return;
+            const sid = card.id.replace("card-", "");
+            openDetailModal(sid);
+        });
     }
+
+    // ---- Detail Modal ----
+
+    const TIMELINE_MSG_LIMIT = 10;
+
+    // Waterfall auto-load state (per open modal)
+    let _tlSessionId = null;
+    let _tlOffset = 0;
+    let _tlTotal = 0;
+    let _tlLoading = false;
+
+    function openDetailModal(sessionId) {
+        // Remove existing modal
+        closeDetailModal();
+
+        const meta = cards.get(sessionId);
+        const prev = prevStates.get(sessionId);
+        if (!prev) return;
+
+        const basename = meta.cwd ? dirBasename(meta.cwd) : null;
+        const title = basename || sessionId.substring(0, 8) + "…";
+        const isArchived = prev.archived;
+        const badgeState = isArchived ? "archived" : prev.state;
+        const badgeLabel = isArchived ? I18n.t("state.archived") : I18n.t("state." + prev.state);
+
+        const overlay = document.createElement("div");
+        overlay.className = "detail-overlay";
+        overlay.id = "detail-overlay";
+        overlay.innerHTML = `
+            <div class="detail-modal">
+                <div class="detail-modal__header">
+                    <div class="detail-modal__title-row">
+                        <div class="detail-modal__title">
+                            <span class="detail-modal__title-text">${escapeHtml(title)}</span>
+                            <span class="session-card__badge badge-${badgeState}">${badgeLabel}</span>
+                        </div>
+                        <div class="detail-modal__subtitle">${escapeHtml(sessionId)}</div>
+                    </div>
+                    <button class="detail-modal__close" id="detail-close">✕</button>
+                </div>
+                <div class="detail-modal__stats" id="detail-stats">
+                    <span class="detail-stat">${I18n.t("detail.loading")}</span>
+                </div>
+                <div class="detail-modal__tools" id="detail-tools"></div>
+                <div class="detail-modal__timeline" id="detail-timeline">
+                    <div class="detail-modal__timeline-load" id="detail-timeline-load"></div>
+                    <div id="detail-timeline-msgs"></div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        // Close handlers
+        document.getElementById("detail-close").addEventListener("click", closeDetailModal);
+        overlay.addEventListener("click", (e) => {
+            if (e.target === overlay) closeDetailModal();
+        });
+        document.addEventListener("keydown", _detailEscHandler);
+
+        // Waterfall auto-load on scroll
+        _tlSessionId = sessionId;
+        _tlOffset = 0;
+        _tlTotal = 0;
+        _tlLoading = false;
+        const tlContainer = document.getElementById("detail-timeline");
+        tlContainer.addEventListener("scroll", () => {
+            if (_tlLoading) return;
+            if (_tlOffset >= _tlTotal) return;
+            if (tlContainer.scrollTop < 80) {
+                _tlLoading = true;
+                loadDetailMessages(_tlSessionId, _tlOffset);
+            }
+        });
+
+        // Load data
+        loadDetailStats(sessionId);
+        loadDetailMessages(sessionId, 0);
+    }
+
+    function _detailEscHandler(e) {
+        if (e.key === "Escape") closeDetailModal();
+    }
+
+    function closeDetailModal() {
+        const overlay = document.getElementById("detail-overlay");
+        if (overlay) overlay.remove();
+        document.removeEventListener("keydown", _detailEscHandler);
+        _tlSessionId = null;
+        _tlOffset = 0;
+        _tlTotal = 0;
+        _tlLoading = false;
+    }
+
+    async function loadDetailStats(sessionId) {
+        const statsEl = document.getElementById("detail-stats");
+        const toolsEl = document.getElementById("detail-tools");
+        if (!statsEl) return;
+        try {
+            const resp = await apiFetch("/api/session/" + sessionId + "/stats");
+            if (!resp.ok) {
+                statsEl.innerHTML = '<span class="detail-stat">—</span>';
+                return;
+            }
+            const stats = await resp.json();
+            renderStats(statsEl, toolsEl, stats);
+        } catch (_) {
+            statsEl.innerHTML = '<span class="detail-stat">—</span>';
+        }
+    }
+
+    function renderStats(statsEl, toolsEl, stats) {
+        const dur = stats.duration_seconds;
+        let durStr = "—";
+        if (dur >= 3600) durStr = Math.floor(dur / 3600) + "h " + Math.floor((dur % 3600) / 60) + "m";
+        else if (dur >= 60) durStr = Math.floor(dur / 60) + "m " + (dur % 60) + "s";
+        else if (dur > 0) durStr = dur + "s";
+
+        const items = [
+            { label: I18n.t("detail.stats.prompts"), value: stats.total_prompts },
+            { label: I18n.t("detail.stats.responses"), value: stats.total_assistant_messages },
+            { label: I18n.t("detail.stats.tool_calls"), value: stats.total_tool_calls },
+            { label: I18n.t("detail.stats.input_tokens"), value: stats.total_input_tokens > 0 ? stats.total_input_tokens.toLocaleString() : "—" },
+            { label: I18n.t("detail.stats.output_tokens"), value: stats.total_output_tokens > 0 ? stats.total_output_tokens.toLocaleString() : "—" },
+            { label: I18n.t("detail.stats.duration"), value: durStr },
+        ];
+        statsEl.innerHTML = items.map(i =>
+            '<span class="detail-stat">' + escapeHtml(i.label) + ' <span class="detail-stat__value">' + escapeHtml(String(i.value)) + '</span></span>'
+        ).join("");
+
+        // Tool breakdown
+        const tb = stats.tool_breakdown || {};
+        const entries = Object.entries(tb).sort((a, b) => b[1] - a[1]);
+        if (entries.length > 0) {
+            toolsEl.innerHTML = entries.map(([name, count]) =>
+                '<span class="detail-tool-chip">' + escapeHtml(name) + ' ×' + count + '</span>'
+            ).join("");
+        } else {
+            toolsEl.innerHTML = "";
+        }
+    }
+
+    async function loadDetailMessages(sessionId, offset) {
+        const msgsEl = document.getElementById("detail-timeline-msgs");
+        const loadEl = document.getElementById("detail-timeline-load");
+        const tlContainer = document.getElementById("detail-timeline");
+        if (!msgsEl) return;
+
+        if (offset === 0) {
+            msgsEl.innerHTML = '<div class="tl-empty">' + I18n.t("detail.loading") + '</div>';
+        }
+
+        try {
+            const resp = await apiFetch("/api/session/" + sessionId + "/messages?offset=" + offset + "&limit=" + TIMELINE_MSG_LIMIT);
+            if (!resp.ok) {
+                if (offset === 0) msgsEl.innerHTML = '<div class="tl-empty">—</div>';
+                _tlLoading = false;
+                return;
+            }
+            const data = await resp.json();
+            const messages = data.messages || [];
+            const total = data.total || 0;
+
+            // Update tracking
+            _tlTotal = total;
+            _tlOffset = offset + messages.length;
+            _tlLoading = false;
+
+            if (offset === 0 && messages.length === 0) {
+                msgsEl.innerHTML = '<div class="tl-empty">' + I18n.t("detail.timeline.empty") + '</div>';
+                if (loadEl) loadEl.innerHTML = "";
+                return;
+            }
+
+            // Server returns newest-first; reverse so oldest is at top, newest at bottom
+            const ordered = messages.slice().reverse();
+            const html = ordered.map(m => renderTimelineMsg(m)).join("");
+
+            if (offset === 0) {
+                msgsEl.innerHTML = html;
+                // Scroll to bottom to show newest messages
+                requestAnimationFrame(() => {
+                    if (tlContainer) tlContainer.scrollTop = tlContainer.scrollHeight;
+                    // Ensure scroller: if still no scrollbar and more available, load more
+                    _ensureScroller(sessionId);
+                });
+            } else {
+                // Prepend older messages at top
+                const prevScrollHeight = tlContainer ? tlContainer.scrollHeight : 0;
+                msgsEl.innerHTML = html + msgsEl.innerHTML;
+                // Maintain scroll position so visible content doesn't jump
+                requestAnimationFrame(() => {
+                    if (tlContainer) tlContainer.scrollTop = tlContainer.scrollHeight - prevScrollHeight;
+                });
+            }
+
+            // End marker or count hint
+            const allLoaded = _tlOffset >= total;
+            if (loadEl) {
+                if (allLoaded && total > 0) {
+                    loadEl.innerHTML = '<div style="text-align:center;padding:8px 0;font-size:11px;color:var(--color-text-muted);border-top:1px solid var(--color-border);margin-top:4px;">' + I18n.t("detail.timeline.all_loaded") + ' · ' + total + ' messages</div>';
+                } else if (total > 0) {
+                    const remaining = total - _tlOffset;
+                    loadEl.innerHTML = '<span style="font-size:11px;color:var(--color-text-muted)">' + remaining + ' more · scroll up</span>';
+                }
+            }
+        } catch (_) {
+            _tlLoading = false;
+            if (offset === 0) {
+                msgsEl.innerHTML = '<div class="tl-empty">—</div>';
+            }
+        }
+    }
+
+    async function _ensureScroller(sessionId) {
+        // If content fits without scrollbar and more messages exist, keep loading
+        const tlContainer = document.getElementById("detail-timeline");
+        if (!tlContainer) return;
+        for (let i = 0; i < 10; i++) {
+            if (_tlOffset >= _tlTotal) break; // all loaded
+            if (tlContainer.scrollHeight > tlContainer.clientHeight + 5) break; // has scrollbar
+            _tlLoading = true;
+            await loadDetailMessages(sessionId, _tlOffset);
+        }
+    }
+
+    function renderTimelineMsg(m) {
+        const time = new Date(m.timestamp * 1000);
+        const timeStr = time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+        let typeKey, dotIcon, dotClass, cardClass, typeLabel;
+        if (m.type === "user_prompt") {
+            typeKey = "detail.timeline.prompt";
+            dotIcon = "📤";
+            dotClass = "tl-msg__dot--prompt";
+            cardClass = "tl-msg__card--prompt";
+            typeLabel = I18n.t(typeKey);
+        } else if (m.type === "assistant_response") {
+            typeKey = "detail.timeline.response";
+            dotIcon = "📥";
+            dotClass = "tl-msg__dot--response";
+            cardClass = "tl-msg__card--response";
+            typeLabel = I18n.t(typeKey);
+        } else {
+            typeKey = "detail.timeline.tool";
+            dotIcon = "🔧";
+            dotClass = "tl-msg__dot--tool";
+            cardClass = "tl-msg__card--tool";
+            typeLabel = I18n.t(typeKey);
+        }
+
+        let bodyHtml = "";
+        if (m.type === "tool_use") {
+            bodyHtml = '<div class="tl-msg__title">' + escapeHtml(m.tool_name || "tool") + '</div>';
+            if (m.tool_input) {
+                bodyHtml += '<div class="tl-msg__text tl-msg__text--dim">' + escapeHtml(truncate(m.tool_input, 200)) + '</div>';
+            }
+            if (m.tool_output) {
+                bodyHtml += '<div class="tl-msg__text tl-msg__text--dim">→ ' + escapeHtml(truncate(m.tool_output, 200)) + '</div>';
+            }
+        } else {
+            bodyHtml = '<div class="tl-msg__text">' + escapeHtml(m.content || "(empty)") + '</div>';
+        }
+
+        return `
+            <div class="tl-msg">
+                <div class="tl-msg__meta">
+                    <div class="tl-msg__meta-card">
+                        <span class="tl-msg__meta-time">${timeStr}</span>
+                        <span class="tl-msg__meta-type tl-msg__meta-type--${m.type === "user_prompt" ? "prompt" : m.type === "assistant_response" ? "response" : "tool"}">${typeLabel}</span>
+                    </div>
+                </div>
+                <div class="tl-msg__gutter">
+                    <div class="tl-msg__dot ${dotClass}">${dotIcon}</div>
+                    <div class="tl-msg__line"></div>
+                </div>
+                <div class="tl-msg__card ${cardClass}">
+                    ${bodyHtml}
+                </div>
+            </div>
+        `;
+    }
+
+    // ---- Section bulk actions ----
+
+    async function archiveAllComplete() {
+        const completeSessions = [];
+        cards.forEach((meta, sid) => {
+            const prev = prevStates.get(sid);
+            if (prev && !prev.archived && prev.state === "all_done") {
+                completeSessions.push(sid);
+            }
+        });
+        let count = 0;
+        for (const sid of completeSessions) {
+            try {
+                const resp = await apiFetch("/api/session/" + sid + "/archive", { method: "POST" });
+                if (resp.ok) {
+                    const session = await resp.json();
+                    updateCard(session);
+                    prevStates.set(session.session_id, { state: session.state, archived: session.archived });
+                    count++;
+                }
+            } catch (_) {}
+        }
+    }
+
+    async function deleteAllArchived() {
+        const archivedSessions = [];
+        cards.forEach((meta, sid) => {
+            const prev = prevStates.get(sid);
+            if (prev && prev.archived) {
+                archivedSessions.push(sid);
+            }
+        });
+        let totalMsgs = 0;
+        let totalBytes = 0;
+        for (const sid of archivedSessions) {
+            try {
+                const resp = await apiFetch("/api/session/" + sid, { method: "DELETE" });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    totalMsgs += data.messages_deleted || 0;
+                    totalBytes += data.bytes_freed || 0;
+                    const cardEl = document.getElementById("card-" + sid);
+                    if (cardEl) cardEl.remove();
+                    cards.delete(sid);
+                    prevStates.delete(sid);
+                }
+            } catch (_) {}
+        }
+        updateCounts();
+        if (archivedSessions.length > 0) {
+            showDeletePopup(archivedSessions.length, totalMsgs, totalBytes);
+        }
+    }
+
+    function startBulkDeleteCountdown(btnEl, actionFn) {
+        if (btnEl.classList.contains("counting")) {
+            // Undo
+            if (btnEl._undoFn) btnEl._undoFn();
+            return;
+        }
+
+        const DELETE_DELAY = 5000;
+        const label = btnEl.querySelector(".btn--card-label");
+        const originalText = label ? label.textContent : btnEl.textContent;
+
+        btnEl.classList.add("counting");
+        btnEl.style.pointerEvents = "auto";
+        if (label) label.textContent = I18n.t("toast.undo");
+
+        let undone = false;
+        const undo = () => {
+            undone = true;
+            btnEl.classList.remove("counting");
+            btnEl.style.pointerEvents = "";
+            if (label) label.textContent = originalText;
+        };
+        btnEl._undoFn = undo;
+
+        const timerId = setTimeout(async () => {
+            if (undone) return;
+            btnEl.classList.remove("counting");
+            btnEl.style.pointerEvents = "";
+            if (label) label.textContent = originalText;
+            await actionFn();
+        }, DELETE_DELAY);
+        btnEl._bulkTimer = timerId;
+    }
+
+    function showDeletePopup(sessionCount, totalMsgs, totalBytes) {
+        const old = document.getElementById("delete-popup");
+        if (old) old.remove();
+
+        const popup = document.createElement("div");
+        popup.id = "delete-popup";
+        popup.className = "delete-popup";
+        popup.innerHTML = '<span>' + I18n.t("toast.deleted", { n: sessionCount }) + ' · ' + totalMsgs + ' messages · ' + formatBytes(totalBytes) + ' freed</span>';
+        document.body.appendChild(popup);
+        setTimeout(() => {
+            popup.classList.add("delete-popup--fadeout");
+            setTimeout(() => popup.remove(), 300);
+        }, 3000);
+    }
+
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+        return (bytes / 1048576).toFixed(1) + " MB";
+    }
+
+    // Expose to global scope for onclick in HTML
+    window._ccArchiveAll = archiveAllComplete;
+    window._ccDeleteAll = function() {
+        const btn = document.getElementById("btn-delete-all");
+        if (btn) startBulkDeleteCountdown(btn, deleteAllArchived);
+    };
 
     // ---- SSE Connection ----
 
