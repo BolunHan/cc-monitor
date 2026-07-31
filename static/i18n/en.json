@@ -29,6 +29,8 @@
   "section.active": "Active",
   "section.complete": "Complete",
   "section.archived": "Archived",
+  "section.archive_all": "Archive All",
+  "section.delete_all": "Delete All",
   "empty.active": "No active sessions",
   "empty.complete": "No completed sessions",
   "empty.archived": "No archived sessions",

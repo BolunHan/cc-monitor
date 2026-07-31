@@ -29,6 +29,8 @@
   "section.active": "活跃",
   "section.complete": "已完成",
   "section.archived": "已归档",
+  "section.archive_all": "全部归档",
+  "section.delete_all": "全部删除",
   "empty.active": "无活跃会话",
   "empty.complete": "无已完成会话",
   "empty.archived": "无已归档会话",

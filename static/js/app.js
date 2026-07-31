@@ -669,46 +669,101 @@ function loadSessionsView() {
         const time = new Date(m.timestamp * 1000);
         const timeStr = time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+        let typeKey, dotIcon, dotClass, cardClass, typeLabel;
         if (m.type === "user_prompt") {
-            // Right-aligned: spacer → dot → card
-            return `
-                <div class="tl-msg">
-                    <div class="tl-msg__spacer"></div>
-                    <div class="tl-msg__dot tl-msg__dot--prompt" title="${I18n.t("detail.timeline.prompt")}">📤</div>
-                    <div class="tl-msg__card tl-msg__card--prompt">
-                        <div class="tl-msg__text">${escapeHtml(m.content || "(empty)")}</div>
-                        <div class="tl-msg__meta">${timeStr} · ${I18n.t("detail.timeline.prompt")}</div>
-                    </div>
-                </div>
-            `;
+            typeKey = "detail.timeline.prompt";
+            dotIcon = "📤";
+            dotClass = "tl-msg__dot--prompt";
+            cardClass = "tl-msg__card--prompt";
+            typeLabel = I18n.t(typeKey);
         } else if (m.type === "assistant_response") {
-            // Left-aligned: card → dot → spacer
-            return `
-                <div class="tl-msg">
-                    <div class="tl-msg__card tl-msg__card--response">
-                        <div class="tl-msg__text">${escapeHtml(m.content || "(empty)")}</div>
-                        <div class="tl-msg__meta">${timeStr} · ${I18n.t("detail.timeline.response")}</div>
-                    </div>
-                    <div class="tl-msg__dot tl-msg__dot--response" title="${I18n.t("detail.timeline.response")}">📥</div>
-                    <div class="tl-msg__spacer"></div>
-                </div>
-            `;
+            typeKey = "detail.timeline.response";
+            dotIcon = "📥";
+            dotClass = "tl-msg__dot--response";
+            cardClass = "tl-msg__card--response";
+            typeLabel = I18n.t(typeKey);
         } else {
-            // Tool: left-aligned same as response
-            return `
-                <div class="tl-msg">
-                    <div class="tl-msg__card tl-msg__card--tool">
-                        <div class="tl-msg__title">${escapeHtml(m.tool_name || "tool")}</div>
-                        ${m.tool_input ? '<div class="tl-msg__text tl-msg__text--dim">' + escapeHtml(truncate(m.tool_input, 200)) + '</div>' : ""}
-                        ${m.tool_output ? '<div class="tl-msg__text tl-msg__text--dim">→ ' + escapeHtml(truncate(m.tool_output, 200)) + '</div>' : ""}
-                        <div class="tl-msg__meta">${timeStr} · ${I18n.t("detail.timeline.tool")}</div>
-                    </div>
-                    <div class="tl-msg__dot tl-msg__dot--tool" title="${I18n.t("detail.timeline.tool")}">🔧</div>
-                    <div class="tl-msg__spacer"></div>
+            typeKey = "detail.timeline.tool";
+            dotIcon = "🔧";
+            dotClass = "tl-msg__dot--tool";
+            cardClass = "tl-msg__card--tool";
+            typeLabel = I18n.t(typeKey);
+        }
+
+        let bodyHtml = "";
+        if (m.type === "tool_use") {
+            bodyHtml = '<div class="tl-msg__title">' + escapeHtml(m.tool_name || "tool") + '</div>';
+            if (m.tool_input) {
+                bodyHtml += '<div class="tl-msg__text tl-msg__text--dim">' + escapeHtml(truncate(m.tool_input, 200)) + '</div>';
+            }
+            if (m.tool_output) {
+                bodyHtml += '<div class="tl-msg__text tl-msg__text--dim">→ ' + escapeHtml(truncate(m.tool_output, 200)) + '</div>';
+            }
+        } else {
+            bodyHtml = '<div class="tl-msg__text">' + escapeHtml(m.content || "(empty)") + '</div>';
+        }
+
+        return `
+            <div class="tl-msg">
+                <div class="tl-msg__meta">
+                    <span class="tl-msg__meta-time">${timeStr}</span>
+                    <span class="tl-msg__meta-type tl-msg__meta-type--${m.type === "user_prompt" ? "prompt" : m.type === "assistant_response" ? "response" : "tool"}">${typeLabel}</span>
                 </div>
-            `;
+                <div class="tl-msg__gutter">
+                    <div class="tl-msg__dot ${dotClass}">${dotIcon}</div>
+                </div>
+                <div class="tl-msg__card ${cardClass}">
+                    ${bodyHtml}
+                </div>
+            </div>
+        `;
+    }
+
+    // ---- Section bulk actions ----
+
+    async function archiveAllComplete() {
+        const completeSessions = [];
+        cards.forEach((meta, sid) => {
+            const prev = prevStates.get(sid);
+            if (prev && !prev.archived && prev.state === "all_done") {
+                completeSessions.push(sid);
+            }
+        });
+        for (const sid of completeSessions) {
+            try {
+                const resp = await apiFetch("/api/session/" + sid + "/archive", { method: "POST" });
+                if (resp.ok) {
+                    const session = await resp.json();
+                    updateCard(session);
+                    prevStates.set(session.session_id, { state: session.state, archived: session.archived });
+                }
+            } catch (_) {}
         }
     }
+
+    async function deleteAllArchived() {
+        const archivedSessions = [];
+        cards.forEach((meta, sid) => {
+            const prev = prevStates.get(sid);
+            if (prev && prev.archived) {
+                archivedSessions.push(sid);
+            }
+        });
+        for (const sid of archivedSessions) {
+            try {
+                await apiFetch("/api/session/" + sid, { method: "DELETE" });
+                const cardEl = document.getElementById("card-" + sid);
+                if (cardEl) cardEl.remove();
+                cards.delete(sid);
+                prevStates.delete(sid);
+            } catch (_) {}
+        }
+        updateCounts();
+    }
+
+    // Expose to global scope for onclick in HTML
+    window._ccArchiveAll = archiveAllComplete;
+    window._ccDeleteAll = deleteAllArchived;
 
     // ---- SSE Connection ----
 

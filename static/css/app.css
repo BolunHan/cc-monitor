@@ -1084,7 +1084,7 @@ body {
   white-space: nowrap;
 }
 
-/* ---- Detail Modal: Timeline (Design B — center gutter) ---- */
+/* ---- Detail Modal: Timeline ---- */
 
 .detail-modal__timeline {
   flex: 1;
@@ -1104,85 +1104,104 @@ body {
   padding: 4px 16px;
 }
 
-/* Vertical rail */
+/* Vertical rail — positioned at gutter center, runs from first to last dot */
 .timeline__rail {
   position: absolute;
-  left: 50%;
+  left: 96px; /* meta(80px) + half-gutter(16px) */
   top: 0;
   bottom: 0;
   width: 2px;
   background: var(--color-border);
-  transform: translateX(-50%);
   border-radius: 1px;
 }
 
-/* Message row */
+/* Message row: [meta 80px] [gutter 32px] [card flex-1] */
 .tl-msg {
   display: flex;
   align-items: flex-start;
-  margin-bottom: 14px;
   position: relative;
 }
 
-.tl-msg__spacer {
-  flex: 1;
-  min-width: 0;
+/* Time + type badge left of the dot */
+.tl-msg__meta {
+  width: 80px;
+  flex-shrink: 0;
+  text-align: right;
+  padding: 0 10px 0 0;
+  font-size: 10px;
+  color: var(--color-text-muted);
+  line-height: 1.4;
 }
 
-/* Dot on the rail */
-.tl-msg__dot {
-  flex-shrink: 0;
+.tl-msg__meta-time {
+  display: block;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.tl-msg__meta-type {
+  display: block;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 9px;
+}
+
+.tl-msg__meta-type--prompt { color: var(--color-pending); }
+.tl-msg__meta-type--response { color: var(--color-done); }
+.tl-msg__meta-type--tool { color: var(--color-working); }
+
+/* Gutter: holds the dot, rail runs through center */
+.tl-msg__gutter {
   width: 32px;
-  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+}
+
+/* Dot — sits on top of rail, surface bg hides rail behind it */
+.tl-msg__dot {
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: var(--color-surface);
   border: 2px solid var(--color-border);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 12px;
   z-index: 1;
-  margin: 0 6px;
+  position: relative;
+  margin-top: 1px;
 }
 
-.tl-msg__dot--prompt {
-  border-color: var(--color-pending);
-}
+.tl-msg__dot--prompt { border-color: var(--color-pending); }
+.tl-msg__dot--response { border-color: var(--color-done); }
+.tl-msg__dot--tool { border-color: var(--color-working); }
 
-.tl-msg__dot--response {
-  border-color: var(--color-done);
-}
-
-.tl-msg__dot--tool {
-  border-color: var(--color-working);
-}
-
-/* Card */
+/* Card — full width on the right, colored bg by type */
 .tl-msg__card {
   flex: 1;
   min-width: 0;
-  max-width: calc(50% - 28px);
   padding: 10px 14px;
   border-radius: 8px;
   border: 1px solid var(--color-border);
-  background: var(--color-bg);
+  margin-bottom: 12px;
 }
 
 .tl-msg__card--prompt {
-  border-color: color-mix(in srgb, var(--color-pending) 30%, transparent);
+  background: color-mix(in srgb, var(--color-pending) 6%, var(--color-bg));
+  border-color: color-mix(in srgb, var(--color-pending) 22%, transparent);
 }
 
 .tl-msg__card--response {
-  border-color: color-mix(in srgb, var(--color-done) 25%, transparent);
+  background: color-mix(in srgb, var(--color-done) 6%, var(--color-bg));
+  border-color: color-mix(in srgb, var(--color-done) 20%, transparent);
 }
 
 .tl-msg__card--tool {
-  border-color: color-mix(in srgb, var(--color-working) 20%, transparent);
+  background: color-mix(in srgb, var(--color-working) 5%, var(--color-bg));
+  border-color: color-mix(in srgb, var(--color-working) 16%, transparent);
 }
-
-/* Ordering: for right-aligned (prompts), spacer comes before dot, card after */
-/* .tl-msg--left:  [card] [dot] [spacer] */
-/* .tl-msg--right: [spacer] [dot] [card] */
 
 .tl-msg__title {
   font-size: 13px;
@@ -1205,18 +1224,25 @@ body {
   margin-top: 2px;
 }
 
-.tl-msg__meta {
-  font-size: 11px;
-  color: var(--color-text-muted);
-  margin-top: 6px;
-}
-
 /* Empty state */
 .tl-empty {
   text-align: center;
   color: var(--color-text-muted);
   padding: 32px 0;
   font-size: 14px;
+}
+
+/* ---- Section header actions ---- */
+
+.section__actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.section__actions .btn--card {
+  font-size: 10px;
+  padding: 2px 8px;
 }
 
 /* ---- Detail Modal: Footer ---- */
