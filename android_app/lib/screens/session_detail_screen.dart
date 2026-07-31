@@ -458,24 +458,104 @@ class _TimelineMsg extends StatelessWidget {
     IconData icon;
     Color dotColor;
     Color cardColor;
+    String? tokenLabel;
     switch (msg.type) {
       case 'user_prompt':
         typeLabel = 'Prompt';
         icon = Icons.arrow_upward;
         dotColor = AppTheme.stateColor('pending_approval');
         cardColor = AppTheme.stateColor('pending_approval').withAlpha(15);
+        tokenLabel = _fmtToken(msg.inputTokens);
         break;
       case 'assistant_response':
         typeLabel = 'Response';
         icon = Icons.arrow_downward;
         dotColor = AppTheme.stateColor('all_done');
         cardColor = AppTheme.stateColor('all_done').withAlpha(15);
+        tokenLabel = _fmtToken(msg.outputTokens);
+        break;
+      case 'thinking':
+        typeLabel = 'Thinking';
+        icon = Icons.psychology;
+        dotColor = Colors.grey;
+        cardColor = Colors.transparent;
+        tokenLabel = _fmtToken(msg.inputTokens);
         break;
       default:
         typeLabel = 'Tool';
         icon = Icons.build;
         dotColor = AppTheme.stateColor('working');
         cardColor = AppTheme.stateColor('working').withAlpha(12);
+        tokenLabel = _fmtToken(
+            (msg.inputTokens ?? 0) + (msg.outputTokens ?? 0));
+    }
+
+    final metaCard = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white10 : Colors.black.withAlpha(8),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: borderColor, width: 0.5),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(timeStr,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white60 : Colors.black54)),
+          const SizedBox(height: 1),
+          Text(typeLabel,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontSize: 7,
+                  fontWeight: FontWeight.w600,
+                  color: dotColor)),
+          if (tokenLabel != null) ...[
+            const SizedBox(height: 1),
+            Text(tokenLabel!,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 7,
+                    color: isDark ? Colors.white38 : Colors.black38)),
+          ],
+        ],
+      ),
+    );
+
+    // Thinking gets a minimal row — no card
+    if (msg.type == 'thinking') {
+      return AnimatedContainer(
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeOut,
+        color: highlight
+            ? (isDark ? Colors.white.withAlpha(12) : Colors.black.withAlpha(8))
+            : Colors.transparent,
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            children: [
+              SizedBox(width: 56, child: Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: metaCard,
+              )),
+              const SizedBox(width: 28, child: Center(
+                child: Icon(Icons.psychology, size: 14, color: Colors.grey),
+              )),
+              const Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(left: 8, top: 4),
+                  child: Text('Thinking…',
+                      style: TextStyle(fontSize: 12, color: Colors.grey,
+                          fontStyle: FontStyle.italic)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     return AnimatedContainer(
@@ -492,38 +572,7 @@ class _TimelineMsg extends StatelessWidget {
               width: 56,
               child: Padding(
                 padding: const EdgeInsets.only(right: 6, top: 2),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 4, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: isDark
-                            ? Colors.white10
-                            : Colors.black.withAlpha(8),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: borderColor, width: 0.5),
-                      ),
-                      child: Column(
-                        children: [
-                          Text(timeStr,
-                              style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: isDark
-                                      ? Colors.white60
-                                      : Colors.black54)),
-                          Text(typeLabel,
-                              style: TextStyle(
-                                  fontSize: 7,
-                                  fontWeight: FontWeight.w600,
-                                  color: dotColor)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                child: metaCard,
               ),
             ),
             SizedBox(
@@ -613,6 +662,12 @@ class _TimelineMsg extends StatelessWidget {
         height: 1.4,
       ),
     );
+  }
+
+  static String? _fmtToken(int? tokens) {
+    if (tokens == null || tokens == 0) return null;
+    if (tokens >= 1000) return 'est. ${(tokens / 1000).toStringAsFixed(1)}k';
+    return 'est. $tokens';
   }
 
   String _truncate(String s, int maxLen) {

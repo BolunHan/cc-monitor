@@ -36,4 +36,5 @@ class Message {
   bool get isPrompt => type == 'user_prompt';
   bool get isResponse => type == 'assistant_response';
   bool get isTool => type == 'tool_use';
+  bool get isThinking => type == 'thinking';
 }

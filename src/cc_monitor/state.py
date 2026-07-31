@@ -28,7 +28,7 @@ class Message:
     """A single message in a session conversation timeline."""
 
     timestamp: float  # unix timestamp (time.time())
-    type: Literal["user_prompt", "assistant_response", "tool_use"]
+    type: Literal["user_prompt", "assistant_response", "tool_use", "thinking"]
     content: str | None = None
     tool_name: str | None = None
     tool_input: str | None = None
@@ -243,10 +243,14 @@ class StateManager:
                 return existing
             new_state = MonitorState.IDLE
 
-        # --- build message ---
-        msg = self._event_to_message(raw)
-        if msg is not None:
-            self._save_message(session_id, msg)
+        # --- build message(s) ---
+        msg_or_list = self._event_to_message(raw)
+        if msg_or_list is not None:
+            if isinstance(msg_or_list, list):
+                for m in msg_or_list:
+                    self._save_message(session_id, m)
+            else:
+                self._save_message(session_id, msg_or_list)
 
         # --- update session ---
         summary = None
@@ -358,6 +362,8 @@ class StateManager:
                 total_prompts += 1
             elif mtype == "assistant_response":
                 total_assistant += 1
+            elif mtype == "thinking":
+                pass  # counted as part of the response
             elif mtype == "tool_use":
                 total_tool_calls += 1
                 tn = m.get("tool_name", "unknown")
@@ -622,13 +628,21 @@ class StateManager:
         if hook_event_name == "Stop":
             msg_text = raw.get("last_assistant_message", "")
             in_tok, out_tok = StateManager._extract_tokens(raw)
-            return Message(
-                timestamp=ts,
-                type="assistant_response",
-                content=msg_text.strip() if msg_text else None,
-                input_tokens=in_tok,
-                output_tokens=out_tok,
-            )
+            # Return a list: [thinking, assistant_response] — caller handles
+            return [
+                Message(
+                    timestamp=ts - 0.001,  # thinking just before response
+                    type="thinking",
+                    input_tokens=in_tok,
+                ),
+                Message(
+                    timestamp=ts,
+                    type="assistant_response",
+                    content=msg_text.strip() if msg_text else None,
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
+                ),
+            ]
 
         if hook_event_name == "PostToolUse":
             tool_name = raw.get("tool_name", "")

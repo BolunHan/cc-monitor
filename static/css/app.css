@@ -1154,6 +1154,14 @@ body {
 .tl-msg__meta-type--prompt { color: var(--color-pending); }
 .tl-msg__meta-type--response { color: var(--color-done); }
 .tl-msg__meta-type--tool { color: var(--color-working); }
+.tl-msg__meta-type--thinking { color: var(--color-text-muted); }
+
+.tl-msg__meta-token {
+  display: block;
+  font-size: 7px;
+  color: var(--color-text-muted);
+  margin-top: 1px;
+}
 
 /* Gutter: dot + vertical line filling remaining height */
 .tl-msg__gutter {
@@ -1197,6 +1205,12 @@ body {
 .tl-msg__dot--prompt { border-color: var(--color-pending); }
 .tl-msg__dot--response { border-color: var(--color-done); }
 .tl-msg__dot--tool { border-color: var(--color-working); }
+.tl-msg__dot--thinking { border-color: var(--color-text-muted); }
+
+/* Thinking row */
+.tl-msg--thinking .tl-msg__meta-card {
+  opacity: 0.7;
+}
 
 /* Card — full width on the right, colored bg by type */
 .tl-msg__card {

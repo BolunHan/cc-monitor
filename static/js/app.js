@@ -624,8 +624,8 @@ function loadSessionsView() {
             { label: I18n.t("detail.stats.prompts"), value: stats.total_prompts },
             { label: I18n.t("detail.stats.responses"), value: stats.total_assistant_messages },
             { label: I18n.t("detail.stats.tool_calls"), value: stats.total_tool_calls },
-            { label: I18n.t("detail.stats.input_tokens"), value: stats.total_input_tokens > 0 ? stats.total_input_tokens.toLocaleString() : "—" },
-            { label: I18n.t("detail.stats.output_tokens"), value: stats.total_output_tokens > 0 ? stats.total_output_tokens.toLocaleString() : "—" },
+            { label: "est. input", value: stats.total_input_tokens > 0 ? stats.total_input_tokens.toLocaleString() : "—" },
+            { label: "est. output", value: stats.total_output_tokens > 0 ? stats.total_output_tokens.toLocaleString() : "—" },
             { label: I18n.t("detail.stats.duration"), value: durStr },
         ];
         statsEl.innerHTML = items.map(i =>
@@ -728,6 +728,12 @@ function loadSessionsView() {
         }
     }
 
+    function fmtToken(tokens) {
+        if (!tokens || tokens === 0) return null;
+        if (tokens >= 1000) return "est. " + (tokens / 1000).toFixed(1) + "k";
+        return "est. " + tokens;
+    }
+
     function renderTimelineMsg(m) {
         const time = new Date(m.timestamp * 1000);
         const now = new Date();
@@ -741,25 +747,55 @@ function loadSessionsView() {
               String(time.getMonth() + 1).padStart(2, "0") + "-" +
               String(time.getDate()).padStart(2, "0") + " " + hm;
 
-        let typeKey, dotIcon, dotClass, cardClass, typeLabel;
+        let typeLabel, dotIcon, dotClass, cardClass, tokenStr, typeSuffix;
         if (m.type === "user_prompt") {
-            typeKey = "detail.timeline.prompt";
+            typeLabel = I18n.t("detail.timeline.prompt");
             dotIcon = "📤";
             dotClass = "tl-msg__dot--prompt";
             cardClass = "tl-msg__card--prompt";
-            typeLabel = I18n.t(typeKey);
+            tokenStr = fmtToken(m.input_tokens);
+            typeSuffix = "prompt";
         } else if (m.type === "assistant_response") {
-            typeKey = "detail.timeline.response";
+            typeLabel = I18n.t("detail.timeline.response");
             dotIcon = "📥";
             dotClass = "tl-msg__dot--response";
             cardClass = "tl-msg__card--response";
-            typeLabel = I18n.t(typeKey);
+            tokenStr = fmtToken(m.output_tokens);
+            typeSuffix = "response";
+        } else if (m.type === "thinking") {
+            typeLabel = "Thinking";
+            dotIcon = "🧠";
+            dotClass = "tl-msg__dot--thinking";
+            cardClass = "";
+            tokenStr = fmtToken(m.input_tokens);
+            typeSuffix = "thinking";
         } else {
-            typeKey = "detail.timeline.tool";
+            typeLabel = I18n.t("detail.timeline.tool");
             dotIcon = "🔧";
             dotClass = "tl-msg__dot--tool";
             cardClass = "tl-msg__card--tool";
-            typeLabel = I18n.t(typeKey);
+            tokenStr = fmtToken((m.input_tokens || 0) + (m.output_tokens || 0));
+            typeSuffix = "tool";
+        }
+
+        // Thinking: minimal row
+        if (m.type === "thinking") {
+            return `
+                <div class="tl-msg tl-msg--thinking">
+                    <div class="tl-msg__meta">
+                        <div class="tl-msg__meta-card">
+                            <span class="tl-msg__meta-time">${timeStr}</span>
+                            <span class="tl-msg__meta-type">🧠 Thinking</span>
+                            ${tokenStr ? '<span class="tl-msg__meta-token">' + tokenStr + '</span>' : ""}
+                        </div>
+                    </div>
+                    <div class="tl-msg__gutter">
+                        <div class="tl-msg__dot ${dotClass}">🧠</div>
+                        <div class="tl-msg__line"></div>
+                    </div>
+                    <div class="tl-msg__card" style="background:transparent;border-color:transparent;font-style:italic;color:var(--color-text-muted);font-size:12px;padding-top:6px;">Thinking…</div>
+                </div>
+            `;
         }
 
         let bodyHtml = "";
@@ -780,7 +816,8 @@ function loadSessionsView() {
                 <div class="tl-msg__meta">
                     <div class="tl-msg__meta-card">
                         <span class="tl-msg__meta-time">${timeStr}</span>
-                        <span class="tl-msg__meta-type tl-msg__meta-type--${m.type === "user_prompt" ? "prompt" : m.type === "assistant_response" ? "response" : "tool"}">${typeLabel}</span>
+                        <span class="tl-msg__meta-type tl-msg__meta-type--${typeSuffix}">${typeLabel}</span>
+                        ${tokenStr ? '<span class="tl-msg__meta-token">' + tokenStr + '</span>' : ""}
                     </div>
                 </div>
                 <div class="tl-msg__gutter">
