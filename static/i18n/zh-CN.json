@@ -94,7 +94,7 @@
   "detail.timeline.empty": "暂无消息",
   "detail.delete": "删除会话",
   "detail.loading": "加载中…",
-  "toast.deleted": "会话已删除",
+  "toast.deleted": "已删除 {n} 个会话",
   "toast.undo": "撤销",
   "toast.undone": "会话已恢复",
   "card.delete": "删除"

@@ -264,7 +264,11 @@ def create_app(
     @app.get("/api/status")
     async def get_all_status():
         """Return all known session states."""
-        sessions = [s.to_dict() for s in manager.get_all()]
+        sessions = []
+        for s in manager.get_all():
+            d = s.to_dict()
+            d["size_bytes"] = manager.get_session_size(s.session_id)
+            sessions.append(d)
         return JSONResponse({"sessions": sessions, "count": len(sessions)})
 
     @app.get("/api/status/{session_id}")
@@ -273,7 +277,9 @@ def create_app(
         session = manager.get(session_id)
         if session is None:
             raise HTTPException(status_code=404, detail="Session not found")
-        return JSONResponse(session.to_dict())
+        d = session.to_dict()
+        d["size_bytes"] = manager.get_session_size(session_id)
+        return JSONResponse(d)
 
     @app.get("/api/stream")
     async def sse_stream(request: Request):
@@ -380,15 +386,23 @@ def create_app(
         stats = manager.get_stats(session_id)
         if stats is None:
             raise HTTPException(status_code=404, detail="Session not found")
+        stats["size_bytes"] = manager.get_session_size(session_id)
         return JSONResponse(stats)
 
     @app.delete("/api/session/{session_id}")
     async def delete_session(session_id: str):
         """Permanently delete a session and all its messages."""
+        size_before = manager.get_session_size(session_id)
+        msg_count = manager.get(session_id).message_count if manager.get(session_id) else 0
         deleted = manager.delete_session(session_id)
         if not deleted:
             raise HTTPException(status_code=404, detail="Session not found")
-        return JSONResponse({"status": "deleted", "session_id": session_id})
+        return JSONResponse({
+            "status": "deleted",
+            "session_id": session_id,
+            "messages_deleted": msg_count,
+            "bytes_freed": size_before,
+        })
 
     # ---- Hook installation ----
 

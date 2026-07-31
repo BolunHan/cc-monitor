@@ -94,7 +94,7 @@
   "detail.timeline.empty": "No messages yet",
   "detail.delete": "Delete Session",
   "detail.loading": "Loading…",
-  "toast.deleted": "Session deleted",
+  "toast.deleted": "{n} session deleted",
   "toast.undo": "Undo",
   "toast.undone": "Session restored",
   "card.delete": "Delete"

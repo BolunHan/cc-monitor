@@ -1104,15 +1104,14 @@ body {
   padding: 4px 16px;
 }
 
-/* Vertical rail — positioned at gutter center, runs from first to last dot */
+/* Vertical rail — positioned via JS after render, spans dot-to-dot */
 .timeline__rail {
   position: absolute;
   left: 96px; /* meta(80px) + half-gutter(16px) */
-  top: 0;
-  bottom: 0;
   width: 2px;
   background: var(--color-border);
   border-radius: 1px;
+  display: none; /* hidden until JS sizes it */
 }
 
 /* Message row: [meta 80px] [gutter 32px] [card flex-1] */
@@ -1122,35 +1121,46 @@ body {
   position: relative;
 }
 
-/* Time + type badge left of the dot */
+/* Time + type card left of the dot */
 .tl-msg__meta {
   width: 80px;
   flex-shrink: 0;
-  text-align: right;
-  padding: 0 10px 0 0;
-  font-size: 10px;
-  color: var(--color-text-muted);
-  line-height: 1.4;
+  display: flex;
+  justify-content: flex-end;
+  padding: 1px 8px 0 0;
+}
+
+.tl-msg__meta-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 4px 7px;
+  text-align: center;
+  display: inline-block;
 }
 
 .tl-msg__meta-time {
   display: block;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 600;
   color: var(--color-text-muted);
+  line-height: 1.3;
 }
 
 .tl-msg__meta-type {
   display: block;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  font-size: 9px;
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
 .tl-msg__meta-type--prompt { color: var(--color-pending); }
 .tl-msg__meta-type--response { color: var(--color-done); }
 .tl-msg__meta-type--tool { color: var(--color-working); }
 
-/* Gutter: holds the dot, rail runs through center */
+/* Gutter: holds the dot */
 .tl-msg__gutter {
   width: 32px;
   flex-shrink: 0;
@@ -1158,7 +1168,7 @@ body {
   justify-content: center;
 }
 
-/* Dot — sits on top of rail, surface bg hides rail behind it */
+/* Dot */
 .tl-msg__dot {
   width: 24px;
   height: 24px;
@@ -1171,7 +1181,7 @@ body {
   font-size: 12px;
   z-index: 1;
   position: relative;
-  margin-top: 1px;
+  margin-top: 3px;
 }
 
 .tl-msg__dot--prompt { border-color: var(--color-pending); }
@@ -1243,6 +1253,37 @@ body {
 .section__actions .btn--card {
   font-size: 10px;
   padding: 2px 8px;
+}
+
+.section__actions .btn--card-delete {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.section__actions .btn--card-delete:hover {
+  background: color-mix(in srgb, var(--color-danger) 12%, transparent);
+}
+
+/* ---- Delete popup ---- */
+
+.delete-popup {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 13px;
+  color: var(--color-text);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  z-index: 3000;
+  animation: toast-in 0.2s ease;
+}
+
+.delete-popup--fadeout {
+  animation: toast-out 0.3s ease forwards;
 }
 
 /* ---- Detail Modal: Footer ---- */

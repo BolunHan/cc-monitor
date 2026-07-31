@@ -387,6 +387,20 @@ class StateManager:
             "duration_seconds": round(last_ts - first_ts) if (first_ts and last_ts) else 0,
         }
 
+    def get_session_size(self, session_id: str) -> int:
+        """Return total size in bytes of all files in a session directory."""
+        session_dir = self._session_dir(session_id)
+        if not session_dir.is_dir():
+            return 0
+        total = 0
+        for f in session_dir.rglob("*"):
+            if f.is_file():
+                try:
+                    total += f.stat().st_size
+                except OSError:
+                    pass
+        return total
+
     def delete_session(self, session_id: str) -> bool:
         """Permanently delete a session directory and remove from memory.
 

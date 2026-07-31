@@ -349,6 +349,7 @@ function loadSessionsView() {
                     <strong>event:</strong> ${escapeHtml(session.raw_event || "—")}
                     ${session.raw_detail ? ` (${escapeHtml(session.raw_detail)})` : ""}
                     ${session.cc_monitor_uid ? `<br><strong>uid:</strong> <code>${escapeHtml(session.cc_monitor_uid)}</code>` : ""}
+                    ${session.size_bytes != null ? `<br><strong>storage:</strong> ${formatBytes(session.size_bytes)}` : ""}
                 </div>
                 <div class="session-card__time">${relativeTime(session.updated_at)}</div>
             </div>
@@ -389,6 +390,7 @@ function loadSessionsView() {
         cards.get(session.session_id).rawDetail = session.raw_detail;
         cards.get(session.session_id).summary = session.summary;
         cards.get(session.session_id).uid = session.cc_monitor_uid;
+        cards.get(session.session_id).sizeBytes = session.size_bytes;
         cards.get(session.session_id).updatedAt = session.updated_at;
     }
 
@@ -459,19 +461,21 @@ function loadSessionsView() {
             if (undone) return;
             delete _deleteTimers[sessionId];
             // Actually delete via API
-            apiFetch("/api/session/" + sessionId, { method: "DELETE" }).then(() => {
-                // Remove card from DOM
-                const cardEl = document.getElementById("card-" + sessionId);
-                if (cardEl) {
-                    cardEl.style.opacity = "0";
-                    cardEl.style.transition = "opacity 0.3s";
-                    setTimeout(() => cardEl.remove(), 300);
+            apiFetch("/api/session/" + sessionId, { method: "DELETE" }).then(async (resp) => {
+                if (resp.ok) {
+                    const data = await resp.json();
+                    const cardEl = document.getElementById("card-" + sessionId);
+                    if (cardEl) {
+                        cardEl.style.opacity = "0";
+                        cardEl.style.transition = "opacity 0.3s";
+                        setTimeout(() => cardEl.remove(), 300);
+                    }
+                    cards.delete(sessionId);
+                    prevStates.delete(sessionId);
+                    updateCounts();
+                    showDeletePopup(1, data.messages_deleted || 0, data.bytes_freed || 0);
                 }
-                cards.delete(sessionId);
-                prevStates.delete(sessionId);
-                updateCounts();
             }).catch(() => {
-                // Revert on failure
                 undo();
             });
         }, DELETE_DELAY);
@@ -658,11 +662,34 @@ function loadSessionsView() {
             } else if (loadEl) {
                 loadEl.innerHTML = "";
             }
+            // Fix rail after render
+            fixTimelineRail();
         } catch (_) {
             if (offset === 0) {
                 msgsEl.innerHTML = '<div class="tl-empty">—</div>';
             }
         }
+    }
+
+    function fixTimelineRail() {
+        requestAnimationFrame(() => {
+            const timeline = document.getElementById("detail-timeline");
+            const rail = timeline?.querySelector(".timeline__rail");
+            const dots = timeline?.querySelectorAll(".tl-msg__dot");
+            if (!rail || !dots || dots.length < 2) {
+                if (rail) rail.style.display = "none";
+                return;
+            }
+            const containerRect = timeline.getBoundingClientRect();
+            const firstDot = dots[0].getBoundingClientRect();
+            const lastDot = dots[dots.length - 1].getBoundingClientRect();
+            const top = firstDot.top + firstDot.height / 2 - containerRect.top + timeline.scrollTop;
+            const bottom = lastDot.top + lastDot.height / 2 - containerRect.top + timeline.scrollTop;
+            rail.style.display = "";
+            rail.style.top = top + "px";
+            rail.style.height = Math.max(0, bottom - top) + "px";
+            rail.style.bottom = "auto";
+        });
     }
 
     function renderTimelineMsg(m) {
@@ -706,8 +733,10 @@ function loadSessionsView() {
         return `
             <div class="tl-msg">
                 <div class="tl-msg__meta">
-                    <span class="tl-msg__meta-time">${timeStr}</span>
-                    <span class="tl-msg__meta-type tl-msg__meta-type--${m.type === "user_prompt" ? "prompt" : m.type === "assistant_response" ? "response" : "tool"}">${typeLabel}</span>
+                    <div class="tl-msg__meta-card">
+                        <span class="tl-msg__meta-time">${timeStr}</span>
+                        <span class="tl-msg__meta-type tl-msg__meta-type--${m.type === "user_prompt" ? "prompt" : m.type === "assistant_response" ? "response" : "tool"}">${typeLabel}</span>
+                    </div>
                 </div>
                 <div class="tl-msg__gutter">
                     <div class="tl-msg__dot ${dotClass}">${dotIcon}</div>
@@ -729,6 +758,7 @@ function loadSessionsView() {
                 completeSessions.push(sid);
             }
         });
+        let count = 0;
         for (const sid of completeSessions) {
             try {
                 const resp = await apiFetch("/api/session/" + sid + "/archive", { method: "POST" });
@@ -736,6 +766,7 @@ function loadSessionsView() {
                     const session = await resp.json();
                     updateCard(session);
                     prevStates.set(session.session_id, { state: session.state, archived: session.archived });
+                    count++;
                 }
             } catch (_) {}
         }
@@ -749,21 +780,89 @@ function loadSessionsView() {
                 archivedSessions.push(sid);
             }
         });
+        let totalMsgs = 0;
+        let totalBytes = 0;
         for (const sid of archivedSessions) {
             try {
-                await apiFetch("/api/session/" + sid, { method: "DELETE" });
-                const cardEl = document.getElementById("card-" + sid);
-                if (cardEl) cardEl.remove();
-                cards.delete(sid);
-                prevStates.delete(sid);
+                const resp = await apiFetch("/api/session/" + sid, { method: "DELETE" });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    totalMsgs += data.messages_deleted || 0;
+                    totalBytes += data.bytes_freed || 0;
+                    const cardEl = document.getElementById("card-" + sid);
+                    if (cardEl) cardEl.remove();
+                    cards.delete(sid);
+                    prevStates.delete(sid);
+                }
             } catch (_) {}
         }
         updateCounts();
+        if (archivedSessions.length > 0) {
+            showDeletePopup(archivedSessions.length, totalMsgs, totalBytes);
+        }
+    }
+
+    function startBulkDeleteCountdown(btnEl, actionFn) {
+        if (btnEl.classList.contains("counting")) {
+            // Undo
+            if (btnEl._undoFn) btnEl._undoFn();
+            return;
+        }
+
+        const DELETE_DELAY = 5000;
+        const label = btnEl.querySelector(".btn--card-label");
+        const originalText = label ? label.textContent : btnEl.textContent;
+
+        btnEl.classList.add("counting");
+        btnEl.style.pointerEvents = "auto";
+        if (label) label.textContent = I18n.t("toast.undo");
+
+        let undone = false;
+        const undo = () => {
+            undone = true;
+            btnEl.classList.remove("counting");
+            btnEl.style.pointerEvents = "";
+            if (label) label.textContent = originalText;
+        };
+        btnEl._undoFn = undo;
+
+        const timerId = setTimeout(async () => {
+            if (undone) return;
+            btnEl.classList.remove("counting");
+            btnEl.style.pointerEvents = "";
+            if (label) label.textContent = originalText;
+            await actionFn();
+        }, DELETE_DELAY);
+        btnEl._bulkTimer = timerId;
+    }
+
+    function showDeletePopup(sessionCount, totalMsgs, totalBytes) {
+        const old = document.getElementById("delete-popup");
+        if (old) old.remove();
+
+        const popup = document.createElement("div");
+        popup.id = "delete-popup";
+        popup.className = "delete-popup";
+        popup.innerHTML = '<span>' + I18n.t("toast.deleted", { n: sessionCount }) + ' · ' + totalMsgs + ' messages · ' + formatBytes(totalBytes) + ' freed</span>';
+        document.body.appendChild(popup);
+        setTimeout(() => {
+            popup.classList.add("delete-popup--fadeout");
+            setTimeout(() => popup.remove(), 300);
+        }, 3000);
+    }
+
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+        return (bytes / 1048576).toFixed(1) + " MB";
     }
 
     // Expose to global scope for onclick in HTML
     window._ccArchiveAll = archiveAllComplete;
-    window._ccDeleteAll = deleteAllArchived;
+    window._ccDeleteAll = function() {
+        const btn = document.getElementById("btn-delete-all");
+        if (btn) startBulkDeleteCountdown(btn, deleteAllArchived);
+    };
 
     // ---- SSE Connection ----
 
