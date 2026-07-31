@@ -529,6 +529,46 @@ class StateManager:
         }
 
     @staticmethod
+    def _extract_tokens(raw: dict) -> tuple[int | None, int | None]:
+        """Try to extract token counts from various possible locations.
+
+        Claude Code hook events may or may not include usage data, and the
+        field path varies across versions.  Fall back to a rough estimate
+        from content length so the stats display is never blank.
+        """
+        # Path 1: nested "usage" object
+        usage = raw.get("usage") or {}
+        if isinstance(usage, dict):
+            i = usage.get("input_tokens")
+            o = usage.get("output_tokens")
+            if i is not None or o is not None:
+                return i, o
+
+        # Path 2: top-level flat keys
+        i = raw.get("input_tokens")
+        o = raw.get("output_tokens")
+        if i is not None or o is not None:
+            return i, o
+
+        # Path 3: Anthropic-style nested under "message"
+        msg = raw.get("message") or {}
+        if isinstance(msg, dict):
+            u = msg.get("usage") or {}
+            if isinstance(u, dict):
+                i = u.get("input_tokens")
+                o = u.get("output_tokens")
+                if i is not None or o is not None:
+                    return i, o
+
+        # Path 4: estimate from content text (rough: ~4 chars/token)
+        content = raw.get("prompt") or raw.get("last_assistant_message") or ""
+        if isinstance(content, str) and content.strip():
+            estimated = max(1, len(content) // 4)
+            return estimated, estimated
+
+        return None, None
+
+    @staticmethod
     def _event_to_message(raw: dict) -> Message | None:
         """Create a Message from a hook event dict. Returns None if not applicable."""
         hook_event_name = raw.get("hook_event_name", "")
@@ -536,24 +576,24 @@ class StateManager:
 
         if hook_event_name == "UserPromptSubmit":
             prompt = raw.get("prompt", "")
-            usage = raw.get("usage", {}) or {}
+            in_tok, out_tok = StateManager._extract_tokens(raw)
             return Message(
                 timestamp=ts,
                 type="user_prompt",
                 content=prompt.strip() if prompt else None,
-                input_tokens=usage.get("input_tokens"),
+                input_tokens=in_tok,
                 output_tokens=None,  # user prompts don't have output tokens
             )
 
         if hook_event_name == "Stop":
             msg_text = raw.get("last_assistant_message", "")
-            usage = raw.get("usage", {}) or {}
+            in_tok, out_tok = StateManager._extract_tokens(raw)
             return Message(
                 timestamp=ts,
                 type="assistant_response",
                 content=msg_text.strip() if msg_text else None,
-                input_tokens=usage.get("input_tokens"),
-                output_tokens=usage.get("output_tokens"),
+                input_tokens=in_tok,
+                output_tokens=out_tok,
             )
 
         if hook_event_name == "PostToolUse":
