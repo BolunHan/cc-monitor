@@ -560,13 +560,20 @@ class StateManager:
                 if i is not None or o is not None:
                     return i, o
 
-        # Path 4: estimate from content text (rough: ~4 chars/token)
+        # Path 4: estimate from content text (rough: 3.5 chars/token)
         content = raw.get("prompt") or raw.get("last_assistant_message") or ""
         if isinstance(content, str) and content.strip():
-            estimated = max(1, len(content) // 4)
+            estimated = max(1, int(len(content) / 3.5))
             return estimated, estimated
 
         return None, None
+
+    @staticmethod
+    def _estimate_text_tokens(text: str | None) -> int:
+        """Rough token estimate from text length (~3.5 chars/token for English)."""
+        if not text or not isinstance(text, str):
+            return 0
+        return max(1, int(len(text) / 3.5))
 
     @staticmethod
     def _event_to_message(raw: dict) -> Message | None:
@@ -622,12 +629,17 @@ class StateManager:
             else:
                 tool_output = None
 
+            # Estimate tokens from tool I/O (these count as context/input)
+            ti_tokens = StateManager._estimate_text_tokens(tool_input)
+            to_tokens = StateManager._estimate_text_tokens(tool_output)
+
             return Message(
                 timestamp=ts,
                 type="tool_use",
                 tool_name=tool_name or None,
                 tool_input=tool_input,
                 tool_output=tool_output,
+                input_tokens=(ti_tokens + to_tokens) or None,
             )
 
         return None
