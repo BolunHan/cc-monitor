@@ -287,16 +287,22 @@ function loadSessionsView() {
             const el = getCount(sec);
             if (el) el.textContent = counts[sec];
         }
-        // Active section emoji breakdown
+        // Active section badge breakdown
         const bd = document.getElementById("breakdown-active");
         if (bd) {
-            const parts = [];
             const ab = breakdown["active"] || {};
-            for (const [state, emoji] of Object.entries(STATE_EMOJI)) {
+            const labels = {
+                working: I18n.t("state.working"),
+                idle: I18n.t("state.idle"),
+                pending_approval: I18n.t("state.pending_approval"),
+                pending_review: I18n.t("state.pending_review"),
+                all_done: I18n.t("state.all_done"),
+            };
+            bd.innerHTML = Object.entries(labels).map(([state, label]) => {
                 const n = ab[state] || 0;
-                if (n > 0) parts.push(`${emoji}${n}`);
-            }
-            bd.textContent = parts.length > 0 ? "| " + parts.join(" ") : "";
+                if (n === 0) return "";
+                return '<span class="session-card__badge badge-' + state + ' breakdown-badge">' + label + ' ' + n + '</span>';
+            }).join("");
         }
     }
 
@@ -624,8 +630,8 @@ function loadSessionsView() {
             { label: I18n.t("detail.stats.prompts"), value: stats.total_prompts },
             { label: I18n.t("detail.stats.responses"), value: stats.total_assistant_messages },
             { label: I18n.t("detail.stats.tool_calls"), value: stats.total_tool_calls },
-            { label: I18n.t("detail.stats.input_tokens"), value: stats.total_input_tokens > 0 ? stats.total_input_tokens.toLocaleString() : "—" },
-            { label: I18n.t("detail.stats.output_tokens"), value: stats.total_output_tokens > 0 ? stats.total_output_tokens.toLocaleString() : "—" },
+            { label: "est. input", value: stats.total_input_tokens > 0 ? stats.total_input_tokens.toLocaleString() : "—" },
+            { label: "est. output", value: stats.total_output_tokens > 0 ? stats.total_output_tokens.toLocaleString() : "—" },
             { label: I18n.t("detail.stats.duration"), value: durStr },
         ];
         statsEl.innerHTML = items.map(i =>
@@ -716,6 +722,73 @@ function loadSessionsView() {
         }
     }
 
+    function updateModalBadge(state) {
+        const badge = document.querySelector("#detail-overlay .session-card__badge");
+        if (!badge) return;
+        badge.className = "session-card__badge badge-" + state;
+        const isArchived = badge.textContent === I18n.t("state.archived");
+        if (!isArchived) {
+            badge.textContent = I18n.t("state." + state);
+        }
+    }
+
+    function appendTimelineMsg(m) {
+        const msgsEl = document.getElementById("detail-timeline-msgs");
+        const tlContainer = document.getElementById("detail-timeline");
+        if (!msgsEl) return;
+
+        if (!m.skeleton) {
+            // Real message — consolidate or replace matching skeleton
+            const ck = m.tool_name || (
+                m.type === "thinking" ? "thinking" :
+                m.type === "pending_approval" ? "pending_approval" : null
+            );
+            if (ck) {
+                const skeletons = msgsEl.querySelectorAll(".tl-msg--skeleton");
+                for (const el of skeletons) {
+                    if (el.dataset.correlationKey === ck) {
+                        if (m.type === "thinking") {
+                            // Consolidate: update skeleton card in-place
+                            el.classList.remove("tl-msg--skeleton");
+                            const metaCard = el.querySelector(".tl-msg__meta-card");
+                            if (metaCard) metaCard.classList.remove("tl-msg__meta-card--skeleton");
+                            const card = el.querySelector(".tl-msg__card");
+                            if (card) {
+                                const footer = card.querySelector(".tl-msg__footer");
+                                const newHtml = renderTimelineMsg(m);
+                                const tmp = document.createElement("div");
+                                tmp.innerHTML = newHtml;
+                                const newCard = tmp.querySelector(".tl-msg__card");
+                                const newFooter = tmp.querySelector(".tl-msg__footer");
+                                if (newCard) {
+                                    card.innerHTML = newCard.innerHTML;
+                                    // Update meta card tokens
+                                    const newMetaCard = tmp.querySelector(".tl-msg__meta-card");
+                                    if (newMetaCard) {
+                                        const oldMeta = el.querySelector(".tl-msg__meta-card");
+                                        if (oldMeta) oldMeta.innerHTML = newMetaCard.innerHTML;
+                                    }
+                                }
+                            }
+                            return;
+                        } else {
+                            // Replace: remove skeleton, append real message
+                            el.remove();
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        const wasAtBottom = tlContainer && (tlContainer.scrollHeight - tlContainer.scrollTop - tlContainer.clientHeight) < 60;
+        const html = renderTimelineMsg(m);
+        msgsEl.insertAdjacentHTML("beforeend", html);
+        if (wasAtBottom && tlContainer) {
+            requestAnimationFrame(() => { tlContainer.scrollTop = tlContainer.scrollHeight; });
+        }
+    }
+
     async function _ensureScroller(sessionId) {
         // If content fits without scrollbar and more messages exist, keep loading
         const tlContainer = document.getElementById("detail-timeline");
@@ -728,31 +801,63 @@ function loadSessionsView() {
         }
     }
 
+    function fmtToken(tokens) {
+        if (!tokens || tokens === 0) return null;
+        if (tokens >= 1000) return "est. " + (tokens / 1000).toFixed(1) + "k";
+        return "est. " + tokens;
+    }
+
     function renderTimelineMsg(m) {
         const time = new Date(m.timestamp * 1000);
-        const timeStr = time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        const now = new Date();
+        const isToday = time.getFullYear() === now.getFullYear() &&
+            time.getMonth() === now.getMonth() &&
+            time.getDate() === now.getDate();
+        const hm = time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        const timeStr = isToday
+            ? "Today " + hm
+            : time.getFullYear() + "-" +
+              String(time.getMonth() + 1).padStart(2, "0") + "-" +
+              String(time.getDate()).padStart(2, "0") + " " + hm;
 
-        let typeKey, dotIcon, dotClass, cardClass, typeLabel;
+        let typeLabel, dotIcon, dotClass, cardClass, tokenStr, typeSuffix;
         if (m.type === "user_prompt") {
-            typeKey = "detail.timeline.prompt";
+            typeLabel = I18n.t("detail.timeline.prompt");
             dotIcon = "📤";
             dotClass = "tl-msg__dot--prompt";
             cardClass = "tl-msg__card--prompt";
-            typeLabel = I18n.t(typeKey);
+            tokenStr = fmtToken(m.input_tokens);
+            typeSuffix = "prompt";
         } else if (m.type === "assistant_response") {
-            typeKey = "detail.timeline.response";
+            typeLabel = I18n.t("detail.timeline.response");
             dotIcon = "📥";
             dotClass = "tl-msg__dot--response";
             cardClass = "tl-msg__card--response";
-            typeLabel = I18n.t(typeKey);
+            tokenStr = fmtToken(m.output_tokens);
+            typeSuffix = "response";
+        } else if (m.type === "thinking") {
+            typeLabel = "Thinking";
+            dotIcon = "🧠";
+            dotClass = "tl-msg__dot--thinking";
+            cardClass = "";
+            tokenStr = fmtToken(m.input_tokens);
+            typeSuffix = "thinking";
+        } else if (m.type === "pending_approval") {
+            typeLabel = "Approval";
+            dotIcon = "⏳";
+            dotClass = "tl-msg__dot--approval";
+            cardClass = "tl-msg__card--approval";
+            typeSuffix = "approval";
         } else {
-            typeKey = "detail.timeline.tool";
+            typeLabel = I18n.t("detail.timeline.tool");
             dotIcon = "🔧";
             dotClass = "tl-msg__dot--tool";
             cardClass = "tl-msg__card--tool";
-            typeLabel = I18n.t(typeKey);
+            tokenStr = fmtToken((m.input_tokens || 0) + (m.output_tokens || 0));
+            typeSuffix = "tool";
         }
 
+        // Body content
         let bodyHtml = "";
         if (m.type === "tool_use") {
             bodyHtml = '<div class="tl-msg__title">' + escapeHtml(m.tool_name || "tool") + '</div>';
@@ -762,16 +867,42 @@ function loadSessionsView() {
             if (m.tool_output) {
                 bodyHtml += '<div class="tl-msg__text tl-msg__text--dim">→ ' + escapeHtml(truncate(m.tool_output, 200)) + '</div>';
             }
+        } else if (m.type === "thinking") {
+            if (m.skeleton) {
+                bodyHtml = '<div class="tl-msg__text" style="font-style:italic;color:var(--color-text-muted);">Thinking…</div>';
+            } else if (m.input_tokens) {
+                bodyHtml = '<div class="tl-msg__text" style="font-style:italic;color:var(--color-text-muted);">Thinking · ' + fmtToken(m.input_tokens) + ' tokens</div>';
+            } else {
+                bodyHtml = '<div class="tl-msg__text" style="font-style:italic;color:var(--color-text-muted);">Thinking</div>';
+            }
+        } else if (m.type === "pending_approval") {
+            bodyHtml = '<div class="tl-msg__title">' + escapeHtml(m.tool_name || "Approval needed") + '</div>';
+            bodyHtml += '<div class="tl-msg__text tl-msg__text--dim">' + escapeHtml(m.content || "Waiting for approval…") + '</div>';
         } else {
             bodyHtml = '<div class="tl-msg__text">' + escapeHtml(m.content || "(empty)") + '</div>';
         }
 
+        // Source footer
+        let footerHtml = "";
+        if (m.source) {
+            footerHtml = '<div class="tl-msg__footer">' + escapeHtml(m.source) + '</div>';
+        }
+
+        // Skeleton class and correlation key
+        const skelClass = m.skeleton ? " tl-msg--skeleton" : "";
+        const ck = m.tool_name || (
+            m.type === "thinking" ? "thinking" :
+            m.type === "pending_approval" ? "pending_approval" : null
+        );
+        const ckAttr = ck ? ' data-correlation-key="' + escapeHtml(ck) + '"' : "";
+
         return `
-            <div class="tl-msg">
+            <div class="tl-msg${skelClass}"${ckAttr}>
                 <div class="tl-msg__meta">
-                    <div class="tl-msg__meta-card">
+                    <div class="tl-msg__meta-card${m.skeleton ? " tl-msg__meta-card--skeleton" : ""}">
                         <span class="tl-msg__meta-time">${timeStr}</span>
-                        <span class="tl-msg__meta-type tl-msg__meta-type--${m.type === "user_prompt" ? "prompt" : m.type === "assistant_response" ? "response" : "tool"}">${typeLabel}</span>
+                        <span class="tl-msg__meta-type tl-msg__meta-type--${typeSuffix}">${typeLabel}</span>
+                        ${tokenStr ? '<span class="tl-msg__meta-token">' + tokenStr + '</span>' : ""}
                     </div>
                 </div>
                 <div class="tl-msg__gutter">
@@ -780,6 +911,7 @@ function loadSessionsView() {
                 </div>
                 <div class="tl-msg__card ${cardClass}">
                     ${bodyHtml}
+                    ${footerHtml}
                 </div>
             </div>
         `;
@@ -931,6 +1063,10 @@ function loadSessionsView() {
                 notify(session);
                 prevStates.set(session.session_id, {state: session.state, archived: session.archived});
                 lastHeartbeat = Date.now();
+                // Update modal badge if this session is open
+                if (session.session_id === _tlSessionId && document.getElementById("detail-overlay")) {
+                    updateModalBadge(session.state);
+                }
             } catch (err) {
                 console.error("cc-monitor: failed to parse SSE data", err);
             }
@@ -954,6 +1090,18 @@ function loadSessionsView() {
         es.addEventListener("device_update", () => {
             loadPairedDevices();
             if (typeof loadPairingQR === "function") loadPairingQR();
+        });
+
+        es.addEventListener("message_update", (e) => {
+            try {
+                const msg = JSON.parse(e.data);
+                const sid = msg.session_id;
+                if (sid && document.getElementById("detail-overlay") && _tlSessionId === sid) {
+                    // Append to open timeline
+                    appendTimelineMsg(msg);
+                }
+                lastHeartbeat = Date.now();
+            } catch (_) {}
         });
 
         es.addEventListener("hooks_status_update", (e) => {
