@@ -533,43 +533,46 @@ class _TimelineMsg extends StatelessWidget {
         color: highlight
             ? (isDark ? Colors.white.withAlpha(12) : Colors.black.withAlpha(8))
             : Colors.transparent,
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Row(
-            children: [
-              SizedBox(width: 56, child: Padding(
-                padding: const EdgeInsets.only(right: 6),
-                child: metaCard,
-              )),
-              SizedBox(
-                width: 28,
-                child: Column(
-                  children: [
-                    Container(
-                      width: 20,
-                      height: 20,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Theme.of(context).scaffoldBackgroundColor,
-                        border: Border.all(color: dotColor, width: 2),
+        child: IntrinsicHeight(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(width: 56, child: Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: metaCard,
+                )),
+                SizedBox(
+                  width: 28,
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Theme.of(context).scaffoldBackgroundColor,
+                          border: Border.all(color: dotColor, width: 2),
+                        ),
+                        child: Icon(Icons.psychology, size: 11, color: dotColor),
                       ),
-                      child: Icon(Icons.psychology, size: 11, color: dotColor),
-                    ),
-                    Expanded(
-                      child: Container(width: 2, color: borderColor),
-                    ),
-                  ],
+                      Expanded(
+                        child: Container(width: 2, color: borderColor),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(left: 8, top: 4),
-                  child: Text('Thinking…',
-                      style: TextStyle(fontSize: 12, color: Colors.grey,
-                          fontStyle: FontStyle.italic)),
+                const Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(left: 8, top: 4),
+                    child: Text('Thinking…',
+                        style: TextStyle(fontSize: 12, color: Colors.grey,
+                            fontStyle: FontStyle.italic)),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       );
