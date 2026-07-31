@@ -26,12 +26,7 @@ class NotificationService {
     });
 
     // Request POST_NOTIFICATIONS permission (Android 13+)
-    final granted = await _channel.invokeMethod<bool>('requestPermission');
-    // Open system notification settings so user can enable lock screen,
-    // notification importance, etc. on first launch
-    if (granted == true) {
-      await _channel.invokeMethod('openNotificationSettings');
-    }
+    await _channel.invokeMethod<bool>('requestPermission');
     await _channel.invokeMethod('startService');
   }
 
