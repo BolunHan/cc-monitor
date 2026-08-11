@@ -71,7 +71,7 @@ jobs:
             ```bash
             docker pull ${{ needs.docker.outputs.image }}:${{ needs.docker.outputs.version }}
             docker run --network=host \
-              -v ~/.cc-monitor:/root/.cc-monitor \
+              -v ~/.cc-monitor/docker/data:/data/.cc-monitor \
               ${{ needs.docker.outputs.image }}:${{ needs.docker.outputs.version }}
             ```
 
@@ -85,7 +85,7 @@ jobs:
             ```bash
             gunzip -c cc-monitor-${{ needs.docker.outputs.version }}.tar.gz | docker load
             docker run --network=host \
-              -v ~/.cc-monitor:/root/.cc-monitor \
+              -v ~/.cc-monitor/docker/data:/data/.cc-monitor \
               ${{ needs.docker.outputs.image }}:${{ needs.docker.outputs.version }}
             ```
           files: |
