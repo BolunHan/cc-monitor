@@ -1104,6 +1104,25 @@ body {
   padding: 8px 24px 16px;
   min-height: 0;
   position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+
+.detail-modal__timeline::-webkit-scrollbar {
+  width: 6px;
+}
+
+.detail-modal__timeline::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.detail-modal__timeline::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+.detail-modal__timeline::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
 }
 
 .detail-modal__timeline-load {
