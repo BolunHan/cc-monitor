@@ -1,10 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:cc_monitor_app/l10n/app_localizations.dart';
-import '../services/api_client.dart';
 import '../services/discovery_service.dart';
-import '../services/secure_store.dart';
 import 'connecting_screen.dart';
 
 class ServerPickerScreen extends StatefulWidget {
@@ -133,7 +130,6 @@ class _ServerPickerScreenState extends State<ServerPickerScreen> {
   void _showManualEntry(AppLocalizations l10n) {
     final hostController = TextEditingController();
     final portController = TextEditingController(text: '9876');
-    final tokenController = TextEditingController();
 
     showDialog(
       context: context,
@@ -151,10 +147,6 @@ class _ServerPickerScreenState extends State<ServerPickerScreen> {
               decoration: InputDecoration(labelText: l10n.connectPort),
               keyboardType: TextInputType.number,
             ),
-            TextField(
-              controller: tokenController,
-              decoration: InputDecoration(labelText: l10n.connectToken),
-            ),
           ],
         ),
         actions: [
@@ -166,23 +158,21 @@ class _ServerPickerScreenState extends State<ServerPickerScreen> {
             onPressed: () async {
               final host = hostController.text.trim();
               final port = int.tryParse(portController.text.trim()) ?? 9876;
-              final token = tokenController.text.trim();
+              if (host.isEmpty) return;
 
-              await context.read<SecureStore>().savePairing(
-                    token: token,
+              Navigator.pop(ctx);
+              if (!context.mounted) return;
+              // No token input — the server issues one automatically.
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ConnectingScreen(
                     host: host,
                     port: port,
-                    certSha256: '', // user accepts cert on first connection
-                  );
-
-              if (context.mounted) {
-                final api = context.read<ApiClient>();
-                await api.configureFromStore();
-                if (context.mounted) {
-                  Navigator.pushNamedAndRemoveUntil(
-                      ctx, '/', (_) => false);
-                }
-              }
+                    autoPair: true,
+                  ),
+                ),
+              );
             },
             child: Text(l10n.connectConnect),
           ),

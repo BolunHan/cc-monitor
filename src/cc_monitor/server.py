@@ -94,6 +94,7 @@ def _resolve_root() -> Path:
         return Path("/app")
     return candidate  # fallback
 
+
 _PROJECT_ROOT = _resolve_root()
 _STATIC_DIR = _PROJECT_ROOT / "static"
 _SOURCE_HOOKS_DIR = _PROJECT_ROOT / "hooks"
@@ -104,11 +105,18 @@ _IS_DOCKER = (_PROJECT_ROOT / ".docker-env").exists()
 def _safe_home() -> Path:
     """Return the data directory root.
 
-    In Docker: /data (a named volume managed by Docker).
+    In Docker: /data when a persistent volume is mounted there —
+    either a named volume at /data (docker-compose) or a bind mount
+    at /data/.cc-monitor (host ~/.cc-monitor/docker/data).  Otherwise
+    the home directory (/root), so the legacy
+    `-v ~/.cc-monitor:/root/.cc-monitor` bind mount keeps working.
     Natively: the user's home directory.
     """
     if _IS_DOCKER:
-        return Path("/data")
+        import os
+        if os.path.ismount("/data") or os.path.ismount("/data/.cc-monitor"):
+            return Path("/data")
+        return Path.home()
     return Path.home()
 
 
@@ -117,13 +125,13 @@ _GLOBAL_SETTINGS_PATH = _safe_home() / ".claude" / "settings.json"
 
 # Hook event definitions (kept in sync with install-hooks.sh)
 _HOOK_EVENT_DEFS: dict[str, dict[str, str]] = {
-    "PreToolUse":        {"matcher": "*", "script": "pre_tool_use.py"},
-    "PostToolUse":       {"matcher": "*", "script": "post_tool_use.py"},
-    "UserPromptSubmit":  {"matcher": "",  "script": "user_prompt_submit.py"},
-    "Stop":              {"matcher": "",  "script": "stop.py"},
-    "Notification":      {"matcher": "*", "script": "notification.py"},
+    "PreToolUse": {"matcher": "*", "script": "pre_tool_use.py"},
+    "PostToolUse": {"matcher": "*", "script": "post_tool_use.py"},
+    "UserPromptSubmit": {"matcher": "", "script": "user_prompt_submit.py"},
+    "Stop": {"matcher": "", "script": "stop.py"},
+    "Notification": {"matcher": "*", "script": "notification.py"},
     "PermissionRequest": {"matcher": "*", "script": "permission_request.py"},
-    "SessionEnd":        {"matcher": "",  "script": "session_end.py"},
+    "SessionEnd": {"matcher": "", "script": "session_end.py"},
 }
 
 
@@ -143,15 +151,15 @@ def _format_sse_event(event: str, data: str | None = None) -> str:
 
 
 def create_app(
-    data_dir: Path | None = None,
-    enable_auth: bool = False,
-    token_ttl: int = 604800,
-    cert_config: CertConfig | None = None,
-    pairing_manager: PairingManager | None = None,
-    token_manager: TokenManager | None = None,
-    lan_host: str = "",
-    port: int = 9876,
-    use_tls: bool = False,
+        data_dir: Path | None = None,
+        enable_auth: bool = False,
+        token_ttl: int = 604800,
+        cert_config: CertConfig | None = None,
+        pairing_manager: PairingManager | None = None,
+        token_manager: TokenManager | None = None,
+        lan_host: str = "",
+        port: int = 9876,
+        use_tls: bool = False,
 ) -> FastAPI:
     """Build the FastAPI app with a given data directory.
 
@@ -366,9 +374,7 @@ def create_app(
         return JSONResponse(session.to_dict())
 
     @app.get("/api/session/{session_id}/messages")
-    async def get_session_messages(
-        session_id: str, offset: int = 0, limit: int = 5,
-    ):
+    async def get_session_messages(session_id: str, offset: int = 0, limit: int = 5):
         """Return paginated messages for a session, newest first."""
         if manager.get(session_id) is None:
             raise HTTPException(status_code=404, detail="Session not found")
@@ -477,9 +483,7 @@ def create_app(
         except Exception:
             pass
 
-        installed = marker or (
-            len(missing_events) == 0 and len(installed_events) > 0
-        )
+        installed = marker or (len(missing_events) == 0 and len(installed_events) > 0)
 
         return JSONResponse({
             "installed": installed,
@@ -768,26 +772,30 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="cc-monitor — Claude Code status monitor")
     parser.add_argument("--port", type=int, default=9876, help="Port to listen on (default: 9876)")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
-    parser.add_argument("--data-dir", type=str, default=None,
-                        help="State file directory (default: ~/.cc-monitor)")
-    parser.add_argument("--token-ttl", type=int, default=604800,
-                        help="Token lifetime in seconds (0 = never expire, default: 604800)")
-    parser.add_argument("--no-mdns", action="store_true",
-                        help="Disable mDNS LAN advertisement")
-    parser.add_argument("--revoke-all", action="store_true",
-                        help="Revoke all tokens and exit")
-    parser.add_argument("--tls-cert", type=str, default=None,
-                        help="Path to custom TLS certificate")
-    parser.add_argument("--tls-key", type=str, default=None,
-                        help="Path to custom TLS private key")
-    parser.add_argument("--approve", type=str, default=None, metavar="CODE",
-                        help="Approve a pairing request by 6-digit code")
+    parser.add_argument("--data-dir", type=str, default=None, help="State file directory (default: ~/.cc-monitor)")
+    parser.add_argument("--token-ttl", type=int, default=604800, help="Token lifetime in seconds (0 = never expire, default: 604800)")
+    parser.add_argument("--no-mdns", action="store_true", help="Disable mDNS LAN advertisement")
+    parser.add_argument("--revoke-all", action="store_true", help="Revoke all tokens and exit")
+    parser.add_argument("--tls-cert", type=str, default=None, help="Path to custom TLS certificate")
+    parser.add_argument("--tls-key", type=str, default=None, help="Path to custom TLS private key")
+    parser.add_argument("--approve", type=str, default=None, metavar="CODE", help="Approve a pairing request by 6-digit code")
     args = parser.parse_args()
 
     import uvicorn
 
     data_dir = Path(args.data_dir) if args.data_dir else None
     _data_dir = data_dir or _safe_home() / ".cc-monitor"
+
+    if _IS_DOCKER and data_dir is None:
+        import os
+        if not (os.path.ismount("/data") or os.path.ismount("/data/.cc-monitor")):
+            print(
+                "[Docker] WARNING: no persistent storage mounted at /data or "
+                "/data/.cc-monitor — session state, tokens, and pairing data "
+                "will be LOST when the container is recreated.\n"
+                "[Docker]   docker compose up -d   (bind mount ~/.cc-monitor/docker/data:/data/.cc-monitor)\n"
+                "[Docker]   docker run -v ~/.cc-monitor:/root/.cc-monitor ..."
+            )
 
     # Handle --revoke-all
     if args.revoke_all:

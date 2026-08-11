@@ -30,7 +30,8 @@ install:
 
 FLUTTER_IMAGE := cc-monitor-flutter
 
-DOCKER := $(shell docker ps > /dev/null 2>&1 && echo docker || echo "sudo docker")
+# sudo resets HOME (compose ${HOME} would resolve to /root) — preserve it
+DOCKER := $(shell docker ps > /dev/null 2>&1 && echo docker || echo "sudo env HOME=$(HOME) docker")
 
 # Use host network when proxy is on localhost (127.0.0.1)
 DOCKER_NET := $(shell [ "$$HTTP_PROXY" = "http://127.0.0.1:7780" ] && echo "--network=host" || echo "")

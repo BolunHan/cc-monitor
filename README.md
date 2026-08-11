@@ -59,6 +59,17 @@ docker build -t ghcr.io/bolunhan/cc-monitor:latest .
 docker compose up -d
 ```
 
+> **💾 Data persistence:** all state (sessions, pairing tokens, approved
+> devices, certs) lives in `~/.cc-monitor/docker/data` — a plain host folder
+> bind-mounted at `/data/.cc-monitor` inside the container. It survives
+> `docker compose restart`, `down`, `down -v`, and image upgrades, and is easy
+> to back up. It stays **out** of `~/.cc-monitor` itself so a native cc-monitor
+> on the same host doesn't share/conflict with the same files. If you run
+> compose via `sudo`, preserve your home directory:
+> `sudo env HOME=$HOME docker compose up -d` (the Makefile already does this).
+> The server auto-detects the mount and warns at startup when no persistent
+> storage is found.
+
 ### Option C: Native Python
 
 ```bash

@@ -34,12 +34,16 @@ class ConnectingScreen extends StatefulWidget {
   final String? qrToken;
   final String? certSha256;
 
+  /// Manual connect: ask the server for a token directly, no approval.
+  final bool autoPair;
+
   const ConnectingScreen({
     super.key,
     required this.host,
     required this.port,
     this.qrToken,
     this.certSha256,
+    this.autoPair = false,
   });
 
   @override
@@ -74,8 +78,55 @@ class _ConnectingScreenState extends State<ConnectingScreen> {
 
     if (widget.qrToken != null) {
       await _pairViaQr(baseUrl, clientId);
+    } else if (widget.autoPair) {
+      await _pairViaManualAuto(baseUrl, clientId);
     } else {
       await _pairViaApproval(baseUrl, clientId);
+    }
+  }
+
+  Future<void> _pairViaManualAuto(String baseUrl, String clientId) async {
+    _addLog('Mode: manual connect (auto token)');
+    _addLog('Client ID: ${clientId.substring(0, 8)}...');
+
+    final dio = _createPairingDio(baseUrl);
+
+    try {
+      _addLog('Requesting token from server...');
+      final resp = await dio.post(
+        '/api/auth/pair/manual',
+        data: {
+          'device_name': _deviceName,
+          'client_id': clientId,
+        },
+      );
+      _addLog('Pair response: ${resp.statusCode}');
+
+      if (resp.statusCode != 200 || resp.data['token'] == null) {
+        _addLog('ERROR: server rejected manual pairing — ${resp.data}');
+        setState(() => _status = 'Pairing failed');
+        return;
+      }
+
+      final token = resp.data['token'] as String;
+      final store = context.read<SecureStore>();
+      await store.savePairing(
+        token: token,
+        host: widget.host,
+        port: widget.port,
+        certSha256: '',
+      );
+      _addLog('Token saved — configuring API...');
+
+      final api = context.read<ApiClient>();
+      await api.configureFromStore();
+      _addLog('Pairing successful!');
+      setState(() => _status = 'Connected!');
+      await Future.delayed(const Duration(milliseconds: 800));
+      _navigateHome();
+    } catch (e) {
+      _addLog('ERROR: $e');
+      setState(() => _status = 'Connection error');
     }
   }
 

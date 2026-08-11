@@ -16,6 +16,7 @@ _UNAUTHED_PATHS = {
     "/api/auth/pair/qr",
     "/api/auth/pair/request",
     "/api/auth/pair/qr/confirm",
+    "/api/auth/pair/manual",
     "/api/version",
 }
 # Paths that are always unauthed when they start with these prefixes
@@ -168,6 +169,31 @@ def create_auth_router(
                 detail="Invalid or expired QR token. Re-scan the QR code.",
             )
 
+        await _broadcast("device_update")
+        return JSONResponse({
+            "status": "paired",
+            "token": info.token,
+            "expires_at": info.expires_at.isoformat(),
+        })
+
+    @router.post("/api/auth/pair/manual")
+    async def manual_pair(request: Request):
+        """Issue a token directly for manual connect (no approval).
+
+        The Android app's manual connect flow calls this after the
+        user enters host/port, so no token input is required.  The
+        token value is not treated as a secret in this convenience
+        flow — anyone who can reach the server can obtain a token.
+        """
+        body = await request.json()
+        device_name = body.get("device_name", "Unknown Device")
+        client_id = body.get("client_id", "")
+        device_meta = body.get("device_meta", None)
+
+        info = token_manager.create_token(
+            device_name, ttl_seconds=ttl_seconds, client_id=client_id,
+            meta=device_meta,
+        )
         await _broadcast("device_update")
         return JSONResponse({
             "status": "paired",

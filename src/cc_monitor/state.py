@@ -172,33 +172,39 @@ class StateManager:
         # Phase 1: migrate legacy flat .json files → session dirs
         for file_path in sorted(self._data_dir.glob("*.json")):
             sid = file_path.stem  # filename without .json
+            try:
+                data = json.loads(file_path.read_text())
+            except (json.JSONDecodeError, OSError):
+                data = None
+            # Only session state files carry a session_id — never touch
+            # other JSON files (tokens.json, pairing_requests.json), or
+            # a stray directory named like them would cause deletion on
+            # the next restart.
+            if not isinstance(data, dict) or "session_id" not in data:
+                continue
             session_dir = self._session_dir(sid)
             if session_dir.is_dir():
                 # Already migrated — remove stale flat file
                 logger.info("Removing stale flat file %s (dir already exists)", file_path.name)
                 file_path.unlink()
                 continue
-            try:
-                data = json.loads(file_path.read_text())
-                session_dir.mkdir(parents=True, exist_ok=True)
-                # Extract session fields, drop anything message-related
-                sess_data = {
-                    "session_id": data["session_id"],
-                    "cwd": data.get("cwd", ""),
-                    "state": data.get("state", "idle"),
-                    "raw_event": data.get("raw_event", ""),
-                    "raw_detail": data.get("raw_detail"),
-                    "summary": data.get("summary"),
-                    "archived": data.get("archived", False),
-                    "cc_monitor_uid": data.get("cc_monitor_uid", ""),
-                    "updated_at": data.get("updated_at", datetime.now(timezone.utc).isoformat()),
-                    "message_count": 0,
-                }
-                self._session_file(sid).write_text(json.dumps(sess_data, indent=2))
-                file_path.unlink()
-                logger.info("Migrated legacy session %s to directory layout", sid)
-            except (json.JSONDecodeError, KeyError, ValueError) as exc:
-                logger.warning("Skipping invalid legacy file %s: %s", file_path.name, exc)
+            session_dir.mkdir(parents=True, exist_ok=True)
+            # Extract session fields, drop anything message-related
+            sess_data = {
+                "session_id": data["session_id"],
+                "cwd": data.get("cwd", ""),
+                "state": data.get("state", "idle"),
+                "raw_event": data.get("raw_event", ""),
+                "raw_detail": data.get("raw_detail"),
+                "summary": data.get("summary"),
+                "archived": data.get("archived", False),
+                "cc_monitor_uid": data.get("cc_monitor_uid", ""),
+                "updated_at": data.get("updated_at", datetime.now(timezone.utc).isoformat()),
+                "message_count": 0,
+            }
+            self._session_file(sid).write_text(json.dumps(sess_data, indent=2))
+            file_path.unlink()
+            logger.info("Migrated legacy session %s to directory layout", sid)
 
         # Phase 2: load all session directories
         for session_dir in sorted(self._data_dir.iterdir()):

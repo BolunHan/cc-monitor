@@ -261,3 +261,33 @@ async def test_delete_session_404(test_app):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.delete("/api/session/nonexistent")
     assert resp.status_code == 404
+
+
+class TestSafeHome:
+    """_safe_home() Docker mount fallback — persistence robustness."""
+
+    def test_native_uses_home(self):
+        from cc_monitor.server import _safe_home
+        assert _safe_home() == Path.home()
+
+    def test_docker_with_mounted_data(self, monkeypatch):
+        import os
+        from cc_monitor.server import _safe_home
+        monkeypatch.setattr("cc_monitor.server._IS_DOCKER", True)
+        monkeypatch.setattr(os.path, "ismount", lambda p: p == "/data")
+        assert _safe_home() == Path("/data")
+
+    def test_docker_with_bind_mount_at_data_cc_monitor(self, monkeypatch):
+        """Bind mount ~/.cc-monitor/docker/data -> /data/.cc-monitor."""
+        import os
+        from cc_monitor.server import _safe_home
+        monkeypatch.setattr("cc_monitor.server._IS_DOCKER", True)
+        monkeypatch.setattr(os.path, "ismount", lambda p: p == "/data/.cc-monitor")
+        assert _safe_home() == Path("/data")
+
+    def test_docker_without_volume_falls_back_to_home(self, monkeypatch):
+        import os
+        from cc_monitor.server import _safe_home
+        monkeypatch.setattr("cc_monitor.server._IS_DOCKER", True)
+        monkeypatch.setattr(os.path, "ismount", lambda p: False)
+        assert _safe_home() == Path.home()

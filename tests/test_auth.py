@@ -324,3 +324,47 @@ class TestAuthMiddleware:
         async with AsyncClient(transport=transport, base_url="http://10.0.0.1") as client:
             resp = await client.get("/api/auth/pair/qr")
         assert resp.status_code == 200  # not 401
+
+
+class TestManualPair:
+    """POST /api/auth/pair/manual — tokenless manual connect."""
+
+    @pytest.mark.asyncio
+    async def test_manual_pair_issues_token_without_auth(self, tmp_path):
+        app, tm, _ = _build_test_app(tmp_path)
+        transport = ASGITransport(app=app, client=("10.0.0.1", 12345))
+        async with AsyncClient(transport=transport, base_url="http://10.0.0.1") as client:
+            resp = await client.post("/api/auth/pair/manual", json={
+                "device_name": "Android",
+                "client_id": "abc-123",
+            })
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["status"] == "paired"
+            token = body["token"]
+            # Token is registered and valid
+            assert tm.validate_token(token) is not None
+            # Token works on a protected endpoint
+            resp2 = await client.get(
+                "/api/test-protected",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp2.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_manual_pair_registers_device(self, tmp_path):
+        app, tm, _ = _build_test_app(tmp_path)
+        transport = ASGITransport(app=app, client=("10.0.0.1", 12345))
+        async with AsyncClient(transport=transport, base_url="http://10.0.0.1") as client:
+            resp = await client.post("/api/auth/pair/manual", json={
+                "device_name": "My Phone",
+                "client_id": "cid-999",
+            })
+            token = resp.json()["token"]
+            devices = await client.get(
+                "/api/auth/devices",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        names = [d["device_name"] for d in devices.json()["devices"]]
+        assert "My Phone" in names
+        assert devices.json()["devices"][0]["client_id"] == "cid-999"

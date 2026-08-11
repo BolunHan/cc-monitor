@@ -1,7 +1,12 @@
+import 'dart:io';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:multicast_dns/multicast_dns.dart';
 
 const _tag = 'cc-monitor:discovery';
+
+const _probePort = 9876;
 
 class DiscoveredServer {
   final String hostname;
@@ -25,6 +30,27 @@ class DiscoveryService {
   MDnsClient? _client;
 
   Future<List<DiscoveredServer>> discover() async {
+    // mDNS multicast does not traverse WireGuard/VPN tunnels, so also
+    // unicast-probe the /24 subnets of every active interface (the WG
+    // tun included).  mDNS results win on duplicate host:port.
+    final results = await Future.wait([
+      _mdnsScan(),
+      _probeSubnets(),
+    ]);
+    // mDNS entries carry richer metadata — keep them, only fill gaps.
+    final byKey = <String, DiscoveredServer>{};
+    for (final s in results[0]) {
+      byKey['${s.host}:${s.port}'] = s;
+    }
+    for (final s in results[1]) {
+      byKey.putIfAbsent('${s.host}:${s.port}', () => s);
+    }
+    final unique = byKey.values.toList();
+    debugPrint('[$_tag] Scan done: ${unique.length} unique servers');
+    return unique;
+  }
+
+  Future<List<DiscoveredServer>> _mdnsScan() async {
     debugPrint('[$_tag] Starting mDNS scan for _cc-monitor._tcp...');
     _client = MDnsClient();
     await _client!.start();
@@ -37,7 +63,7 @@ class DiscoveryService {
       )) {
         debugPrint('[$_tag] Found PTR: ${ptr.domainName}');
         try {
-          final srv = await _client!
+          await _client!
               .lookup<SrvResourceRecord>(
                 ResourceRecordQuery.service(ptr.domainName),
               )
@@ -76,14 +102,75 @@ class DiscoveryService {
     }
 
     _client!.stop();
+    return servers;
+  }
 
-    // Deduplicate: hash of identifying fields
-    final seen = <String>{};
-    final unique = servers.where((s) {
-      return seen.add('${s.hostname}|${s.host}|${s.port}|${s.version}|${s.certSha256}');
-    }).toList();
-    debugPrint('[$_tag] Scan done: ${servers.length} raw, ${unique.length} unique');
-    return unique;
+  /// Probe https://<ip>:9876/api/version on every /24 subnet of the
+  /// active IPv4 interfaces.  Unicast — works over WireGuard where
+  /// mDNS multicast is not forwarded.
+  Future<List<DiscoveredServer>> _probeSubnets() async {
+    final candidates = <String>{};
+    try {
+      final interfaces = await NetworkInterface.list(
+        includeLoopback: false,
+        type: InternetAddressType.IPv4,
+      );
+      for (final iface in interfaces) {
+        for (final addr in iface.addresses) {
+          final parts = addr.address.split('.');
+          if (parts.length != 4) continue;
+          final base = '${parts[0]}.${parts[1]}.${parts[2]}';
+          for (var i = 1; i <= 254; i++) {
+            final ip = '$base.$i';
+            if (ip != addr.address) candidates.add(ip);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[$_tag] Interface enumeration failed: $e');
+      return [];
+    }
+
+    if (candidates.isEmpty) return [];
+    final list = candidates.take(700).toList(); // bound scan size
+    debugPrint(
+        '[$_tag] Unicast probing ${list.length} candidates on port $_probePort...');
+
+    final servers = <DiscoveredServer>[];
+    final dio = Dio(BaseOptions(
+      connectTimeout: const Duration(milliseconds: 300),
+      receiveTimeout: const Duration(milliseconds: 800),
+      validateStatus: (_) => true,
+    ));
+    // Self-signed cert is expected — we only care that /api/version answers
+    (dio.httpClientAdapter as dynamic).onHttpClientCreate = (HttpClient client) {
+      client.badCertificateCallback = (cert, host, port) => true;
+    };
+
+    const concurrency = 48;
+    for (var i = 0; i < list.length; i += concurrency) {
+      final batch = list.skip(i).take(concurrency);
+      await Future.wait(batch.map((ip) async {
+        try {
+          final resp = await dio.get('https://$ip:$_probePort/api/version');
+          final data = resp.data;
+          if (resp.statusCode == 200 && data is Map && data['version'] is String) {
+            debugPrint('[$_tag] Probe hit: $ip (v${data['version']})');
+            servers.add(DiscoveredServer(
+              hostname: ip,
+              host: ip,
+              port: _probePort,
+              version: data['version'] as String,
+              certSha256: '',
+              pairingRequired: true,
+            ));
+          }
+        } catch (_) {
+          // Unreachable host / not a cc-monitor server — ignore.
+        }
+      }));
+    }
+    return servers;
   }
 
   void stop() {

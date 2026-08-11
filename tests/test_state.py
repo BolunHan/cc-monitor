@@ -363,3 +363,39 @@ class TestLegacyMigration:
         assert session.cwd == "/legacy/project"
         assert session.summary == "Old session"
 
+
+    def test_restore_preserves_non_session_json(self, tmp_dir):
+        """tokens.json / pairing_requests.json must survive restore().
+
+        Regression: a "tokens" dir created by an earlier restore attempt
+        (mkdir-before-validate) made restore() treat tokens.json as a
+        stale legacy session and delete it on every startup.
+        """
+        (tmp_dir / "tokens").mkdir()
+        (tmp_dir / "tokens.json").write_text(json.dumps({
+            "abc123": {"token": "abc123", "device_name": "Android"},
+        }))
+        (tmp_dir / "pairing_requests").mkdir()
+        (tmp_dir / "pairing_requests.json").write_text(json.dumps({
+            "req1": {"id": "req1", "status": "pending"},
+        }))
+
+        manager = StateManager(data_dir=tmp_dir)
+        import asyncio
+        asyncio.get_event_loop().run_until_complete(manager.restore())
+
+        assert (tmp_dir / "tokens.json").exists()
+        assert (tmp_dir / "pairing_requests.json").exists()
+
+    def test_restore_does_not_create_poison_dirs(self, tmp_dir):
+        """Invalid non-session JSON must not create <stem>/ directories."""
+        (tmp_dir / "tokens.json").write_text(json.dumps({
+            "abc123": {"token": "abc123", "device_name": "Android"},
+        }))
+
+        manager = StateManager(data_dir=tmp_dir)
+        import asyncio
+        asyncio.get_event_loop().run_until_complete(manager.restore())
+
+        assert (tmp_dir / "tokens.json").exists()
+        assert not (tmp_dir / "tokens").exists()
