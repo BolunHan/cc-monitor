@@ -238,13 +238,13 @@ function loadSessionsView() {
     }
 
     function agentName(session) {
-        return session.agent === "dsh" ? "dsh" : "cc";
+        return session.agent === "dsh" ? "DSH" : "CC";
     }
 
     function agentBadgeHtml(session, extraClass) {
         const name = agentName(session);
-        const cssName = name === "dsh" ? "dsh" : "claude";
-        return `<span class="session-card__agent agent-${cssName}${extraClass ? " " + extraClass : ""}">[${name}]</span>`;
+        const cssName = name === "DSH" ? "dsh" : "claude";
+        return `<span class="session-card__agent agent-${cssName}${extraClass ? " " + extraClass : ""}">${name}</span>`;
     }
 
     // ---- Section routing ----
