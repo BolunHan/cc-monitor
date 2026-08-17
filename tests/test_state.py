@@ -89,6 +89,40 @@ class TestStateManager:
         assert session.raw_event == "Stop"
 
     @pytest.mark.asyncio
+    async def test_agent_defaults_to_claude(self, manager):
+        session = await manager.handle_event(self._make_event())
+        assert session.agent == "claude"
+
+    @pytest.mark.asyncio
+    async def test_agent_persists_for_dsh(self, manager, tmp_dir):
+        await manager.handle_event(self._make_event(agent="dsh"))
+        await manager.handle_event(self._make_event(hook_event_name="Stop", tool_name=None))
+
+        session = manager.get("s1")
+        assert session.agent == "dsh"
+
+        data = json.loads((tmp_dir / "s1" / "session.json").read_text())
+        assert data["agent"] == "dsh"
+
+    @pytest.mark.asyncio
+    async def test_agent_restore_defaults_to_claude(self, tmp_dir):
+        session_dir = tmp_dir / "legacy-agent"
+        session_dir.mkdir()
+        (session_dir / "session.json").write_text(json.dumps({
+            "session_id": "legacy-agent",
+            "cwd": "/proj",
+            "state": "idle",
+            "raw_event": "Stop",
+            "raw_detail": None,
+            "updated_at": "2026-07-27T00:00:00.000000Z",
+            "message_count": 0,
+        }))
+
+        manager = StateManager(data_dir=tmp_dir)
+        await manager.restore()
+        assert manager.get("legacy-agent").agent == "claude"
+
+    @pytest.mark.asyncio
     async def test_get_all_and_get(self, manager):
         await manager.handle_event(self._make_event(session_id="s1"))
         await manager.handle_event(self._make_event(session_id="s2"))

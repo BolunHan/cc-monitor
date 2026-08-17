@@ -35,11 +35,32 @@ async def test_post_event_creates_session(test_app, tmp_data_dir):
     data = resp.json()
     assert data["session_id"] == "test-session"
     assert data["state"] == "working"
+    assert data["agent"] == "claude"
 
     # Verify file was written
     state_file = tmp_data_dir / "test-session" / "session.json"
     assert state_file.exists()
     assert json.loads(state_file.read_text())["state"] == "working"
+
+
+@pytest.mark.asyncio
+@pytest.mark.asyncio
+async def test_post_event_agent_dsh(test_app, tmp_data_dir):
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/event", json={
+            "session_id": "dsh-session",
+            "cwd": "/home/user/dsh",
+            "hook_event_name": "UserPromptSubmit",
+            "prompt": "Hello from DSH",
+            "agent": "dsh",
+        })
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["agent"] == "dsh"
+    state_file = tmp_data_dir / "dsh-session" / "session.json"
+    assert json.loads(state_file.read_text())["agent"] == "dsh"
 
 
 @pytest.mark.asyncio
