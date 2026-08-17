@@ -15,6 +15,11 @@ Then make sure the profile's `package.json` lists `dsh-cc-monitor` in
 `dsh.profile.bundles` (the `dsh plugin add` command normally handles this for
 out-of-tree bundles; verify with `dsh --profile web --dump-config`).
 
+> **First npm publish:** npm Trusted Publishing can only publish subsequent
+> versions once the package already exists. Publish the first version once from
+> a machine with npm login (`npm login && npm publish --access public`), then
+> the GitHub Actions trusted-publisher job can publish future versions.
+
 ## Configuration
 
 Defaults are designed for a local cc-monitor server on `127.0.0.1:9876`.
