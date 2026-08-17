@@ -93,6 +93,7 @@ class SessionState:
     summary: str | None = None
     archived: bool = False
     cc_monitor_uid: str = ""
+    agent: str = "claude"  # claude | dsh — which coding agent reported this session
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     message_count: int = 0  # cached count, updated on message write
 
@@ -105,6 +106,7 @@ class SessionState:
             "raw_detail": self.raw_detail,
             "summary": self.summary,
             "cc_monitor_uid": self.cc_monitor_uid,
+            "agent": self.agent,
             "archived": self.archived,
             "updated_at": self.updated_at.isoformat(),
             "message_count": self.message_count,
@@ -199,6 +201,7 @@ class StateManager:
                 "summary": data.get("summary"),
                 "archived": data.get("archived", False),
                 "cc_monitor_uid": data.get("cc_monitor_uid", ""),
+                "agent": data.get("agent", "claude"),
                 "updated_at": data.get("updated_at", datetime.now(timezone.utc).isoformat()),
                 "message_count": 0,
             }
@@ -224,6 +227,7 @@ class StateManager:
                     summary=data.get("summary"),
                     archived=data.get("archived", False),
                     cc_monitor_uid=data.get("cc_monitor_uid", ""),
+                    agent=data.get("agent", "claude"),
                     updated_at=datetime.fromisoformat(data["updated_at"]),
                     message_count=data.get("message_count", 0),
                 )
@@ -304,6 +308,14 @@ class StateManager:
         # Re-count messages after save
         msg_count = self._count_messages(session_id)
 
+        # Preserve the reporting agent. DSH's plugin sends `agent: dsh`;
+        # Claude Code hooks omit it and keep the historical default `claude`.
+        raw_agent = raw.get("agent")
+        if raw_agent in ("claude", "dsh"):
+            agent = raw_agent
+        else:
+            agent = existing.agent if existing else "claude"
+
         session = SessionState(
             session_id=session_id,
             cwd=raw.get("cwd", ""),
@@ -312,6 +324,7 @@ class StateManager:
             raw_detail=tool_name or notification_type,
             summary=summary,
             cc_monitor_uid=raw.get("cc_monitor_uid", existing.cc_monitor_uid if existing else ""),
+            agent=agent,
             message_count=msg_count,
         )
         self._sessions[session_id] = session

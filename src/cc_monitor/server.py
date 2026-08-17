@@ -769,7 +769,7 @@ app = create_app()
 
 def main() -> None:
     """CLI entry point: start the cc-monitor server."""
-    parser = argparse.ArgumentParser(description="cc-monitor — Claude Code status monitor")
+    parser = argparse.ArgumentParser(description="cc-monitor — Claude Code & DSH status monitor")
     parser.add_argument("--port", type=int, default=9876, help="Port to listen on (default: 9876)")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind to (default: 127.0.0.1)")
     parser.add_argument("--data-dir", type=str, default=None, help="State file directory (default: ~/.cc-monitor)")
