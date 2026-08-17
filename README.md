@@ -90,18 +90,24 @@ curl -skSL https://<server-ip>:9876/static/install-hooks.sh | SERVER_URL=https:/
 
 ### Install the DSH Reporter Plugin
 
-On the machine running DeepSeek Harness (DSH):
+On the machine running DeepSeek Harness (DSH), use the GitHub release tarball:
 
 ```bash
-dsh plugin --profile web add link:/path/to/cc-monitor/dsh-cc-monitor
+bash <(curl -fsSL https://raw.githubusercontent.com/BolunHan/cc-monitor/main/scripts/install-dsh-plugin.sh) https://github.com/BolunHan/cc-monitor/releases/latest/download/dsh-cc-monitor.tgz
 ```
 
-Then confirm the profile's `package.json` lists `dsh-cc-monitor` in
-`dsh.profile.bundles` and run `dsh --profile web --dump-config` — you should
-see a `cc-monitor` row. The plugin reports DSH session activity to
-`http://127.0.0.1:9876` by default; override with `CC_MONITOR_URL` (or a
-`serverUrl` patch entry). DSH sessions appear with a blue `[dsh]` badge in the
-same dashboard, next to Claude Code's orange `[cc]` badge.
+Or, once published to npm, install it with one command:
+
+```bash
+dsh plugin --profile web add dsh-cc-monitor
+```
+
+Then restart `dsh web`. Verify with `dsh --profile web --dump-config` — you
+should see a `cc-monitor` row. The plugin reports DSH session activity to
+`http://127.0.0.1:9876` by default (it also auto-falls-back to HTTPS and
+accepts the local self-signed cert); override with `CC_MONITOR_URL` (or a
+`serverUrl` patch entry). DSH sessions appear with a blue `DSH` badge in the
+same dashboard, next to Claude Code's orange-red `CC` badge.
 
 ---
 
@@ -322,13 +328,19 @@ curl -skSL https://<服务器IP>:9876/static/install-hooks.sh | SERVER_URL=https
 
 ### 安装 DSH 上报插件
 
-在运行 DeepSeek Harness（DSH）的机器上：
+在运行 DeepSeek Harness（DSH）的机器上，使用 GitHub Release 的 tarball：
 
 ```bash
-dsh plugin --profile web add link:/path/to/cc-monitor/dsh-cc-monitor
+bash <(curl -fsSL https://raw.githubusercontent.com/BolunHan/cc-monitor/main/scripts/install-dsh-plugin.sh) https://github.com/BolunHan/cc-monitor/releases/latest/download/dsh-cc-monitor.tgz
 ```
 
-确认配置文件的 `package.json` 在 `dsh.profile.bundles` 中列出了 `dsh-cc-monitor`，然后运行 `dsh --profile web --dump-config` —— 应该能看到 `cc-monitor` 行。插件默认将 DSH 会话上报到 `http://127.0.0.1:9876`，可通过 `CC_MONITOR_URL`（或 `serverUrl` patch 项）覆盖。DSH 会话会在同一仪表盘中显示蓝色 `[dsh]` 徽章，与 Claude Code 的橙色 `[cc]` 徽章并列。
+发布到 npm 后，也可以一条命令安装：
+
+```bash
+dsh plugin --profile web add dsh-cc-monitor
+```
+
+然后重启 `dsh web`。运行 `dsh --profile web --dump-config` 验证，应该能看到 `cc-monitor` 行。插件默认将 DSH 会话上报到 `http://127.0.0.1:9876`（并会自动回退到 HTTPS、接受本机自签名证书），可通过 `CC_MONITOR_URL`（或 `serverUrl` patch 项）覆盖。DSH 会话会在同一仪表盘中显示蓝色 `DSH` 徽章，与 Claude Code 的橙红色 `CC` 徽章并列。
 
 ---
 
