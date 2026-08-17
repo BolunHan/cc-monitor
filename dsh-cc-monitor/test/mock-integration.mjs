@@ -1,5 +1,8 @@
 import http from 'node:http';
 import assert from 'node:assert/strict';
+import { rmSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { apply } from '../lib/index.js';
 
 const received = [];
@@ -21,9 +24,12 @@ const server = http.createServer((req, res) => {
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const port = server.address().port;
 
+const configFile = join(homedir(), '.dsh', 'cc-monitor.json');
+rmSync(configFile, { force: true });
+
 const handlers = {};
-const ctx = { on(event, cb) { handlers[event] = cb; }, inject() {} };
-apply(ctx, { host: '127.0.0.1', port, uid: 'test-uid' });
+const ctx = { on(event, cb) { handlers[event] = cb; }, webServer: { register() {} } };
+apply(ctx, { serverUrl: `http://127.0.0.1:${port}`, uid: 'test-uid' });
 
 const session = { id: 'dsh-session-1', header: { cwd: '/tmp/dsh-project' } };
 function fire(event) { handlers['session/event'](session, event); }

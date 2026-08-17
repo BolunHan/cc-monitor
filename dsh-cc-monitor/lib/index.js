@@ -2,58 +2,78 @@
  * dsh-cc-monitor — report DSH session activity to a cc-monitor server.
  *
  * The plugin subscribes to the DSH session event firehose and posts a
- * normalized Claude-Code-hook-shaped payload to /api/event. The server
- * already understands those events; the `agent` field tells it (and every
- * dashboard) that this session belongs to DSH rather than Claude Code.
- *
- * Configuration (all optional):
- *   config.serverUrl — cc-monitor server base URL (full override)
- *   config.host      — server host, used when serverUrl is not set
- *   config.port      — server port, overrides the URL port when set
- *   config.uid       — installation identifier sent as cc_monitor_uid
- *   config.enabled   — master switch (default true)
- *
- * Environment fallbacks:
- *   CC_MONITOR_URL, CC_MONITOR_HOST, CC_MONITOR_PORT, CC_MONITOR_UID.
+ * normalized Claude-Code-hook-shaped payload to /api/event. Configuration is
+ * served over the plugin's own loopback-only /api/dsh-cc-monitor/config route
+ * so it works independently of the DSH settings-namespace allowlist.
  */
 import http from 'node:http';
 import https from 'node:https';
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings';
-import z from 'schemastery';
+import { randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
 
 const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_PORT = 9876;
+const CONFIG_FILE = join(homedir(), '.dsh', 'cc-monitor.json');
 
 export const name = 'cc-monitor';
 
-// Wait for the session store before subscribing to its events.
-export const inject = ['sessions'];
-
-/** Settings namespace the Web UI settings card edits. */
-export const CC_MONITOR_SETTINGS_NAMESPACE = settingsNamespace('cc-monitor');
-
-/** Runtime schema for {@link Config}. */
-export const ConfigSchema = z.object({
-  enabled: z.boolean().default(true),
-  serverUrl: z.string().default(''),
-  host: z.string().default('127.0.0.1'),
-  port: z.number().step(1).min(1).max(65535).default(9876),
-  uid: z.string().default('dsh-default'),
-});
+// Wait for the session store and web server before subscribing/registering.
+export const inject = ['sessions', 'webServer'];
 
 export function apply(ctx, config = {}) {
-  let current = () => config ?? {};
+  let persisted = {};
+  try {
+    if (existsSync(CONFIG_FILE)) {
+      persisted = JSON.parse(readFileSync(CONFIG_FILE, 'utf8'));
+    }
+  } catch {
+    persisted = {};
+  }
+
+  if (!config.uid && !process.env.CC_MONITOR_UID && !persisted.uid) {
+    persisted = { ...persisted, uid: `dsh-${randomUUID()}` };
+    try {
+      mkdirSync(dirname(CONFIG_FILE), { recursive: true });
+      writeFileSync(CONFIG_FILE, JSON.stringify(persisted, null, 2));
+    } catch {}
+  }
+
+  let current = () => ({ ...config, ...persisted });
 
   const currentConfig = () => {
     const value = current() ?? {};
+    const rawPort = value.port ?? process.env.CC_MONITOR_PORT;
+    const port = Number(rawPort ?? DEFAULT_PORT);
     return {
       enabled: value.enabled ?? true,
-      serverUrl: value.serverUrl || process.env.CC_MONITOR_URL,
+      serverUrl: value.serverUrl || process.env.CC_MONITOR_URL || '',
       host: value.host || process.env.CC_MONITOR_HOST || DEFAULT_HOST,
-      port: value.port || process.env.CC_MONITOR_PORT || DEFAULT_PORT,
-      uid: value.uid || process.env.CC_MONITOR_UID || 'dsh-default',
+      port: Number.isFinite(port) && port > 0 ? port : DEFAULT_PORT,
+      portExplicit: rawPort !== undefined && rawPort !== '',
+      uid: value.uid || process.env.CC_MONITOR_UID || persisted.uid || `dsh-${randomUUID()}`,
     };
   };
+
+  function normalizeConfig(input) {
+    const port = Number(input?.port ?? DEFAULT_PORT);
+    return {
+      enabled: input?.enabled ?? true,
+      serverUrl: input?.serverUrl ?? '',
+      host: input?.host ?? DEFAULT_HOST,
+      port: Number.isFinite(port) && port > 0 ? port : DEFAULT_PORT,
+      uid: input?.uid || persisted.uid || `dsh-${randomUUID()}`,
+    };
+  }
+
+  function saveConfig(patch) {
+    const next = normalizeConfig({ ...currentConfig(), ...patch });
+    persisted = next;
+    mkdirSync(dirname(CONFIG_FILE), { recursive: true });
+    writeFileSync(CONFIG_FILE, JSON.stringify(persisted, null, 2));
+    return next;
+  }
 
   function resolveServerUrl(cfg) {
     const urlOverride = cfg.serverUrl;
@@ -63,7 +83,7 @@ export function apply(ctx, config = {}) {
       let base = String(urlOverride).trim();
       if (!/^https?:\/\//i.test(base)) base = `http://${base}`;
       const url = new URL(base);
-      if (portOverride) url.port = String(portOverride);
+      if (cfg.portExplicit && portOverride) url.port = String(portOverride);
       return url.toString().replace(/\/+$/, '');
     }
 
@@ -75,17 +95,71 @@ export function apply(ctx, config = {}) {
   const serverUrl = () => resolveServerUrl(currentConfig());
   const uid = () => currentConfig().uid;
 
-  installSettingsSection(ctx, CC_MONITOR_SETTINGS_NAMESPACE, ConfigSchema, config ?? {}, {
-    setSource: (source) => { current = source; },
-    onChange: () => {},
+  function isLoopbackRequest(req) {
+    const address = req.socket?.remoteAddress;
+    if (address !== '127.0.0.1' && address !== '::1' && address !== '::ffff:127.0.0.1') return false;
+    const host = req.headers.host;
+    if (typeof host !== 'string') return false;
+    let hostUrl;
+    try { hostUrl = new URL(`http://${host}`); } catch { return false; }
+    return hostUrl.hostname === '127.0.0.1' || hostUrl.hostname === 'localhost' || hostUrl.hostname === '[::1]';
+  }
+
+  function writeJson(res, status, body) {
+    const payload = JSON.stringify(body);
+    res.writeHead(status, {
+      'content-type': 'application/json; charset=utf-8',
+      'referrer-policy': 'no-referrer',
+    });
+    res.end(payload);
+  }
+
+  async function readJsonBody(req) {
+    const chunks = [];
+    let size = 0;
+    for await (const chunk of req) {
+      const buffer = chunk;
+      size += buffer.length;
+      if (size > 64 * 1024) return undefined;
+      chunks.push(buffer);
+    }
+    try {
+      const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      return typeof parsed === 'object' && parsed !== null ? parsed : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  ctx.webServer.register({
+    kind: 'exact',
+    path: '/api/dsh-cc-monitor/config',
+    handler: async (req, res) => {
+      if (!isLoopbackRequest(req)) {
+        writeJson(res, 403, { error: 'forbidden: loopback-only' });
+        return;
+      }
+      if (req.method === 'GET') {
+        writeJson(res, 200, currentConfig());
+        return;
+      }
+      if (req.method === 'POST') {
+        const body = await readJsonBody(req);
+        if (body === undefined) {
+          writeJson(res, 400, { error: 'invalid JSON body' });
+          return;
+        }
+        const next = saveConfig(body);
+        writeJson(res, 200, next);
+        return;
+      }
+      writeJson(res, 405, { error: 'method not allowed' });
+    },
   });
 
   // Map callId -> { name, arguments } so tool/result can report the tool name.
   const toolCalls = new Map();
   // Map sessionId -> { text, usage } for the most recent assistant message.
-  // DSH emits assistant/message for every step (including tool-calling steps),
-  // so we defer the cc-monitor Stop until turn/end and only use the final
-  // text-only assistant content as the response summary.
   const lastAssistant = new Map();
 
   function candidateUrls() {
@@ -115,7 +189,6 @@ export function apply(ctx, config = {}) {
           'Content-Type': 'application/json',
           'Content-Length': data.length,
         },
-        // cc-monitor in LAN/Docker mode serves a self-signed cert.
         rejectUnauthorized: false,
         timeout: 2500,
       }, (res) => {
@@ -145,8 +218,6 @@ export function apply(ctx, config = {}) {
           lastError = err;
         }
       }
-      // Reporting is best-effort: never break an agent turn because the
-      // dashboard server is down or unreachable.
       console.warn('[dsh-cc-monitor] report failed:', lastError?.message || lastError);
     })();
   }
@@ -186,9 +257,7 @@ export function apply(ctx, config = {}) {
 
   function isApprovalTool(toolName) {
     const name = String(toolName || '').toLowerCase();
-    return name.includes('ask_user') ||
-      name.includes('permission') ||
-      name.includes('approval');
+    return name.includes('ask_user') || name.includes('permission') || name.includes('approval');
   }
 
   function basePayload(session) {
@@ -204,16 +273,9 @@ export function apply(ctx, config = {}) {
     const data = event?.data || {};
 
     if (event.type === 'user/message') {
-      // Only direct human prompts become a card summary; injected context
-      // (file-change notices, skill catalogs, goal-round injections) is not
-      // user work and would otherwise overwrite the visible prompt.
       if (data.source?.kind !== 'user') return;
       const prompt = textFromBlocks(data.content);
-      post({
-        ...basePayload(session),
-        hook_event_name: 'UserPromptSubmit',
-        prompt,
-      });
+      post({ ...basePayload(session), hook_event_name: 'UserPromptSubmit', prompt });
       return;
     }
 
@@ -227,10 +289,7 @@ export function apply(ctx, config = {}) {
     }
 
     if (event.type === 'tool/call') {
-      toolCalls.set(data.callId, {
-        name: data.name || 'tool',
-        arguments: data.arguments || '',
-      });
+      toolCalls.set(data.callId, { name: data.name || 'tool', arguments: data.arguments || '' });
       if (toolCalls.size > 500) {
         const oldest = toolCalls.keys().next().value;
         toolCalls.delete(oldest);
@@ -262,12 +321,10 @@ export function apply(ctx, config = {}) {
       const sessionId = String(session.id);
       const last = lastAssistant.get(sessionId) || {};
       lastAssistant.delete(sessionId);
-
       let lastMessage = last.text || '';
       if (data.reason?.kind === 'error') {
         lastMessage = `Turn ended with error: ${data.reason?.error || data.reason?.kind || 'unknown'}`;
       }
-
       post({
         ...basePayload(session),
         hook_event_name: 'Stop',
@@ -288,10 +345,7 @@ export function apply(ctx, config = {}) {
   ctx.on('session/disposed', (session) => {
     try {
       const sessionId = String(session.id);
-      post({
-        ...basePayload(session),
-        hook_event_name: 'SessionEnd',
-      });
+      post({ ...basePayload(session), hook_event_name: 'SessionEnd' });
       toolCalls.clear();
       lastAssistant.delete(sessionId);
     } catch (err) {
@@ -299,4 +353,3 @@ export function apply(ctx, config = {}) {
     }
   });
 }
-

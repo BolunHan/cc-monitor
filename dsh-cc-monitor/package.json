@@ -32,8 +32,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
-    "schemastery": "^3.18.0"
+    "@deepseek-ai/dsh-host-webserver": "^0.1.0-rc.6"
   },
   "peerDependencies": {
     "react": "^18.2.0"
