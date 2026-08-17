@@ -90,25 +90,26 @@ curl -skSL https://<server-ip>:9876/static/install-hooks.sh | SERVER_URL=https:/
 
 ### Install the DSH Reporter Plugin
 
-On the machine running DeepSeek Harness (DSH), use the GitHub release tarball:
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/BolunHan/cc-monitor/main/scripts/install-dsh-plugin.sh) https://github.com/BolunHan/cc-monitor/releases/latest/download/dsh-cc-monitor.tgz
-```
-
-Or, once published to npm, install it with one command:
+On the machine running DeepSeek Harness (DSH), install from npm (the default,
+published automatically by the GitHub Actions release):
 
 ```bash
 dsh plugin --profile web add dsh-cc-monitor
 ```
 
+Fallback — install from the GitHub release tarball:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/BolunHan/cc-monitor/main/scripts/install-dsh-plugin.sh) https://github.com/BolunHan/cc-monitor/releases/latest/download/dsh-cc-monitor.tgz
+```
+
 Then restart `dsh web`. Verify with `dsh --profile web --dump-config` — you
-should see a `cc-monitor` row. The plugin reports DSH session activity to
-`http://127.0.0.1:9876` by default (it also auto-falls-back to HTTPS and
-accepts the local self-signed cert). Configure it with `serverUrl`, or with
-`host` + `port`, in a `cordis.patch.yml` entry (env: `CC_MONITOR_URL`,
-`CC_MONITOR_HOST`, `CC_MONITOR_PORT`). DSH sessions appear with a blue `DSH`
-badge in the same dashboard, next to Claude Code's orange-red `CC` badge.
+should see a `cc-monitor` row. The plugin appears in **DSH Web UI → Settings →
+Plugins → Plugin configuration**, where you can configure Enabled, Server URL,
+Host, Port, and Installation UID. It defaults to `http://127.0.0.1:9876`,
+auto-falls-back to HTTPS, and accepts the local self-signed cert. DSH sessions
+appear with a blue `DSH` badge in the same dashboard, next to Claude Code's
+orange-red `CC` badge.
 
 ---
 
@@ -329,19 +330,19 @@ curl -skSL https://<服务器IP>:9876/static/install-hooks.sh | SERVER_URL=https
 
 ### 安装 DSH 上报插件
 
-在运行 DeepSeek Harness（DSH）的机器上，使用 GitHub Release 的 tarball：
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/BolunHan/cc-monitor/main/scripts/install-dsh-plugin.sh) https://github.com/BolunHan/cc-monitor/releases/latest/download/dsh-cc-monitor.tgz
-```
-
-发布到 npm 后，也可以一条命令安装：
+在运行 DeepSeek Harness（DSH）的机器上，从 npm 安装（默认方式，由 GitHub Actions 发布自动发布）：
 
 ```bash
 dsh plugin --profile web add dsh-cc-monitor
 ```
 
-然后重启 `dsh web`。运行 `dsh --profile web --dump-config` 验证，应该能看到 `cc-monitor` 行。插件默认将 DSH 会话上报到 `http://127.0.0.1:9876`（并会自动回退到 HTTPS、接受本机自签名证书）。可在 `cordis.patch.yml` 中用 `serverUrl`，或用 `host` + `port` 配置（环境变量：`CC_MONITOR_URL`、`CC_MONITOR_HOST`、`CC_MONITOR_PORT`）。DSH 会话会在同一仪表盘中显示蓝色 `DSH` 徽章，与 Claude Code 的橙红色 `CC` 徽章并列。
+备用方式 — 从 GitHub Release tarball 安装：
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/BolunHan/cc-monitor/main/scripts/install-dsh-plugin.sh) https://github.com/BolunHan/cc-monitor/releases/latest/download/dsh-cc-monitor.tgz
+```
+
+然后重启 `dsh web`。运行 `dsh --profile web --dump-config` 验证，应该能看到 `cc-monitor` 行。插件会出现在 **DSH Web UI → Settings → Plugins → Plugin configuration** 中，可配置 Enabled、Server URL、Host、Port 和 Installation UID。默认上报到 `http://127.0.0.1:9876`，并会自动回退到 HTTPS、接受本机自签名证书。DSH 会话会在同一仪表盘中显示蓝色 `DSH` 徽章，与 Claude Code 的橙红色 `CC` 徽章并列。
 
 ---
 
