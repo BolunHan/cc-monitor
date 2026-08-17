@@ -24,3 +24,6 @@ android_app/pubspec.lock
 env
 PROJECT-KNOWLEDGE.md
 server.log
+
+# DSH plugin packaging output
+dist/
