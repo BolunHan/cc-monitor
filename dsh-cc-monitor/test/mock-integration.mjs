@@ -22,7 +22,7 @@ await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const port = server.address().port;
 
 const handlers = {};
-const ctx = { on(event, cb) { handlers[event] = cb; } };
+const ctx = { on(event, cb) { handlers[event] = cb; }, inject() {} };
 apply(ctx, { host: '127.0.0.1', port, uid: 'test-uid' });
 
 const session = { id: 'dsh-session-1', header: { cwd: '/tmp/dsh-project' } };

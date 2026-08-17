@@ -197,7 +197,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: ListTile(
               leading: const Icon(Icons.info_outline),
               title: Text(l10n.settingsAbout),
-              subtitle: const Text('v0.7.2'),
+              subtitle: const Text('v0.7.3'),
             ),
           ),
         ],

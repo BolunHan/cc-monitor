@@ -27,3 +27,5 @@ server.log
 
 # DSH plugin packaging output
 dist/
+node_modules/
+package-lock.json

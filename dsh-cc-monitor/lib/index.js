@@ -18,6 +18,8 @@
  */
 import http from 'node:http';
 import https from 'node:https';
+import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings';
+import z from 'schemastery';
 
 const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_PORT = 9876;
@@ -27,15 +29,35 @@ export const name = 'cc-monitor';
 // Wait for the session store before subscribing to its events.
 export const inject = ['sessions'];
 
-export function apply(ctx, config = {}) {
-  if (config.enabled === false) return;
+/** Settings namespace the Web UI settings card edits. */
+export const CC_MONITOR_SETTINGS_NAMESPACE = settingsNamespace('cc-monitor');
 
-  const serverUrl = resolveServerUrl(config);
-  const uid = config.uid || process.env.CC_MONITOR_UID || 'dsh-default';
+/** Runtime schema for {@link Config}. */
+export const ConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  serverUrl: z.string().default(''),
+  host: z.string().default('127.0.0.1'),
+  port: z.number().step(1).min(1).max(65535).default(9876),
+  uid: z.string().default('dsh-default'),
+});
+
+export function apply(ctx, config = {}) {
+  let current = () => config ?? {};
+
+  const currentConfig = () => {
+    const value = current() ?? {};
+    return {
+      enabled: value.enabled ?? true,
+      serverUrl: value.serverUrl || process.env.CC_MONITOR_URL,
+      host: value.host || process.env.CC_MONITOR_HOST || DEFAULT_HOST,
+      port: value.port || process.env.CC_MONITOR_PORT || DEFAULT_PORT,
+      uid: value.uid || process.env.CC_MONITOR_UID || 'dsh-default',
+    };
+  };
 
   function resolveServerUrl(cfg) {
-    const urlOverride = cfg.serverUrl || process.env.CC_MONITOR_URL;
-    const portOverride = cfg.port || process.env.CC_MONITOR_PORT;
+    const urlOverride = cfg.serverUrl;
+    const portOverride = cfg.port;
 
     if (urlOverride) {
       let base = String(urlOverride).trim();
@@ -45,10 +67,18 @@ export function apply(ctx, config = {}) {
       return url.toString().replace(/\/+$/, '');
     }
 
-    const host = cfg.host || process.env.CC_MONITOR_HOST || DEFAULT_HOST;
+    const host = cfg.host || DEFAULT_HOST;
     const port = portOverride || DEFAULT_PORT;
     return `http://${host}:${port}`;
   }
+
+  const serverUrl = () => resolveServerUrl(currentConfig());
+  const uid = () => currentConfig().uid;
+
+  installSettingsSection(ctx, CC_MONITOR_SETTINGS_NAMESPACE, ConfigSchema, config ?? {}, {
+    setSource: (source) => { current = source; },
+    onChange: () => {},
+  });
 
   // Map callId -> { name, arguments } so tool/result can report the tool name.
   const toolCalls = new Map();
@@ -59,13 +89,14 @@ export function apply(ctx, config = {}) {
   const lastAssistant = new Map();
 
   function candidateUrls() {
-    if (serverUrl.startsWith('https://')) {
-      return [serverUrl, serverUrl.replace('https://', 'http://')];
+    const base = serverUrl();
+    if (base.startsWith('https://')) {
+      return [base, base.replace('https://', 'http://')];
     }
-    if (serverUrl.startsWith('http://')) {
-      return [serverUrl, serverUrl.replace('http://', 'https://')];
+    if (base.startsWith('http://')) {
+      return [base, base.replace('http://', 'https://')];
     }
-    return [`https://${serverUrl}`, `http://${serverUrl}`];
+    return [`https://${base}`, `http://${base}`];
   }
 
   function postOnce(baseUrl, payload) {
@@ -103,6 +134,7 @@ export function apply(ctx, config = {}) {
   }
 
   function post(payload) {
+    if (!currentConfig().enabled) return;
     (async () => {
       let lastError;
       for (const baseUrl of candidateUrls()) {
@@ -164,7 +196,7 @@ export function apply(ctx, config = {}) {
       session_id: String(session.id),
       cwd: session.header?.cwd || process.cwd(),
       agent: 'dsh',
-      cc_monitor_uid: uid,
+      cc_monitor_uid: uid(),
     };
   }
 

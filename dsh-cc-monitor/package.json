@@ -1,16 +1,25 @@
 {
   "name": "dsh-cc-monitor",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "Report DeepSeek Harness (DSH) session activity to cc-monitor",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
     ".": "./lib/index.js",
+    "./client": "./lib/client.js",
     "./package.json": "./package.json"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
     }
   },
   "license": "Apache-2.0",
@@ -21,6 +30,13 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
+    "schemastery": "^3.18.0"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0"
   },
   "keywords": [
     "dsh",
