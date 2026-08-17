@@ -1,0 +1,6 @@
+# dsh-cc-monitor bundle patch: inserts the cc-monitor reporter into the
+# dsh profile roster. Install with:
+#   dsh plugin --profile web add link:/path/to/cc-monitor/dsh-cc-monitor
+- insert:
+    - id: cc-monitor
+      name: 'dsh-cc-monitor'
