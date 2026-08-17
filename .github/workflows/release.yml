@@ -28,12 +28,30 @@ jobs:
       version: ${{ github.ref_name || inputs.version }}
     secrets: inherit
 
-  gh-pages:
-    uses: ./.github/workflows/deploy-gh-pages.yml
-    secrets: inherit
+  dsh-plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Package dsh-cc-monitor plugin
+        run: |
+          mkdir -p dist
+          npm pack ./dsh-cc-monitor --pack-destination dist
+          mv dist/dsh-cc-monitor-*.tgz dist/dsh-cc-monitor.tgz
+          ls -lh dist/dsh-cc-monitor.tgz
+
+      - name: Upload dsh plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-cc-monitor-plugin
+          path: dist/dsh-cc-monitor.tgz
 
   release:
-    needs: [ docker, apk, gh-pages ]
+    needs: [ docker, apk, gh-pages, dsh-plugin ]
     runs-on: ubuntu-latest
     steps:
       - name: Set up Docker Buildx
@@ -50,6 +68,11 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: cc-monitor-${{ needs.apk.outputs.version }}
+
+      - name: Download DSH plugin artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dsh-cc-monitor-plugin
 
       - name: Pull and export Docker image as tar
         run: |
@@ -81,6 +104,11 @@ jobs:
             adb install app-release.apk
             ```
 
+            ### 🧩 DSH reporter plugin
+            ```bash
+            bash <(curl -fsSL https://raw.githubusercontent.com/BolunHan/cc-monitor/${{ github.ref_name }}/scripts/install-dsh-plugin.sh) https://github.com/BolunHan/cc-monitor/releases/download/${{ github.ref_name }}/dsh-cc-monitor.tgz
+            ```
+
             ### 📦 Docker (offline)
             ```bash
             gunzip -c cc-monitor-${{ needs.docker.outputs.version }}.tar.gz | docker load
@@ -91,4 +119,5 @@ jobs:
           files: |
             cc-monitor-${{ needs.docker.outputs.version }}.tar.gz
             app-release.apk
+            dsh-cc-monitor.tgz
           generate_release_notes: true
