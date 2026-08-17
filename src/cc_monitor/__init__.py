@@ -1,3 +1,3 @@
-"""Monitor Claude Code working status via hooks."""
+"""Monitor Claude Code and DSH working status."""
 
-__version__ = "0.6.2"
+__version__ = "0.7.0"

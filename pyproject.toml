@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "cc-monitor"
 dynamic = ["version"]
-description = "Monitor Claude Code working status via hooks"
+description = "Monitor Claude Code and DSH working status via hooks/plugins"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115.0",
