@@ -28,6 +28,10 @@ jobs:
       version: ${{ github.ref_name || inputs.version }}
     secrets: inherit
 
+  gh-pages:
+    uses: ./.github/workflows/deploy-gh-pages.yml
+    secrets: inherit
+
   dsh-plugin:
     runs-on: ubuntu-latest
     steps:
