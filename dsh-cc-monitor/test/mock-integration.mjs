@@ -31,7 +31,11 @@ function fire(event) { handlers['session/event'](session, event); }
 fire({ type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: 'Refactor this code' }] } });
 fire({ type: 'tool/call', data: { callId: 'call-1', name: 'ask_user_question', arguments: '{"question":"ok?"}' } });
 fire({ type: 'tool/result', data: { message: { source: { kind: 'tool', callId: 'call-1' }, content: [{ type: 'text', text: 'yes' }] } } });
-fire({ type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'Done' }] }, usage: { inputTokens: 10, outputTokens: 2, cacheReadTokens: 3 } } });
+// Intermediate assistant steps (reasoning + tool calls) must not become a
+// cc-monitor response — only the final turn/end summary should.
+fire({ type: 'assistant/message', data: { message: { content: [{ type: 'reasoning', reasoning: 'Now verify status.' }, { type: 'tool-call', name: 'run_code' }] }, usage: { inputTokens: 10, outputTokens: 2, cacheReadTokens: 3 } } });
+fire({ type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'Done' }] }, usage: { inputTokens: 12, outputTokens: 3, cacheReadTokens: 4 } } });
+fire({ type: 'turn/end', data: { turn: 1, reason: { kind: 'stop' } } });
 handlers['session/disposed'](session);
 
 await new Promise((resolve) => setTimeout(resolve, 500));
@@ -46,6 +50,7 @@ assert.equal(received[1].hook_event_name, 'PermissionRequest');
 assert.equal(received[2].hook_event_name, 'PostToolUse');
 assert.equal(received[2].tool_name, 'ask_user_question');
 assert.equal(received[3].hook_event_name, 'Stop');
-assert.equal(received[3].usage.input_tokens, 13);
+assert.equal(received[3].last_assistant_message, 'Done');
+assert.equal(received[3].usage.input_tokens, 16);
 assert.equal(received[4].hook_event_name, 'SessionEnd');
 console.log('dsh-cc-monitor mock integration: OK', received.map((r) => r.hook_event_name).join(','));

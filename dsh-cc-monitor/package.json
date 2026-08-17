@@ -1,6 +1,6 @@
 {
   "name": "dsh-cc-monitor",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Report DeepSeek Harness (DSH) session activity to cc-monitor",
   "type": "module",
   "main": "lib/index.js",
@@ -16,7 +16,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/BolunHan/cc-monitor.git",
+    "url": "git+https://github.com/BolunHan/cc-monitor.git",
     "directory": "dsh-cc-monitor"
   },
   "publishConfig": {

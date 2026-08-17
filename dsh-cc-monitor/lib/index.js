@@ -52,6 +52,11 @@ export function apply(ctx, config = {}) {
 
   // Map callId -> { name, arguments } so tool/result can report the tool name.
   const toolCalls = new Map();
+  // Map sessionId -> { text, usage } for the most recent assistant message.
+  // DSH emits assistant/message for every step (including tool-calling steps),
+  // so we defer the cc-monitor Stop until turn/end and only use the final
+  // text-only assistant content as the response summary.
+  const lastAssistant = new Map();
 
   function candidateUrls() {
     if (serverUrl.startsWith('https://')) {
@@ -126,6 +131,15 @@ export function apply(ctx, config = {}) {
     }).filter(Boolean).join('\n').trim();
   }
 
+  function assistantTextFromBlocks(blocks) {
+    if (!Array.isArray(blocks)) return '';
+    return blocks.map((block) => {
+      if (!block || typeof block !== 'object') return '';
+      if (block.type === 'text') return block.text || '';
+      return '';
+    }).filter(Boolean).join('\n').trim();
+  }
+
   function usageToClaudeShape(usage) {
     if (!usage || typeof usage !== 'object') return undefined;
     const inputTokens =
@@ -173,10 +187,8 @@ export function apply(ctx, config = {}) {
 
     if (event.type === 'assistant/message') {
       const message = data.message || {};
-      post({
-        ...basePayload(session),
-        hook_event_name: 'Stop',
-        last_assistant_message: textFromBlocks(message.content),
+      lastAssistant.set(String(session.id), {
+        text: assistantTextFromBlocks(message.content),
         usage: usageToClaudeShape(data.usage),
       });
       return;
@@ -214,11 +226,21 @@ export function apply(ctx, config = {}) {
       return;
     }
 
-    if (event.type === 'turn/end' && data.reason?.kind === 'error') {
+    if (event.type === 'turn/end') {
+      const sessionId = String(session.id);
+      const last = lastAssistant.get(sessionId) || {};
+      lastAssistant.delete(sessionId);
+
+      let lastMessage = last.text || '';
+      if (data.reason?.kind === 'error') {
+        lastMessage = `Turn ended with error: ${data.reason?.error || data.reason?.kind || 'unknown'}`;
+      }
+
       post({
         ...basePayload(session),
         hook_event_name: 'Stop',
-        last_assistant_message: `Turn ended with error: ${data.reason?.error || data.reason?.kind || 'unknown'}`,
+        last_assistant_message: lastMessage,
+        usage: last.usage,
       });
     }
   }
@@ -233,11 +255,13 @@ export function apply(ctx, config = {}) {
 
   ctx.on('session/disposed', (session) => {
     try {
+      const sessionId = String(session.id);
       post({
         ...basePayload(session),
         hook_event_name: 'SessionEnd',
       });
       toolCalls.clear();
+      lastAssistant.delete(sessionId);
     } catch (err) {
       console.warn('[dsh-cc-monitor] disposal report failed:', err?.message || err);
     }

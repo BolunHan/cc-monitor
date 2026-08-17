@@ -49,7 +49,7 @@ If `serverUrl` is set, `port` overrides its port. If `serverUrl` is omitted,
 | DSH event          | cc-monitor event      | State             |
 | ------------------ | --------------------- | ----------------- |
 | direct `user/message` | `UserPromptSubmit` | working           |
-| `assistant/message` | `Stop`              | pending_review    |
+| `assistant/message` | cached, then `turn/end` → `Stop` | pending_review |
 | `tool/call`        | `PreToolUse`          | working           |
 | approval tool call | `PermissionRequest`   | pending_approval  |
 | `tool/result`      | `PostToolUse`         | working           |
