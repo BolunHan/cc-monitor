@@ -6,7 +6,6 @@ import '../providers/session_provider.dart';
 import '../models/session.dart';
 import '../services/notification_service.dart';
 import '../services/secure_store.dart';
-import '../services/api_client.dart';
 import '../widgets/agent_badge.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -133,9 +132,9 @@ class _DashboardScreenState extends State<DashboardScreen>
 
 class _SessionList extends StatelessWidget {
   final List<Session> sessions;
-  final Function(String)? onArchive;
-  final Function(String)? onUnarchive;
-  final Function(String)? onComplete;
+  final Future<void> Function(String)? onArchive;
+  final Future<void> Function(String)? onUnarchive;
+  final Future<void> Function(String)? onComplete;
 
   const _SessionList({
     required this.sessions,
@@ -172,9 +171,9 @@ class _SessionList extends StatelessWidget {
 
 class _SessionCard extends StatefulWidget {
   final Session session;
-  final Function(String)? onArchive;
-  final Function(String)? onUnarchive;
-  final Function(String)? onComplete;
+  final Future<void> Function(String)? onArchive;
+  final Future<void> Function(String)? onUnarchive;
+  final Future<void> Function(String)? onComplete;
   final VoidCallback onTap;
 
   const _SessionCard({
@@ -209,6 +208,20 @@ class _SessionCardState extends State<_SessionCard> {
     setState(() => _deleting = false);
   }
 
+  Future<void> Function(String)? _actionForDirection(
+      DismissDirection direction) {
+    if (direction == DismissDirection.startToEnd) {
+      return widget.onArchive ?? widget.onUnarchive;
+    }
+    return widget.onComplete ?? widget.onUnarchive;
+  }
+
+  void _handleDismissed(DismissDirection direction) {
+    final provider = context.read<SessionProvider>();
+    provider.removeSessionLocally(widget.session.sessionId);
+    _actionForDirection(direction)?.call(widget.session.sessionId);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -230,13 +243,9 @@ class _SessionCardState extends State<_SessionCard> {
         child: const Icon(Icons.check, color: Colors.white),
       ),
       confirmDismiss: (direction) async {
-        if (direction == DismissDirection.startToEnd) {
-          widget.onArchive?.call(widget.session.sessionId);
-        } else {
-          widget.onComplete?.call(widget.session.sessionId);
-        }
-        return false;
+        return _actionForDirection(direction) != null;
       },
+      onDismissed: _handleDismissed,
       child: Card(
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         child: ListTile(

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-/// Colored [cc] / [dsh] badge shown left of a session title.
+/// Colored CC / DSH badge shown left of a session title.
 ///
-/// Claude Code sessions are claude-orange (#D97706) and DSH sessions are
+/// Claude Code sessions are Claude orange-red (#D97757) and DSH sessions are
 /// DeepSeek blue (#4D6BFE). Older sessions without an `agent` field are
 /// treated as Claude for backward compatibility.
 class AgentBadge extends StatelessWidget {
@@ -15,8 +15,8 @@ class AgentBadge extends StatelessWidget {
     final isDsh = agent == 'dsh';
     final color = isDsh
         ? const Color(0xFF4D6BFE)
-        : const Color(0xFFD97706);
-    final label = isDsh ? '[dsh]' : '[cc]';
+        : const Color(0xFFD97757);
+    final label = isDsh ? 'DSH' : 'CC';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

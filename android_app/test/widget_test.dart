@@ -28,26 +28,26 @@ void main() {
     expect(session.agent, 'dsh');
   });
 
-  testWidgets('AgentBadge shows [cc] for Claude sessions', (tester) async {
+  testWidgets('AgentBadge shows CC for Claude sessions', (tester) async {
     await tester.pumpWidget(const MaterialApp(
       home: Scaffold(body: AgentBadge(agent: 'claude')),
     ));
-    expect(find.text('[cc]'), findsOneWidget);
-    expect(find.text('[dsh]'), findsNothing);
+    expect(find.text('CC'), findsOneWidget);
+    expect(find.text('DSH'), findsNothing);
   });
 
-  testWidgets('AgentBadge shows [dsh] for DSH sessions', (tester) async {
+  testWidgets('AgentBadge shows DSH for DSH sessions', (tester) async {
     await tester.pumpWidget(const MaterialApp(
       home: Scaffold(body: AgentBadge(agent: 'dsh')),
     ));
-    expect(find.text('[dsh]'), findsOneWidget);
-    expect(find.text('[cc]'), findsNothing);
+    expect(find.text('DSH'), findsOneWidget);
+    expect(find.text('CC'), findsNothing);
   });
 
-  testWidgets('AgentBadge defaults to [cc] for legacy sessions', (tester) async {
+  testWidgets('AgentBadge defaults to CC for legacy sessions', (tester) async {
     await tester.pumpWidget(const MaterialApp(
       home: Scaffold(body: AgentBadge()),
     ));
-    expect(find.text('[cc]'), findsOneWidget);
+    expect(find.text('CC'), findsOneWidget);
   });
 }

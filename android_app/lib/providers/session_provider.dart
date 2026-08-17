@@ -77,10 +77,12 @@ class SessionProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> loadSessions() async {
+  Future<void> loadSessions({bool showLoading = true}) async {
     if (!_api.isConfigured) return;
-    _loading = true;
-    notifyListeners();
+    if (showLoading) {
+      _loading = true;
+      notifyListeners();
+    }
 
     try {
       final resp = await _api.get('/api/status');
@@ -207,21 +209,29 @@ class SessionProvider extends ChangeNotifier {
 
   Future<void> archiveSession(String sessionId) async {
     await _api.post('/api/session/$sessionId/archive');
-    await loadSessions();
+    await loadSessions(showLoading: false);
   }
 
   Future<void> unarchiveSession(String sessionId) async {
     await _api.post('/api/session/$sessionId/unarchive');
-    await loadSessions();
+    await loadSessions(showLoading: false);
   }
 
   Future<void> markComplete(String sessionId) async {
     await _api.post('/api/session/$sessionId/complete');
-    await loadSessions();
+    await loadSessions(showLoading: false);
   }
 
   Future<void> deleteSession(String sessionId) async {
     await _api.delete('/api/session/$sessionId');
+    removeSessionLocally(sessionId);
+  }
+
+  /// Remove a session from every in-memory list and notify listeners.
+  ///
+  /// Used by swipe-to-dismiss `onDismissed` so the card leaves the tree
+  /// synchronously before the slower server action + reconciliation run.
+  void removeSessionLocally(String sessionId) {
     _active.removeWhere((s) => s.sessionId == sessionId);
     _complete.removeWhere((s) => s.sessionId == sessionId);
     _archived.removeWhere((s) => s.sessionId == sessionId);
