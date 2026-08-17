@@ -7,6 +7,7 @@ class Session {
   final String? summary;
   final bool archived;
   final String ccMonitorUid;
+  final String agent;
   final DateTime updatedAt;
 
   const Session({
@@ -18,6 +19,7 @@ class Session {
     this.summary,
     this.archived = false,
     this.ccMonitorUid = '',
+    this.agent = 'claude',
     required this.updatedAt,
   });
 
@@ -31,6 +33,7 @@ class Session {
       summary: json['summary'] as String?,
       archived: json['archived'] as bool? ?? false,
       ccMonitorUid: json['cc_monitor_uid'] as String? ?? '',
+      agent: json['agent'] as String? ?? 'claude',
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
   }

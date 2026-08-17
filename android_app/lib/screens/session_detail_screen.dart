@@ -7,6 +7,7 @@ import '../models/session.dart';
 import '../models/session_stats.dart';
 import '../models/message.dart';
 import '../providers/session_provider.dart';
+import '../widgets/agent_badge.dart';
 
 class SessionDetailScreen extends StatefulWidget {
   final String sessionId;
@@ -207,6 +208,8 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
           appBar: AppBar(
             title: Row(
               children: [
+                AgentBadge(agent: session.agent),
+                const SizedBox(width: 6),
                 Flexible(
                   child: Text(
                     session.summary?.isNotEmpty == true

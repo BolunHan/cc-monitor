@@ -7,6 +7,7 @@ import '../models/session.dart';
 import '../services/notification_service.dart';
 import '../services/secure_store.dart';
 import '../services/api_client.dart';
+import '../widgets/agent_badge.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -241,8 +242,16 @@ class _SessionCardState extends State<_SessionCard> {
         child: ListTile(
           onTap: widget.onTap,
           leading: CircleAvatar(backgroundColor: _stateColor(), radius: 6),
-          title: Text(widget.session.summary ?? widget.session.cwd,
-              maxLines: 1, overflow: TextOverflow.ellipsis),
+          title: Row(
+            children: [
+              AgentBadge(agent: widget.session.agent),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(widget.session.summary ?? widget.session.cwd,
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+            ],
+          ),
           subtitle: Text([
             _stateLabel(widget.session.state, l10n),
             if (widget.session.ccMonitorUid.isNotEmpty)

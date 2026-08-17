@@ -1,30 +1,53 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:cc_monitor_app/main.dart';
+import 'package:cc_monitor_app/models/session.dart';
+import 'package:cc_monitor_app/widgets/agent_badge.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  test('Session.fromJson defaults agent to claude', () {
+    final session = Session.fromJson({
+      'session_id': 's1',
+      'cwd': '/tmp',
+      'state': 'idle',
+      'raw_event': 'Stop',
+      'updated_at': '2026-08-17T00:00:00.000000Z',
+    });
+    expect(session.agent, 'claude');
+  });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  test('Session.fromJson preserves dsh agent', () {
+    final session = Session.fromJson({
+      'session_id': 's2',
+      'cwd': '/tmp',
+      'state': 'working',
+      'raw_event': 'UserPromptSubmit',
+      'agent': 'dsh',
+      'updated_at': '2026-08-17T00:00:00.000000Z',
+    });
+    expect(session.agent, 'dsh');
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  testWidgets('AgentBadge shows [cc] for Claude sessions', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: AgentBadge(agent: 'claude')),
+    ));
+    expect(find.text('[cc]'), findsOneWidget);
+    expect(find.text('[dsh]'), findsNothing);
+  });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  testWidgets('AgentBadge shows [dsh] for DSH sessions', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: AgentBadge(agent: 'dsh')),
+    ));
+    expect(find.text('[dsh]'), findsOneWidget);
+    expect(find.text('[cc]'), findsNothing);
+  });
+
+  testWidgets('AgentBadge defaults to [cc] for legacy sessions', (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(body: AgentBadge()),
+    ));
+    expect(find.text('[cc]'), findsOneWidget);
   });
 }
