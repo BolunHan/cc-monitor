@@ -9,7 +9,7 @@
 
 <a name="english"></a>
 
-# 🚦 cc-monitor — Cyber Traffic Light for Claude Code<br><small>Claude Code 赛博红绿灯</small>
+# 🚦 cc-monitor — Cyber Traffic Light for Claude Code & DSH<br><small>Claude Code / DSH 赛博红绿灯</small>
 
 [**→ Open Dashboard**](https://bolunhan.github.io/cc-monitor/)
 
@@ -87,6 +87,21 @@ curl -skSL https://<server-ip>:9876/static/install-hooks.sh | SERVER_URL=https:/
 ```
 
 > **🔐 One-time cert step:** Open `https://<server-ip>:9876` in your browser, click **Advanced** → **Proceed to site** to trust the self-signed certificate. Required when using the remote dashboard.
+
+### Install the DSH Reporter Plugin
+
+On the machine running DeepSeek Harness (DSH):
+
+```bash
+dsh plugin --profile web add link:/path/to/cc-monitor/dsh-cc-monitor
+```
+
+Then confirm the profile's `package.json` lists `dsh-cc-monitor` in
+`dsh.profile.bundles` and run `dsh --profile web --dump-config` — you should
+see a `cc-monitor` row. The plugin reports DSH session activity to
+`http://127.0.0.1:9876` by default; override with `CC_MONITOR_URL` (or a
+`serverUrl` patch entry). DSH sessions appear with a blue `[dsh]` badge in the
+same dashboard, next to Claude Code's orange `[cc]` badge.
 
 ---
 
@@ -237,7 +252,7 @@ cc-monitor --port 9876    # Start dev server
 
 <a name="chinese"></a>
 
-# 🚦 cc-monitor — Claude Code 赛博红绿灯
+# 🚦 cc-monitor — Claude Code / DSH 赛博红绿灯
 
 [**→ 打开仪表盘**](https://bolunhan.github.io/cc-monitor/)
 
@@ -304,6 +319,16 @@ curl -skSL https://<服务器IP>:9876/static/install-hooks.sh | SERVER_URL=https
 ```
 
 > **🔐 一次性证书步骤：** 在浏览器中打开 `https://<服务器IP>:9876`，点击 **高级** → **继续访问** 以信任自签名证书。使用远程仪表盘时必须执行此步骤。
+
+### 安装 DSH 上报插件
+
+在运行 DeepSeek Harness（DSH）的机器上：
+
+```bash
+dsh plugin --profile web add link:/path/to/cc-monitor/dsh-cc-monitor
+```
+
+确认配置文件的 `package.json` 在 `dsh.profile.bundles` 中列出了 `dsh-cc-monitor`，然后运行 `dsh --profile web --dump-config` —— 应该能看到 `cc-monitor` 行。插件默认将 DSH 会话上报到 `http://127.0.0.1:9876`，可通过 `CC_MONITOR_URL`（或 `serverUrl` patch 项）覆盖。DSH 会话会在同一仪表盘中显示蓝色 `[dsh]` 徽章，与 Claude Code 的橙色 `[cc]` 徽章并列。
 
 ---
 
