@@ -8,6 +8,8 @@
     --color-working: #3b82f6;
     --color-pending: #f59e0b;
     --color-done: #22c55e;
+    --color-claude: #d97706;
+    --color-dsh: #4d6bfe;
     --color-connected: #22c55e;
     --color-disconnected: #ef4444;
     --color-danger: #ef4444;
@@ -472,6 +474,18 @@ body {
     margin-bottom: 10px;
 }
 
+.session-card__identity {
+    min-width: 0;
+    flex: 1;
+}
+
+.session-card__title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
 .session-card__title {
     font-size: 15px;
     font-weight: 600;
@@ -480,6 +494,29 @@ body {
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 220px;
+}
+
+.session-card__agent {
+    flex-shrink: 0;
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 3px 5px;
+    border-radius: 4px;
+    letter-spacing: 0.03em;
+}
+
+.agent-claude {
+    background: color-mix(in srgb, var(--color-claude) 18%, transparent);
+    color: var(--color-claude);
+    border: 1px solid color-mix(in srgb, var(--color-claude) 45%, transparent);
+}
+
+.agent-dsh {
+    background: color-mix(in srgb, var(--color-dsh) 18%, transparent);
+    color: var(--color-dsh);
+    border: 1px solid color-mix(in srgb, var(--color-dsh) 45%, transparent);
 }
 
 .session-card__subtitle {

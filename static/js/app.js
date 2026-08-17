@@ -60,7 +60,7 @@ function loadSessionsView() {
     cards.forEach((meta, sid) => {
         const prev = prevStates.get(sid);
         if (prev) {
-            const session = { session_id: sid, state: prev.state, archived: prev.archived, cwd: meta.cwd, raw_event: meta.rawEvent, raw_detail: meta.rawDetail, summary: meta.summary, cc_monitor_uid: meta.uid, updated_at: meta.updatedAt };
+            const session = { session_id: sid, state: prev.state, archived: prev.archived, cwd: meta.cwd, raw_event: meta.rawEvent, raw_detail: meta.rawDetail, summary: meta.summary, cc_monitor_uid: meta.uid, agent: meta.agent || "claude", updated_at: meta.updatedAt };
             updateCard(session);
         }
     });
@@ -237,6 +237,16 @@ function loadSessionsView() {
         return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
     }
 
+    function agentName(session) {
+        return session.agent === "dsh" ? "dsh" : "cc";
+    }
+
+    function agentBadgeHtml(session, extraClass) {
+        const name = agentName(session);
+        const cssName = name === "dsh" ? "dsh" : "claude";
+        return `<span class="session-card__agent agent-${cssName}${extraClass ? " " + extraClass : ""}">[${name}]</span>`;
+    }
+
     // ---- Section routing ----
 
     function getSection(session) {
@@ -316,6 +326,7 @@ function loadSessionsView() {
         const basename = dirBasename(session.cwd);
         const title = basename || session.session_id.substring(0, 8) + "…";
         const subtitle = basename ? escapeHtml(session.session_id) : "";
+        const agentBadge = agentBadgeHtml(session);
         const summary = session.summary
             ? `<div class="session-card__summary" title="${escapeHtml(session.summary)}">${escapeHtml(truncate(session.summary, 100))}</div>`
             : "";
@@ -339,9 +350,12 @@ function loadSessionsView() {
         card.innerHTML = `
             <div class="session-card__body">
                 <div class="session-card__header">
-                    <div>
-                        <div class="session-card__title" title="${escapeHtml(session.cwd || session.session_id)}">
-                            ${escapeHtml(title)}
+                    <div class="session-card__identity">
+                        <div class="session-card__title-row">
+                            ${agentBadge}
+                            <div class="session-card__title" title="${escapeHtml(session.cwd || session.session_id)}">
+                                ${escapeHtml(title)}
+                            </div>
                         </div>
                         ${subtitle ? `<div class="session-card__subtitle" title="${escapeHtml(session.session_id)}">${subtitle.substring(0, 20)}</div>` : ""}
                     </div>
@@ -396,6 +410,7 @@ function loadSessionsView() {
         cards.get(session.session_id).rawDetail = session.raw_detail;
         cards.get(session.session_id).summary = session.summary;
         cards.get(session.session_id).uid = session.cc_monitor_uid;
+        cards.get(session.session_id).agent = session.agent || "claude";
         cards.get(session.session_id).sizeBytes = session.size_bytes;
         cards.get(session.session_id).updatedAt = session.updated_at;
     }
@@ -533,6 +548,7 @@ function loadSessionsView() {
         const isArchived = prev.archived;
         const badgeState = isArchived ? "archived" : prev.state;
         const badgeLabel = isArchived ? I18n.t("state.archived") : I18n.t("state." + prev.state);
+        const agentBadge = agentBadgeHtml({agent: meta.agent || "claude"}, "detail-modal__agent");
 
         const overlay = document.createElement("div");
         overlay.className = "detail-overlay";
@@ -542,6 +558,7 @@ function loadSessionsView() {
                 <div class="detail-modal__header">
                     <div class="detail-modal__title-row">
                         <div class="detail-modal__title">
+                            ${agentBadge}
                             <span class="detail-modal__title-text">${escapeHtml(title)}</span>
                             <span class="session-card__badge badge-${badgeState}">${badgeLabel}</span>
                         </div>
