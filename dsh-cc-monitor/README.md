@@ -25,13 +25,22 @@ Override them with environment variables or a patch entry:
     - id: cc-monitor
       name: 'dsh-cc-monitor'
       config:
-        serverUrl: 'http://127.0.0.1:9876'
+        # Full override; host/port below are ignored when this is set.
+        serverUrl: 'https://192.168.3.25:9876'
+        # Or configure host + port separately:
+        # host: '192.168.3.25'
+        # port: 9876
         uid: 'my-dsh-instance'
 ```
 
+If `serverUrl` is set, `port` overrides its port. If `serverUrl` is omitted,
+`host` + `port` are used to build `http://<host>:<port>`.
+
 | Setting      | Environment        | Default                  |
 | ------------ | ------------------ | ------------------------ |
-| `serverUrl`  | `CC_MONITOR_URL`   | `http://127.0.0.1:9876` |
+| `serverUrl`  | `CC_MONITOR_URL`   | —                        |
+| `host`       | `CC_MONITOR_HOST`  | `127.0.0.1`              |
+| `port`       | `CC_MONITOR_PORT`  | `9876`                   |
 | `uid`        | `CC_MONITOR_UID`   | `dsh-default`            |
 | `enabled`    | —                  | `true`                   |
 

@@ -105,9 +105,10 @@ dsh plugin --profile web add dsh-cc-monitor
 Then restart `dsh web`. Verify with `dsh --profile web --dump-config` — you
 should see a `cc-monitor` row. The plugin reports DSH session activity to
 `http://127.0.0.1:9876` by default (it also auto-falls-back to HTTPS and
-accepts the local self-signed cert); override with `CC_MONITOR_URL` (or a
-`serverUrl` patch entry). DSH sessions appear with a blue `DSH` badge in the
-same dashboard, next to Claude Code's orange-red `CC` badge.
+accepts the local self-signed cert). Configure it with `serverUrl`, or with
+`host` + `port`, in a `cordis.patch.yml` entry (env: `CC_MONITOR_URL`,
+`CC_MONITOR_HOST`, `CC_MONITOR_PORT`). DSH sessions appear with a blue `DSH`
+badge in the same dashboard, next to Claude Code's orange-red `CC` badge.
 
 ---
 
@@ -340,7 +341,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/BolunHan/cc-monitor/main/scr
 dsh plugin --profile web add dsh-cc-monitor
 ```
 
-然后重启 `dsh web`。运行 `dsh --profile web --dump-config` 验证，应该能看到 `cc-monitor` 行。插件默认将 DSH 会话上报到 `http://127.0.0.1:9876`（并会自动回退到 HTTPS、接受本机自签名证书），可通过 `CC_MONITOR_URL`（或 `serverUrl` patch 项）覆盖。DSH 会话会在同一仪表盘中显示蓝色 `DSH` 徽章，与 Claude Code 的橙红色 `CC` 徽章并列。
+然后重启 `dsh web`。运行 `dsh --profile web --dump-config` 验证，应该能看到 `cc-monitor` 行。插件默认将 DSH 会话上报到 `http://127.0.0.1:9876`（并会自动回退到 HTTPS、接受本机自签名证书）。可在 `cordis.patch.yml` 中用 `serverUrl`，或用 `host` + `port` 配置（环境变量：`CC_MONITOR_URL`、`CC_MONITOR_HOST`、`CC_MONITOR_PORT`）。DSH 会话会在同一仪表盘中显示蓝色 `DSH` 徽章，与 Claude Code 的橙红色 `CC` 徽章并列。
 
 ---
 

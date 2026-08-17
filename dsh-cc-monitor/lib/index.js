@@ -7,16 +7,20 @@
  * dashboard) that this session belongs to DSH rather than Claude Code.
  *
  * Configuration (all optional):
- *   config.serverUrl — cc-monitor server base URL
+ *   config.serverUrl — cc-monitor server base URL (full override)
+ *   config.host      — server host, used when serverUrl is not set
+ *   config.port      — server port, overrides the URL port when set
  *   config.uid       — installation identifier sent as cc_monitor_uid
  *   config.enabled   — master switch (default true)
  *
- * Environment fallbacks: CC_MONITOR_URL, CC_MONITOR_UID.
+ * Environment fallbacks:
+ *   CC_MONITOR_URL, CC_MONITOR_HOST, CC_MONITOR_PORT, CC_MONITOR_UID.
  */
 import http from 'node:http';
 import https from 'node:https';
 
-const DEFAULT_SERVER_URL = 'http://127.0.0.1:9876';
+const DEFAULT_HOST = '127.0.0.1';
+const DEFAULT_PORT = 9876;
 
 export const name = 'cc-monitor';
 
@@ -26,8 +30,25 @@ export const inject = ['sessions'];
 export function apply(ctx, config = {}) {
   if (config.enabled === false) return;
 
-  const serverUrl = (config.serverUrl || process.env.CC_MONITOR_URL || DEFAULT_SERVER_URL).replace(/\/+$/, '');
+  const serverUrl = resolveServerUrl(config);
   const uid = config.uid || process.env.CC_MONITOR_UID || 'dsh-default';
+
+  function resolveServerUrl(cfg) {
+    const urlOverride = cfg.serverUrl || process.env.CC_MONITOR_URL;
+    const portOverride = cfg.port || process.env.CC_MONITOR_PORT;
+
+    if (urlOverride) {
+      let base = String(urlOverride).trim();
+      if (!/^https?:\/\//i.test(base)) base = `http://${base}`;
+      const url = new URL(base);
+      if (portOverride) url.port = String(portOverride);
+      return url.toString().replace(/\/+$/, '');
+    }
+
+    const host = cfg.host || process.env.CC_MONITOR_HOST || DEFAULT_HOST;
+    const port = portOverride || DEFAULT_PORT;
+    return `http://${host}:${port}`;
+  }
 
   // Map callId -> { name, arguments } so tool/result can report the tool name.
   const toolCalls = new Map();

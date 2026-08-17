@@ -23,7 +23,7 @@ const port = server.address().port;
 
 const handlers = {};
 const ctx = { on(event, cb) { handlers[event] = cb; } };
-apply(ctx, { serverUrl: `http://127.0.0.1:${port}`, uid: 'test-uid' });
+apply(ctx, { host: '127.0.0.1', port, uid: 'test-uid' });
 
 const session = { id: 'dsh-session-1', header: { cwd: '/tmp/dsh-project' } };
 function fire(event) { handlers['session/event'](session, event); }
