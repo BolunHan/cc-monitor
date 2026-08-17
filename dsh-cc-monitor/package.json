@@ -1,6 +1,6 @@
 {
   "name": "dsh-cc-monitor",
-  "version": "0.1.1",
+  "version": "0.7.2",
   "description": "Report DeepSeek Harness (DSH) session activity to cc-monitor",
   "type": "module",
   "main": "lib/index.js",
