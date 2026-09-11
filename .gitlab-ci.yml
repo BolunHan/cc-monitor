@@ -76,14 +76,21 @@ docker:build:
     - *version_script
     - . ./version.env
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    # Tagged both without and (on tag pipelines) with the leading "v". The
+    # release job's `release:` block is expanded by GitLab, not a shell, so it
+    # cannot strip the "v" — having the raw tag on the image is what lets the
+    # release notes print a docker pull command that actually works.
+    # `set --` rather than a string, so an unset CI_COMMIT_TAG cannot leave a
+    # dangling `--tag image:` on manual runs.
     - |
-      docker build \
-        --cache-from "$CI_REGISTRY_IMAGE:latest" \
-        --tag "$CI_REGISTRY_IMAGE:latest" \
-        --tag "$CI_REGISTRY_IMAGE:$CC_MONITOR_VERSION" \
-        .
+      set -- --cache-from "$CI_REGISTRY_IMAGE:latest" \
+             --tag "$CI_REGISTRY_IMAGE:latest" \
+             --tag "$CI_REGISTRY_IMAGE:$CC_MONITOR_VERSION"
+      if [ -n "$CI_COMMIT_TAG" ]; then set -- "$@" --tag "$CI_REGISTRY_IMAGE:$CI_COMMIT_TAG"; fi
+      docker build "$@" .
     - docker push "$CI_REGISTRY_IMAGE:$CC_MONITOR_VERSION"
     - docker push "$CI_REGISTRY_IMAGE:latest"
+    - if [ -n "$CI_COMMIT_TAG" ]; then docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_TAG"; fi
   artifacts:
     reports:
       dotenv: version.env
@@ -145,9 +152,16 @@ pages:
 npm:publish:
   stage: publish
   image: node:22
+  # Two tokens, for two different things — npm needs both here:
+  #   NPM_ID_TOKEN      authenticates the publish (trusted publishing)
+  #   SIGSTORE_ID_TOKEN signs the provenance attestation
+  # npm fails with "Provenance generation in GitLab CI requires
+  # \"SIGSTORE_ID_TOKEN\" with \"sigstore\" audience" without the second.
   id_tokens:
     NPM_ID_TOKEN:
       aud: "npm:registry.npmjs.org"
+    SIGSTORE_ID_TOKEN:
+      aud: "sigstore"
   rules:
     - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
   script:
@@ -169,22 +183,30 @@ release:assets:
   needs: [ docker:build, apk:build, dsh:package ]
   rules:
     - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
+  # docker:27 is Alpine-based and does not ship curl; the uploads below need it.
+  before_script:
+    - apk add --no-cache curl
   script:
     - VERSION="${CI_COMMIT_TAG#v}"
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
     - docker pull "$CI_REGISTRY_IMAGE:$VERSION"
-    - docker save "$CI_REGISTRY_IMAGE:$VERSION" | gzip > "cc-monitor-${VERSION}.tar.gz"
-    - ls -lh "cc-monitor-${VERSION}.tar.gz"
+    - docker save "$CI_REGISTRY_IMAGE:$VERSION" | gzip > cc-monitor-docker.tar.gz
+    - ls -lh cc-monitor-docker.tar.gz
+    # Uploaded under the *raw* tag (v0.8.0, not 0.8.0) and with version-free
+    # filenames, because the release job below links to these exact paths and
+    # its `release:` block is expanded by GitLab rather than by a shell — it
+    # cannot do "${VAR#v}" the way this script can. Keeping the version only in
+    # the directory means the two can never disagree.
     - |
       upload() {
         curl --fail --silent --show-error \
           --header "JOB-TOKEN: $CI_JOB_TOKEN" \
           --upload-file "$1" \
-          "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/cc-monitor/${VERSION}/$(basename "$1")"
+          "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/cc-monitor/${CI_COMMIT_TAG}/$2"
       }
-      upload android_app/build/app/outputs/flutter-apk/app-release.apk
-      upload dist/dsh-cc-monitor.tgz
-      upload "cc-monitor-${VERSION}.tar.gz"
+      upload android_app/build/app/outputs/flutter-apk/app-release.apk app-release.apk
+      upload dist/dsh-cc-monitor.tgz dsh-cc-monitor.tgz
+      upload cc-monitor-docker.tar.gz cc-monitor-docker.tar.gz
 
 # --------------------------------------------------------------- Release ----
 # Mirrors the GitHub Release. Note GitLab release assets are *links*, not
@@ -208,10 +230,10 @@ release:
 
       ### 🐳 Docker
       ```bash
-      docker pull $CI_REGISTRY_IMAGE:${CI_COMMIT_TAG#v}
+      docker pull $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG
       docker run --network=host \
         -v ~/.cc-monitor/docker/data:/data/.cc-monitor \
-        $CI_REGISTRY_IMAGE:${CI_COMMIT_TAG#v}
+        $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG
       ```
 
       ### 📱 Android
@@ -228,13 +250,13 @@ release:
 
       ### 📦 Docker (offline)
       ```bash
-      gunzip -c cc-monitor-${CI_COMMIT_TAG#v}.tar.gz | docker load
+      gunzip -c cc-monitor-docker.tar.gz | docker load
       ```
     assets:
       links:
         - name: "app-release.apk"
-          url: "${CI_PROJECT_URL}/-/packages/generic/cc-monitor/${CI_COMMIT_TAG#v}/app-release.apk"
+          url: "${CI_PROJECT_URL}/-/packages/generic/cc-monitor/${CI_COMMIT_TAG}/app-release.apk"
         - name: "dsh-cc-monitor.tgz"
-          url: "${CI_PROJECT_URL}/-/packages/generic/cc-monitor/${CI_COMMIT_TAG#v}/dsh-cc-monitor.tgz"
-        - name: "cc-monitor-${CI_COMMIT_TAG#v}.tar.gz"
-          url: "${CI_PROJECT_URL}/-/packages/generic/cc-monitor/${CI_COMMIT_TAG#v}/cc-monitor-${CI_COMMIT_TAG#v}.tar.gz"
+          url: "${CI_PROJECT_URL}/-/packages/generic/cc-monitor/${CI_COMMIT_TAG}/dsh-cc-monitor.tgz"
+        - name: "cc-monitor-docker.tar.gz"
+          url: "${CI_PROJECT_URL}/-/packages/generic/cc-monitor/${CI_COMMIT_TAG}/cc-monitor-docker.tar.gz"
