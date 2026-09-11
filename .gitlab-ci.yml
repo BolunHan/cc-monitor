@@ -18,10 +18,12 @@
 # Optional:
 #   NPM_TOKEN   only if you move npm:publish off trusted publishing. By default
 #               it uses npm trusted publishing via the NPM_ID_TOKEN id_token,
-#               mirroring the GitHub setup — which requires this GitLab project
-#               to be registered as a trusted publisher on npmjs.com for
-#               dsh-cc-monitor. If that is not configured, set this job to
-#               `when: manual` or supply NPM_TOKEN and drop --provenance.
+#               which requires this GitLab project to be registered as a
+#               trusted publisher on npmjs.com for dsh-cc-monitor. If that is
+#               not configured, set this job to `when: manual` or supply
+#               NPM_TOKEN instead.
+#
+# Provenance is disabled on purpose — see the comment on npm:publish.
 #
 # Docker-in-Docker is used for the image builds; GitLab.com's shared runners
 # support this out of the box.
@@ -176,12 +178,32 @@ npm:publish:
       aud: "npm:registry.npmjs.org"
     SIGSTORE_ID_TOKEN:
       aud: "sigstore"
+  variables:
+    # Provenance is OFF, deliberately.
+    #
+    # This repository is mirrored to GitHub and GitLab, and npm validates the
+    # attestation's source against package.json. The attestation is minted from
+    # whichever CI published it, so publishing here makes npm expect
+    # "https://gitlab.com/BolunHan/cc-monitor" while package.json correctly says
+    # "git+https://github.com/BolunHan/cc-monitor.git" — the GitHub repo is the
+    # primary, more discoverable one, and that field is what npmjs.com links to.
+    #
+    # The publish is rejected with:
+    #   422 ... Failed to validate repository information:
+    #   package.json: "repository.url" is "git+https://github.com/...", expected
+    #   to match "https://gitlab.com/..." from provenance
+    #
+    # Trusted publishing generates provenance BY DEFAULT, so simply dropping
+    # --provenance is not enough — it has to be switched off explicitly.
+    # To restore provenance instead, point repository.url at GitLab, at the
+    # cost of the npmjs.com "repository" link leaving GitHub.
+    NPM_CONFIG_PROVENANCE: "false"
   rules:
     - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
   script:
     - npm install -g npm@latest
     - cd dsh-cc-monitor
-    - npm publish --provenance --access public
+    - npm publish --access public
 
 # -------------------------------------------------- offline docker archive ----
 # Mirrors the "Pull and export Docker image as tar" step of the GitHub
