@@ -15,9 +15,11 @@
 #   scripts/build-dev-docker.sh --down          # stop and remove the sandbox
 #   scripts/build-dev-docker.sh --seed-only     # (re)seed the claude config dir
 #
-# Proxy overrides (defaults below point at the usual LAN proxy):
-#   BUILD_PROXY=http://192.168.3.25:7780
-#   BUILD_ALL_PROXY=socks5://192.168.3.25:7779
+# Proxy, if this network needs one to build:
+#   BUILD_PROXY=http://your-proxy:port
+#   BUILD_ALL_PROXY=socks5://your-proxy:port
+#
+# Nothing is set by default — with no proxy exported the build goes direct.
 #
 # The repo's own docker daemon needs root here, so every docker invocation goes
 # through sudo. HOME is preserved explicitly — sudo resets it, and compose
@@ -28,9 +30,9 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${REPO_ROOT}/docker-compose.dev.yaml"
 
-# Build-time proxy. Override via the environment; the socks proxy is only
-# exported if the caller asked for it, since most builds do not need it.
-BUILD_PROXY="${BUILD_PROXY:-http://192.168.3.25:7780}"
+# Build-time proxy, taken from the environment and defaulting to none. This
+# repository is public, so no proxy host or port is committed here.
+BUILD_PROXY="${BUILD_PROXY:-}"
 BUILD_ALL_PROXY="${BUILD_ALL_PROXY:-}"
 NO_PROXY_DEFAULT="localhost,127.0.0.1,::1,192.168.3.0/24,10.8.0.0/24"
 

@@ -34,7 +34,14 @@ FLUTTER_IMAGE := cc-monitor-flutter
 DOCKER := $(shell docker ps > /dev/null 2>&1 && echo docker || echo "sudo env HOME=$(HOME) docker")
 
 # Use host network when proxy is on localhost (127.0.0.1)
-DOCKER_NET := $(shell [ "$$HTTP_PROXY" = "http://127.0.0.1:7780" ] && echo "--network=host" || echo "")
+# A proxy on loopback is only reachable from the host network namespace, so
+# builds and runs need --network=host. Matches any loopback proxy rather than
+# one specific port — this repository is public, so no local setup is recorded.
+#
+# Deliberately findstring rather than a shell `case`: the ')' that terminates a
+# shell case pattern would also terminate $(shell ...) early, silently leaking
+# the rest of the command into the recipe.
+DOCKER_NET := $(if $(findstring 127.0.0.1,$(HTTP_PROXY)),--network=host,$(if $(findstring localhost,$(HTTP_PROXY)),--network=host,))
 
 .PHONY: docker-flutter-image
 docker-flutter-image:

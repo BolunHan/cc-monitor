@@ -31,9 +31,9 @@ Override them with environment variables or a patch entry:
       name: 'dsh-cc-monitor'
       config:
         # Full override; host/port below are ignored when this is set.
-        serverUrl: 'https://192.168.3.25:9876'
+        serverUrl: 'https://192.168.1.100:9876'
         # Or configure host + port separately:
-        # host: '192.168.3.25'
+        # host: '192.168.1.100'
         # port: 9876
         uid: 'my-dsh-instance'
 ```

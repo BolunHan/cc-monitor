@@ -44,7 +44,7 @@ lifecycle ──┘         │                              │
 ```
 ┌───────────────────────────────────────────────────┐
 │ 🔔  cc-monitor                                    │
-│     Connected to: 192.168.3.25:9876                │
+│     Connected to: 192.168.1.100:9876                │
 │                                                    │
 │  ┌──────────────┐ ┌──────────────┐ ┌────────────┐ │
 │  │  3 working   │ │  1 pending   │ │  0 done     │ │
@@ -128,13 +128,13 @@ Every call to `notifyListeners()` in SessionProvider is accompanied by `_syncToN
 
 ## Build
 
-No changes to `Dockerfile.flutter`. Kotlin source compiles as part of the standard Flutter Android Gradle build. Build proxy: `192.168.3.25:7780`.
+No changes to `Dockerfile.flutter`. Kotlin source compiles as part of the standard Flutter Android Gradle build. Build proxy: `your-proxy:port`.
 
 ```bash
-docker build --build-arg HTTP_PROXY=http://192.168.3.25:7780 --build-arg HTTPS_PROXY=http://192.168.3.25:7780 \
+docker build --build-arg HTTP_PROXY=http://your-proxy:port --build-arg HTTPS_PROXY=http://your-proxy:port \
   -f Dockerfile.flutter -t cc-monitor-flutter .
 docker run --rm -it \
-  -e HTTP_PROXY=http://192.168.3.25:7780 -e HTTPS_PROXY=http://192.168.3.25:7780 \
+  -e HTTP_PROXY=http://your-proxy:port -e HTTPS_PROXY=http://your-proxy:port \
   -v ${PWD}:/build --workdir /build/android_app \
   cc-monitor-flutter flutter build apk --release
 ```

@@ -15,7 +15,7 @@
 - Target SDK: `flutter.targetSdkVersion`
 - Kotlin JVM target: 17
 - Desugaring enabled (coreLibraryDesugaring 2.1.4)
-- Docker build proxy: `192.168.3.25:7780`
+- Docker build proxy: `your-proxy:port`
 - Remove `flutter_local_notifications` dependency
 
 ---
@@ -1187,10 +1187,10 @@ git commit -m "feat: add lifecycle listener to refresh sessions and sync notific
 - [ ] **Step 1: Build APK with Docker**
 
 ```bash
-docker build --build-arg HTTP_PROXY=http://192.168.3.25:7780 --build-arg HTTPS_PROXY=http://192.168.3.25:7780 \
+docker build --build-arg HTTP_PROXY=http://your-proxy:port --build-arg HTTPS_PROXY=http://your-proxy:port \
   -f Dockerfile.flutter -t cc-monitor-flutter .
 docker run --rm \
-  -e HTTP_PROXY=http://192.168.3.25:7780 -e HTTPS_PROXY=http://192.168.3.25:7780 \
+  -e HTTP_PROXY=http://your-proxy:port -e HTTPS_PROXY=http://your-proxy:port \
   -v ${PWD}:/build --workdir /build/android_app \
   cc-monitor-flutter flutter build apk --release
 ```
