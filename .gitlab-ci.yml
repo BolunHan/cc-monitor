@@ -32,13 +32,20 @@ stages:
   - publish
   - release
 
-# Only build for main, version tags, merge requests, and manual triggers.
+# Trigger scope mirrors the GitHub setup exactly: every workflow over there was
+# `workflow_dispatch` / `workflow_call`, so nothing ran on an ordinary push —
+# only on a version tag (via release.yml) or a manual dispatch. Keeping that
+# here avoids burning CI minutes on a full APK build for every commit.
 workflow:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "web"'
     - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
-    - if: '$CI_COMMIT_BRANCH == "main"'
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+# Shared by every build job, for the same reason.
+.build_rules: &build_rules
+  - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
+  - if: '$CI_PIPELINE_SOURCE == "web"'
+    when: manual
 
 # Version stamping. On a tag pipeline the version is the tag minus its leading
 # "v"; otherwise a dev stamp, matching the GitHub workflows' behaviour.
@@ -62,6 +69,7 @@ docker:build:
   image: docker:27
   services:
     - docker:27-dind
+  rules: *build_rules
   variables:
     DOCKER_TLS_CERTDIR: "/certs"
   script:
@@ -87,6 +95,7 @@ docker:build:
 apk:build:
   stage: build
   image: ghcr.io/cirruslabs/flutter:stable
+  rules: *build_rules
   script:
     - *version_script
     - flutter --version
@@ -104,6 +113,7 @@ apk:build:
 dsh:package:
   stage: build
   image: node:22
+  rules: *build_rules
   script:
     - mkdir -p dist
     - npm pack ./dsh-cc-monitor --pack-destination dist
@@ -121,6 +131,7 @@ dsh:package:
 pages:
   stage: pages
   image: alpine:latest
+  rules: *build_rules
   script:
     - mkdir -p public
     - cp -r static/. public/
