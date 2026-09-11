@@ -198,8 +198,18 @@ npm:publish:
     # To restore provenance instead, point repository.url at GitLab, at the
     # cost of the npmjs.com "repository" link leaving GitHub.
     NPM_CONFIG_PROVENANCE: "false"
+  # Also playable on its own from a manually-triggered pipeline, so this job
+  # can be iterated on WITHOUT re-running the whole release. A tag pipeline
+  # rebuilds the APK (Flutter + Gradle) and the Docker image, which is minutes
+  # of quota to re-test a one-line npm change; a web pipeline runs nothing
+  # until you press play, and npm:publish is a ~1 minute job.
+  #
+  #   CI/CD -> Pipelines -> Run pipeline (branch: main)
+  #     -> press the play button on npm:publish
   rules:
     - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
   script:
     - npm install -g npm@latest
     - cd dsh-cc-monitor
