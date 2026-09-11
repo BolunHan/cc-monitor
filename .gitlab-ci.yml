@@ -1,0 +1,229 @@
+# GitLab CI/CD pipeline — mirrors the GitHub Actions workflows.
+#
+#   .github/workflows/release.yml          -> the whole tag pipeline
+#     .github/workflows/build-docker.yml   ->   docker:build
+#     .github/workflows/build-apk.yml      ->   apk:build
+#     .github/workflows/deploy-gh-pages.yml->   pages
+#     (dsh-plugin job)                     ->   dsh:package
+#     (npm-publish job)                    ->   npm:publish
+#                                            ->   release:assets, release
+#
+# GitHub Actions are DISABLED in this repository — see
+# .github/workflows/README.md. GitLab is the CI of record.
+#
+# Required CI/CD variables (Settings -> CI/CD -> Variables):
+#   none. The container registry uses the predefined CI_REGISTRY_* variables,
+#   and artifact uploads use CI_JOB_TOKEN.
+#
+# Optional:
+#   NPM_TOKEN   only if you move npm:publish off trusted publishing. By default
+#               it uses npm trusted publishing via the NPM_ID_TOKEN id_token,
+#               mirroring the GitHub setup — which requires this GitLab project
+#               to be registered as a trusted publisher on npmjs.com for
+#               dsh-cc-monitor. If that is not configured, set this job to
+#               `when: manual` or supply NPM_TOKEN and drop --provenance.
+#
+# Docker-in-Docker is used for the image builds; GitLab.com's shared runners
+# support this out of the box.
+
+stages:
+  - build
+  - pages
+  - publish
+  - release
+
+# Only build for main, version tags, merge requests, and manual triggers.
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+# Version stamping. On a tag pipeline the version is the tag minus its leading
+# "v"; otherwise a dev stamp, matching the GitHub workflows' behaviour.
+# Written to version.env so downstream jobs read it via a dotenv artifact
+# instead of each recomputing it.
+.version_script: &version_script
+  - |
+    if [ -n "$CI_COMMIT_TAG" ]; then
+      VERSION="${CI_COMMIT_TAG#v}"
+    else
+      VERSION="dev-$(date +%Y%m%d-%H%M%S)"
+    fi
+    echo "CC_MONITOR_VERSION=$VERSION" > version.env
+    echo "version: $VERSION"
+
+# ---------------------------------------------------------------- Docker ----
+# Mirrors build-docker.yml, pushing to the GitLab Container Registry instead
+# of ghcr.io.
+docker:build:
+  stage: build
+  image: docker:27
+  services:
+    - docker:27-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  script:
+    - *version_script
+    - . ./version.env
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    - |
+      docker build \
+        --cache-from "$CI_REGISTRY_IMAGE:latest" \
+        --tag "$CI_REGISTRY_IMAGE:latest" \
+        --tag "$CI_REGISTRY_IMAGE:$CC_MONITOR_VERSION" \
+        .
+    - docker push "$CI_REGISTRY_IMAGE:$CC_MONITOR_VERSION"
+    - docker push "$CI_REGISTRY_IMAGE:latest"
+  artifacts:
+    reports:
+      dotenv: version.env
+
+# ------------------------------------------------------------------- APK ----
+# Mirrors build-apk.yml. The cirruslabs image bundles the Android SDK and
+# Java 17, which is what the GitHub action assembles with setup-java +
+# subosito/flutter-action.
+apk:build:
+  stage: build
+  image: ghcr.io/cirruslabs/flutter:stable
+  script:
+    - *version_script
+    - flutter --version
+    - flutter doctor -v
+    - cd android_app
+    - flutter pub get
+    - flutter build apk --release
+  artifacts:
+    paths:
+      - android_app/build/app/outputs/flutter-apk/app-release.apk
+    reports:
+      dotenv: version.env
+
+# ------------------------------------------------------ DSH plugin tarball ----
+dsh:package:
+  stage: build
+  image: node:22
+  script:
+    - mkdir -p dist
+    - npm pack ./dsh-cc-monitor --pack-destination dist
+    - mv dist/dsh-cc-monitor-*.tgz dist/dsh-cc-monitor.tgz
+    - ls -lh dist/dsh-cc-monitor.tgz
+  artifacts:
+    paths:
+      - dist/dsh-cc-monitor.tgz
+
+# ----------------------------------------------------------------- Pages ----
+# Mirrors deploy-gh-pages.yml. GitLab's equivalent of a Pages deploy is a job
+# named exactly "pages" publishing a "public/" artifact; enable Pages in
+# Settings -> Pages. The static dashboard is origin-agnostic, so it works
+# unchanged from GitLab Pages.
+pages:
+  stage: pages
+  image: alpine:latest
+  script:
+    - mkdir -p public
+    - cp -r static/. public/
+  artifacts:
+    paths:
+      - public
+
+# ----------------------------------------------------------- npm publish ----
+# Mirrors the npm-publish job in release.yml, including trusted publishing
+# (the GitHub workflow uses id-token: write; this uses a GitLab id_token).
+npm:publish:
+  stage: publish
+  image: node:22
+  id_tokens:
+    NPM_ID_TOKEN:
+      aud: "npm:registry.npmjs.org"
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
+  script:
+    - npm install -g npm@latest
+    - cd dsh-cc-monitor
+    - npm publish --provenance --access public
+
+# -------------------------------------------------- offline docker archive ----
+# Mirrors the "Pull and export Docker image as tar" step of the GitHub
+# release job, uploaded to the Generic Package Registry so the release can
+# link to it.
+release:assets:
+  stage: release
+  image: docker:27
+  services:
+    - docker:27-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  needs: [ docker:build, apk:build, dsh:package ]
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
+  script:
+    - VERSION="${CI_COMMIT_TAG#v}"
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    - docker pull "$CI_REGISTRY_IMAGE:$VERSION"
+    - docker save "$CI_REGISTRY_IMAGE:$VERSION" | gzip > "cc-monitor-${VERSION}.tar.gz"
+    - ls -lh "cc-monitor-${VERSION}.tar.gz"
+    - |
+      upload() {
+        curl --fail --silent --show-error \
+          --header "JOB-TOKEN: $CI_JOB_TOKEN" \
+          --upload-file "$1" \
+          "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/cc-monitor/${VERSION}/$(basename "$1")"
+      }
+      upload android_app/build/app/outputs/flutter-apk/app-release.apk
+      upload dist/dsh-cc-monitor.tgz
+      upload "cc-monitor-${VERSION}.tar.gz"
+
+# --------------------------------------------------------------- Release ----
+# Mirrors the GitHub Release. Note GitLab release assets are *links*, not
+# uploaded files — the artifacts go to the Generic Package Registry above and
+# the release points at them.
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  needs: [ release:assets ]
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
+  script:
+    - echo "creating release ${CI_COMMIT_TAG}"
+  release:
+    tag_name: "$CI_COMMIT_TAG"
+    name: "cc-monitor $CI_COMMIT_TAG"
+    description: |
+      ## cc-monitor $CI_COMMIT_TAG
+
+      Claude Code session monitor with real-time dashboard.
+
+      ### 🐳 Docker
+      ```bash
+      docker pull $CI_REGISTRY_IMAGE:${CI_COMMIT_TAG#v}
+      docker run --network=host \
+        -v ~/.cc-monitor/docker/data:/data/.cc-monitor \
+        $CI_REGISTRY_IMAGE:${CI_COMMIT_TAG#v}
+      ```
+
+      ### 📱 Android
+      Download `app-release.apk` below and install via ADB:
+      ```bash
+      adb install app-release.apk
+      ```
+
+      ### 🧩 DSH reporter plugin
+      Download `dsh-cc-monitor.tgz` below, then:
+      ```bash
+      dsh plugin --profile web add ./dsh-cc-monitor.tgz
+      ```
+
+      ### 📦 Docker (offline)
+      ```bash
+      gunzip -c cc-monitor-${CI_COMMIT_TAG#v}.tar.gz | docker load
+      ```
+    assets:
+      links:
+        - name: "app-release.apk"
+          url: "${CI_PROJECT_URL}/-/packages/generic/cc-monitor/${CI_COMMIT_TAG#v}/app-release.apk"
+        - name: "dsh-cc-monitor.tgz"
+          url: "${CI_PROJECT_URL}/-/packages/generic/cc-monitor/${CI_COMMIT_TAG#v}/dsh-cc-monitor.tgz"
+        - name: "cc-monitor-${CI_COMMIT_TAG#v}.tar.gz"
+          url: "${CI_PROJECT_URL}/-/packages/generic/cc-monitor/${CI_COMMIT_TAG#v}/cc-monitor-${CI_COMMIT_TAG#v}.tar.gz"
