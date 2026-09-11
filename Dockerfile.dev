@@ -1,0 +1,172 @@
+# syntax=docker/dockerfile:1.7
+#
+# cc-monitor DEV sandbox image.
+#
+# Why this exists
+# ---------------
+# The production container (see ./Dockerfile) is deliberately minimal, and the
+# host machine's cc-monitor is normally *in use*. This image builds a
+# throwaway, self-contained agent sandbox — Claude Code CLI + dsh + cc-monitor
+# — that listens on a separate port (default 9877) so it can never collide with
+# the live instance.
+#
+# Build it with scripts/build-dev-docker.sh, NOT with a bare `docker build`.
+# That wrapper supplies the build-time HTTP proxy.
+#
+# NO PROXY SETTINGS LIVE IN THIS FILE, ON PURPOSE — this repository is public.
+# The values arrive as build args from the caller's environment, and ARGs are
+# not persisted into the image.
+#
+# Note that neither `docker build` nor `docker compose build` forwards the
+# client's proxy environment automatically — a plain `ARG HTTP_PROXY` comes
+# back empty (verified). The wrapper passes them explicitly, which is why
+# building this file any other way means apt and npm go direct.
+#
+# ARGs are per-stage, so each stage that needs them declares them again.
+#
+# Layer ordering is deliberate: everything slow and rarely-changing sits above
+# everything fast and frequently-changing, so ordinary source edits never
+# re-download Node, npm, Claude Code or dsh.
+
+# ---------------------------------------------------------------------------
+# Stage 0 — the shared OS layer.
+#
+# Every apt install in this file happens HERE, in one stage, on purpose.
+# An earlier revision ran apt separately in the CLIs stage and the runtime
+# stage; BuildKit builds stages in parallel, so two apt processes shared one
+# cache-mounted /var/lib/apt. `sharing=locked` made them deadlock inside
+# BuildKit's mount lock, and `sharing=shared` made apt's own lists lock
+# collide ("Could not get lock /var/lib/apt/lists/lock") — both hang or fail.
+# One apt stage removes the contention entirely and gives both children the
+# same cached layer.
+# ---------------------------------------------------------------------------
+FROM python:3.13-slim AS base
+
+# Proxy plumbing.
+#
+# npm and pip read the uppercase names, but apt does NOT — it reads lowercase
+# `http_proxy`. Without the export below, everything else in this file would
+# use the proxy while apt quietly went direct.
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+
+# NOTE: no `rm -rf /var/lib/apt/lists/*` here, deliberately.
+#
+# With the /var/lib/apt cache mount below, the package indexes live in the
+# *cache*, not in this layer — so deleting them saves nothing in image size and
+# only forces the next build to re-download every index.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    export http_proxy="${HTTP_PROXY:-}" https_proxy="${HTTPS_PROXY:-}" no_proxy="${NO_PROXY:-}"; \
+    apt-get update \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl \
+      git \
+      jq \
+      less \
+      nano \
+      procps \
+      ripgrep \
+      tini \
+      tmux \
+      xz-utils \
+ && mkdir -p /opt/node
+
+ENV PATH=/opt/node/bin:$PATH
+
+# ---------------------------------------------------------------------------
+# Stage 1 — Node.js + the globally-installed agent CLIs.
+#
+# Node goes into a private prefix (/opt/node) rather than /usr/local, so the
+# runtime stage can copy it wholesale without clobbering python's own tree.
+# ---------------------------------------------------------------------------
+FROM base AS clis
+
+# Bump these with --build-arg to force a refresh; leave them alone for a
+# cached, instant rebuild.
+ARG NODE_VERSION=24.19.0
+ARG CLAUDE_CODE_VERSION=latest
+ARG DSH_VERSION=latest
+
+# Node itself. The tarball is kept in a cache mount, so even a rebuild that
+# busts this layer's cache does not re-download it.
+RUN --mount=type=cache,target=/tmp/download \
+    set -eux; \
+    cd /tmp/download; \
+    if [ ! -f "node-v${NODE_VERSION}-linux-x64.tar.xz" ]; then \
+        curl -fsSL -O "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz"; \
+    fi; \
+    tar -xJf "node-v${NODE_VERSION}-linux-x64.tar.xz" \
+        -C /opt/node --strip-components=1 --no-same-owner
+
+# Claude Code + dsh. npm's cache is persisted across builds too, so bumping a
+# package version re-resolves metadata but does not re-fetch unrelated tarballs.
+RUN --mount=type=cache,target=/root/.npm \
+    npm install -g --no-fund --no-audit --prefix /opt/node \
+      "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+      "@deepseek-ai/dsh@${DSH_VERSION}" \
+ && claude --version \
+ && dsh --version
+
+# ---------------------------------------------------------------------------
+# Stage 2 — the dev runtime.
+# ---------------------------------------------------------------------------
+FROM base AS dev
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Node + the two CLIs, whole-tree copy so npm's bin symlinks stay intact.
+COPY --from=clis /opt/node /opt/node
+
+# Expose them on the *default* PATH as well as via ENV.
+#
+# ENV alone is not enough: it is inherited by `docker exec`, but an interactive
+# or login shell started inside the container (tmux, `su -`, ssh) re-sources
+# /etc/profile and clobbers PATH, so `claude` would be "command not found" in
+# exactly the shell you want to run an agent from. Symlinking into
+# /usr/local/bin — which is always on PATH — makes the CLIs reachable
+# regardless of how the shell was started. /etc/profile.d covers npm/pnpm
+# subprocesses that shell out to `node`.
+RUN set -eux; \
+    for b in node npm npx corepack claude dsh; do \
+        if [ -e "/opt/node/bin/${b}" ]; then ln -sf "/opt/node/bin/${b}" "/usr/local/bin/${b}"; fi; \
+    done; \
+    printf 'export PATH=/opt/node/bin:$PATH\n' > /etc/profile.d/node.sh; \
+    chmod +x /etc/profile.d/node.sh
+
+WORKDIR /app
+
+# Python dependencies first (changes rarely) ...
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip
+
+# ... then our source. Editable install: at run time the host repo is
+# bind-mounted over /app, so source edits take effect on restart with no
+# rebuild.
+COPY pyproject.toml README.md ./
+COPY src ./src
+COPY hooks ./hooks
+COPY static ./static
+COPY scripts ./scripts
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -e ".[dev]"
+
+# Runtime config. The dev instance is intentionally a different port from the
+# production 9876 so both can run side by side.
+ENV CC_MONITOR_PORT=9877 \
+    CC_MONITOR_DATA_DIR=/data/.cc-monitor
+
+COPY scripts/dev-docker-entrypoint.sh /usr/local/bin/dev-docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/dev-docker-entrypoint.sh
+
+EXPOSE 9877
+
+# tini reaps the zombie processes Claude Code and dsh tend to leave behind.
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/dev-docker-entrypoint.sh"]
+CMD ["server"]

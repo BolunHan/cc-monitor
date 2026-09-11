@@ -1,0 +1,79 @@
+# cc-monitor DEV sandbox — a self-contained agent playground.
+#
+# Build/run it through scripts/build-dev-docker.sh instead of calling compose
+# directly; that wrapper is what supplies the build-time HTTP proxy.
+#
+# Everything here is namespaced away from the production stack on purpose:
+#   * separate compose project name  (cc-monitor-dev)
+#   * separate host paths under ~/.cc-monitor-dev/
+#   * separate port (9877 vs the production 9876)
+# so this can never read, write, or race the live cc-monitor instance.
+#
+# ⚠️  Do not point any of the mounts below at ~/.cc-monitor — that is the
+#     production data directory.
+#
+# Host networking is this house's convention for self-hosted services (the
+# production compose does the same), and it keeps the dev server reachable from
+# the LAN for phone testing without any port-mapping juggling.
+
+name: cc-monitor-dev
+
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      # Bump these to force a re-fetch; leaving them at `latest` keeps the
+      # expensive layers cached so rebuilds are near-instant.
+      args:
+        NODE_VERSION: "24.19.0"
+        CLAUDE_CODE_VERSION: "latest"
+        DSH_VERSION: "latest"
+        # Build-time proxy, supplied by scripts/build-dev-docker.sh from the
+        # caller's environment. Docker does NOT forward these automatically —
+        # verified: a plain `ARG HTTP_PROXY` arrives empty without this.
+        # Empty here simply means "build with direct egress".
+        HTTP_PROXY: "${HTTP_PROXY:-}"
+        HTTPS_PROXY: "${HTTPS_PROXY:-}"
+        NO_PROXY: "${NO_PROXY:-}"
+    image: cc-monitor:dev
+    container_name: cc-monitor-dev
+    hostname: cc-monitor-dev
+    network_mode: host
+    restart: unless-stopped
+    init: true
+    working_dir: /app
+    environment:
+      CC_MONITOR_PORT: "9877"
+      CC_MONITOR_DATA_DIR: "/data/.cc-monitor"
+      # Runtime egress proxy — opt-in, and deliberately NOT named HTTP_PROXY.
+      # The build wrapper exports HTTP_PROXY/HTTPS_PROXY for `compose build`;
+      # reusing those names here would silently leak the build-time proxy into
+      # the container's runtime environment. Set DEV_HTTP_PROXY in your shell
+      # (or a local .env) only if the sandbox needs a proxy at run time.
+      HTTP_PROXY: "${DEV_HTTP_PROXY:-}"
+      HTTPS_PROXY: "${DEV_HTTPS_PROXY:-${DEV_HTTP_PROXY:-}}"
+      NO_PROXY: "${DEV_NO_PROXY:-}"
+    volumes:
+      # Live source: edits on the host take effect on restart, no rebuild.
+      - .:/app
+      # Dev session state. Deliberately NOT ~/.cc-monitor.
+      #
+      # Mounted at two paths because the server and the hooks disagree about
+      # where "home" is: the server resolves to /data in Docker, while the
+      # hook scripts use Path.home() (= /root). Pointing both at the same host
+      # directory keeps them in sync — and, more importantly, preserves the
+      # installed hook scripts under /root/.cc-monitor/hooks across a
+      # `compose up --force-recreate`, so the sandbox does not need
+      # re-provisioning every rebuild.
+      - ${HOME}/.cc-monitor-dev/data:/data/.cc-monitor
+      - ${HOME}/.cc-monitor-dev/data:/root/.cc-monitor
+      # Claude Code config (credentials, settings, hooks). Seeded once from the
+      # host by scripts/build-dev-docker.sh so you never re-login.
+      - ${HOME}/.cc-monitor-dev/claude:/root/.claude
+      # Onboarding state (theme, accepted trust prompts, first-run flags).
+      # Lives *outside* ~/.claude, so without this the sandbox replays the
+      # whole first-run wizard on every recreate.
+      - ${HOME}/.cc-monitor-dev/claude.json:/root/.claude.json
+      # dsh home — profiles + plugins, so `dsh plugin add` survives recreation.
+      - ${HOME}/.cc-monitor-dev/dsh:/root/.dsh
