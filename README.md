@@ -13,9 +13,10 @@
 
 [**→ Open Dashboard**](https://bolunhan.github.io/cc-monitor/)
 
-[![Deploy GH Pages](https://github.com/BolunHan/cc-monitor/actions/workflows/deploy-gh-pages.yml/badge.svg)](https://github.com/BolunHan/cc-monitor/actions/workflows/deploy-gh-pages.yml)
-[![Build Docker](https://github.com/BolunHan/cc-monitor/actions/workflows/build-docker.yml/badge.svg)](https://github.com/BolunHan/cc-monitor/actions/workflows/build-docker.yml)
-[![Build APK](https://github.com/BolunHan/cc-monitor/actions/workflows/build-apk.yml/badge.svg)](https://github.com/BolunHan/cc-monitor/actions/workflows/build-apk.yml)
+[![gitlab](https://gitlab.com/BolunHan/cc-monitor/badges/main/pipeline.svg)](https://gitlab.com/BolunHan/cc-monitor/-/pipelines)
+
+> **CI runs on the GitLab mirror pipeline.** GitHub Actions is disabled in this
+> repository — see `.github/workflows/README.md`.
 
 **Know when Claude needs you — before you waste time staring at the screen.**
 
@@ -315,9 +316,10 @@ and the known limitations.
 
 [**→ 打开仪表盘**](https://bolunhan.github.io/cc-monitor/)
 
-[![Deploy GH Pages](https://github.com/BolunHan/cc-monitor/actions/workflows/deploy-gh-pages.yml/badge.svg)](https://github.com/BolunHan/cc-monitor/actions/workflows/deploy-gh-pages.yml)
-[![Build Docker](https://github.com/BolunHan/cc-monitor/actions/workflows/build-docker.yml/badge.svg)](https://github.com/BolunHan/cc-monitor/actions/workflows/build-docker.yml)
-[![Build APK](https://github.com/BolunHan/cc-monitor/actions/workflows/build-apk.yml/badge.svg)](https://github.com/BolunHan/cc-monitor/actions/workflows/build-apk.yml)
+[![gitlab](https://gitlab.com/BolunHan/cc-monitor/badges/main/pipeline.svg)](https://gitlab.com/BolunHan/cc-monitor/-/pipelines)
+
+> **CI 运行在 GitLab 镜像流水线上。** 本仓库已停用 GitHub Actions — 见
+> `.github/workflows/README.md`。
 
 **Claude 需要你的时候，第一时间知道 — 不再白白盯着屏幕浪费时间。**
 
