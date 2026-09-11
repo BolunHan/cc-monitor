@@ -3,11 +3,23 @@
   "appTitle": "cc-monitor",
   "noSessions": "No sessions",
   "activeTab": "Active ({count})",
-  "@activeTab": { "placeholders": { "count": {} } },
+  "@activeTab": {
+    "placeholders": {
+      "count": {}
+    }
+  },
   "completeTab": "Complete ({count})",
-  "@completeTab": { "placeholders": { "count": {} } },
+  "@completeTab": {
+    "placeholders": {
+      "count": {}
+    }
+  },
   "archivedTab": "Archived ({count})",
-  "@archivedTab": { "placeholders": { "count": {} } },
+  "@archivedTab": {
+    "placeholders": {
+      "count": {}
+    }
+  },
   "disconnectedBanner": "Disconnected — token revoked or server unreachable.\nRemove this server from the sidebar.",
   "stateWorking": "working",
   "stateIdle": "idle",
@@ -17,16 +29,37 @@
   "stateArchived": "archived",
   "timeJustNow": "just now",
   "timeMinutesAgo": "{n}m ago",
-  "@timeMinutesAgo": { "placeholders": { "n": {} } },
+  "@timeMinutesAgo": {
+    "placeholders": {
+      "n": {}
+    }
+  },
   "timeHoursAgo": "{n}h ago",
-  "@timeHoursAgo": { "placeholders": { "n": {} } },
+  "@timeHoursAgo": {
+    "placeholders": {
+      "n": {}
+    }
+  },
   "timeDaysAgo": "{n}d ago",
-  "@timeDaysAgo": { "placeholders": { "n": {} } },
+  "@timeDaysAgo": {
+    "placeholders": {
+      "n": {}
+    }
+  },
   "sseAlive": "SSE alive | {count} events | tap for log",
-  "@sseAlive": { "placeholders": { "count": {} } },
+  "@sseAlive": {
+    "placeholders": {
+      "count": {}
+    }
+  },
   "sseDisconnected": "SSE disconnected | tap for log",
   "eventLogTitle": "SSE Event Log ({filtered}/{total})",
-  "@eventLogTitle": { "placeholders": { "filtered": {}, "total": {} } },
+  "@eventLogTitle": {
+    "placeholders": {
+      "filtered": {},
+      "total": {}
+    }
+  },
   "eventLogEmpty": "No events — waiting for SSE…",
   "eventLogLevel": "Level:",
   "eventLogConnected": "CONNECTED",
@@ -36,7 +69,11 @@
   "settingsTokenStatus": "Token Status",
   "settingsTokenValid": "Valid",
   "settingsTokenExpires": "Expires: {date}",
-  "@settingsTokenExpires": { "placeholders": { "date": {} } },
+  "@settingsTokenExpires": {
+    "placeholders": {
+      "date": {}
+    }
+  },
   "settingsRotate": "Rotate",
   "settingsPairNew": "Pair New Server",
   "settingsForget": "Forget Server",
@@ -84,5 +121,30 @@
   "markComplete": "Mark Complete",
   "servers": "Servers",
   "noServersPaired": "No servers paired",
-  "addServer": "Add Server"
+  "addServer": "Add Server",
+  "requestAwaiting": "awaiting your approval",
+  "requestAtTerminal": "answer at terminal",
+  "requestAllow": "Allow",
+  "requestDeny": "Deny",
+  "requestSubmit": "Submit answers",
+  "requestCustomAnswer": "Or type your own answer…",
+  "requestTruncated": "truncated",
+  "controlDirectiveHint": "Send a directive…",
+  "controlSend": "Send",
+  "controlStop": "Stop",
+  "controlResume": "Resume",
+  "controlQueued": "{n} queued",
+  "controlDelivered": "Answer sent",
+  "controlMissed": "Too late — answer at the terminal",
+  "controlQueuedOk": "Queued — delivered when the agent next stops",
+  "controlRejected": "Rejected — answer every question",
+  "controlFailed": "Could not reach the server",
+  "controlAnswerAll": "Answer every question first",
+  "@controlQueued": {
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  }
 }

@@ -125,13 +125,42 @@ Powerful zero-install monitoring — works from any browser.
 
 ### What you can do
 
-| Action           | How                                                                  |
-| ---------------- | -------------------------------------------------------------------- |
-| See all sessions | Active / Complete / Archived tabs with live state breakdown          |
-| Get notified     | Browser push notifications on idle, pending review, pending approval |
-| Pair devices     | QR code + 6-digit approval flow for the Android app                  |
-| Manage hooks     | One-click install / uninstall / check from the Settings panel        |
-| Switch language  | EN / 中文 toggle in the top bar                                      |
+| Action               | How                                                                  |
+| -------------------- | -------------------------------------------------------------------- |
+| See all sessions     | Active / Complete / Archived tabs with live state breakdown          |
+| Get notified         | Browser push notifications on idle, pending review, pending approval |
+| **Answer approvals** | A pending prompt appears on the session card — Allow / Deny (or pick an option for `AskUserQuestion`, Approve / Reject a plan) |
+| **Send a directive** | Type into the session card's input and press Enter                   |
+| **Stop a task**      | Stop button on the session card; Resume (or sending a directive) lifts it |
+| Pair devices         | QR code + 6-digit approval flow for the Android app                  |
+| Manage hooks         | One-click install / uninstall / check from the Settings panel        |
+| Switch language      | EN / 中文 toggle in the top bar                                      |
+
+### Remote control
+
+cc-monitor is not just a viewer — it is a two-way channel, and the agent is
+steered from the dashboard.
+
+**Approvals.** When a hook has a UI connected, its `PermissionRequest` hook
+holds the local dialog open and waits for an answer from the dashboard. If
+nobody answers — or no UI is connected at all — the hook returns immediately
+and the normal terminal prompt appears, exactly as it would without
+cc-monitor. That gating is deliberate: remote approval must never slow down
+the terminal for someone who is sitting at it.
+
+**Directives.** A directive is queued and handed to the agent by the `Stop`
+hook at its next turn boundary, as hook feedback. At that boundary, a
+connected UI also gets a short window to send a follow-up, so the common case
+("it just finished, one more thing…") lands without waiting for another turn.
+
+**Stop.** Claude Code exposes no external interrupt, so stop is cooperative:
+the `PreToolUse` hook denies tool calls and ends the turn. The agent stops
+touching things and summarizes where it got to. Sending a directive (or
+pressing Resume) clears the stop.
+
+> ⚠️ An answer sent after the terminal prompt has already been answered is
+> reported as **"Too late — answer at the terminal"** rather than silently
+> claiming success.
 
 ---
 
@@ -221,6 +250,12 @@ For the full technical reference, see [API Reference](#api-reference) and [Archi
 | `POST`   | `/api/session/<id>/archive`           | Yes    | Archive session                                |
 | `POST`   | `/api/session/<id>/unarchive`         | Yes    | Unarchive session                              |
 | `POST`   | `/api/session/<id>/complete`          | Yes    | Mark session done                              |
+| `POST`   | `/api/session/<id>/respond`           | Yes    | Answer a pending request                       |
+| `POST`   | `/api/session/<id>/directive`         | Yes    | Queue a directive for the agent                |
+| `GET`    | `/api/session/<id>/directive/next`    | Yes    | Long-poll for a directive (Stop hook)          |
+| `POST`   | `/api/session/<id>/stop`              | Yes    | Ask the agent to stop                          |
+| `POST`   | `/api/session/<id>/resume`            | Yes    | Clear a stop request                           |
+| `GET`    | `/api/request/<rid>/decision`         | Yes    | Long-poll for an approval (PermissionRequest hook) |
 | `GET`    | `/api/auth/pair/qr`                   | No     | QR pairing payload                             |
 | `POST`   | `/api/auth/pair/request`              | No     | Submit pairing request                         |
 | `GET`    | `/api/auth/pair/request/<id>/status`  | No     | Poll request status                            |
@@ -240,21 +275,37 @@ cc-monitor/
 |--  src/cc_monitor/       # Python package (FastAPI server)
 |--  hooks/                # Hook scripts (stdlib-only, no deps)
 |--  static/               # Web dashboard (vanilla HTML/CSS/JS)
-|--  scripts/              # install-hooks.sh, uninstall-hooks.sh
+|--  scripts/              # install-hooks.sh, uninstall-hooks.sh, build-dev-docker.sh
 |--  android_app/          # Flutter Android app
-|--  tests/                # pytest suite (145 tests)
+|--  tests/                # pytest suite (229 tests)
 |--  Dockerfile            # Python server image
+|--  Dockerfile.dev        # Agent sandbox for development/testing
 |--  Dockerfile.flutter    # Flutter build image
-+--  docker-compose.yaml   # Docker deployment
+|--  docker-compose.yaml   # Docker deployment
++--  docker-compose.dev.yaml  # Dev sandbox (separate port, separate state)
 ```
 
 ## Development
 
 ```bash
 pip install -e ".[dev]"
-pytest tests/ -q          # 145 tests
+pytest tests/ -q          # 229 tests
 cc-monitor --port 9876    # Start dev server
 ```
+
+### Testing against a real agent
+
+The host's cc-monitor is often in use, so there is a sandbox: a throwaway
+container with Claude Code CLI + dsh + cc-monitor on its own port, own state
+directory, and no shared state with the live instance.
+
+```bash
+./scripts/build-dev-docker.sh          # build (cached) + start on :9877
+./scripts/build-dev-docker.sh --shell  # run an agent inside it
+```
+
+See **[DEV-DOCKER.md](DEV-DOCKER.md)** for the caching model, the auth seeding,
+and the known limitations.
 
 ---
 
@@ -358,13 +409,35 @@ bash <(curl -fsSL https://raw.githubusercontent.com/BolunHan/cc-monitor/main/scr
 
 ### 功能一览
 
-| 功能         | 操作方式                                                 |
-| ------------ | -------------------------------------------------------- |
-| 查看所有会话 | Active / Complete / Archived 标签页，含实时状态统计      |
-| 接收通知     | 浏览器推送通知（idle、pending review、pending approval） |
-| 配对设备     | 二维码 + 6 位数字审批流程（供 Android 应用使用）         |
-| 管理 Hook    | 设置面板中一键安装 / 卸载 / 检查                         |
-| 切换语言     | 顶部 EN / 中文 切换按钮                                  |
+| 功能             | 操作方式                                                 |
+| ---------------- | -------------------------------------------------------- |
+| 查看所有会话     | Active / Complete / Archived 标签页，含实时状态统计      |
+| 接收通知         | 浏览器推送通知（idle、pending review、pending approval） |
+| **远程审批**     | 待审批请求直接显示在会话卡片上 —— 允许 / 拒绝（`AskUserQuestion` 可选具体选项，计划则可批准 / 驳回） |
+| **发送指令**     | 在会话卡片的输入框中输入后回车                           |
+| **停止任务**     | 会话卡片上的「停止」按钮；「继续」或发送指令可解除       |
+| 配对设备         | 二维码 + 6 位数字审批流程（供 Android 应用使用）         |
+| 管理 Hook        | 设置面板中一键安装 / 卸载 / 检查                         |
+| 切换语言         | 顶部 EN / 中文 切换按钮                                  |
+
+### 远程控制
+
+cc-monitor 不只是查看器 —— 它是一条双向通道，可以在仪表盘上直接操控智能体。
+
+**审批。** 当有 UI 连接时，`PermissionRequest` hook 会挂起本地对话框，等待仪表盘给出答复。
+若无人应答（或根本没有 UI 连接），hook 会立即返回，终端照常弹出原生提示 ——
+这一取舍是刻意的：远程审批绝不能让坐在终端前的人变慢。
+
+**指令。** 指令会先入队，由 `Stop` hook 在下一个回合边界作为 hook 反馈交给智能体。
+在该边界时刻，已连接的 UI 还会获得一小段窗口期来发送后续消息，
+因此最常见的情形（「刚做完，再加一件事…」）无需等到下一回合。
+
+**停止。** Claude Code 没有对外暴露中断接口，因此停止是协作式的：
+`PreToolUse` hook 拒绝工具调用并结束当前回合。智能体会停止一切操作并总结当前进展。
+发送指令（或点击「继续」）即可解除停止状态。
+
+> ⚠️ 若在终端提示已被回答之后才提交答复，界面会明确提示
+> **「已超时 — 请在终端回答」**，而不是默默假装成功。
 
 ---
 
@@ -454,6 +527,12 @@ Claude Code                    cc-monitor                  Web 仪表盘
 | `POST`   | `/api/session/<id>/archive`           | 归档会话                                       |
 | `POST`   | `/api/session/<id>/unarchive`         | 取消归档                                       |
 | `POST`   | `/api/session/<id>/complete`          | 标记会话完成                                   |
+| `POST`   | `/api/session/<id>/respond`           | 答复待审批请求                                 |
+| `POST`   | `/api/session/<id>/directive`         | 向智能体投递指令                               |
+| `GET`    | `/api/session/<id>/directive/next`    | 长轮询等待指令（Stop hook 调用）               |
+| `POST`   | `/api/session/<id>/stop`              | 请求智能体停止                                 |
+| `POST`   | `/api/session/<id>/resume`            | 解除停止                                       |
+| `GET`    | `/api/request/<rid>/decision`         | 长轮询等待审批结果（PermissionRequest hook 调用） |
 | `GET`    | `/api/auth/pair/qr`                   | 二维码配对数据                                 |
 | `POST`   | `/api/auth/pair/request`              | 提交配对请求                                   |
 | `GET`    | `/api/auth/pair/request/<id>/status`  | 查询请求状态                                   |
@@ -470,18 +549,33 @@ cc-monitor/
 |--  src/cc_monitor/       # Python 包（FastAPI 服务器）
 |--  hooks/                # Hook 脚本（纯 stdlib，无依赖）
 |--  static/               # Web 仪表盘（原生 HTML/CSS/JS）
-|--  scripts/              # install-hooks.sh, uninstall-hooks.sh
+|--  scripts/              # install-hooks.sh, uninstall-hooks.sh, build-dev-docker.sh
 |--  android_app/          # Flutter Android 应用
-|--  tests/                # pytest 测试套件（145 个测试）
+|--  tests/                # pytest 测试套件（229 个测试）
 |--  Dockerfile            # Python 服务器镜像
+|--  Dockerfile.dev        # 开发/测试用智能体沙箱
 |--  Dockerfile.flutter    # Flutter 构建镜像
-+--  docker-compose.yaml   # Docker 部署
+|--  docker-compose.yaml   # Docker 部署
++--  docker-compose.dev.yaml  # 开发沙箱（独立端口、独立状态）
 ```
 
 ## 开发
 
 ```bash
 pip install -e ".[dev]"
-pytest tests/ -q          # 145 个测试
+pytest tests/ -q          # 229 个测试
 cc-monitor --port 9876    # 启动开发服务器
 ```
+
+### 用真实智能体做测试
+
+主机上的 cc-monitor 经常正在被使用，因此提供了一个沙箱：
+一个内含 Claude Code CLI + dsh + cc-monitor 的一次性容器，
+使用独立端口、独立状态目录，与线上实例不共享任何状态。
+
+```bash
+./scripts/build-dev-docker.sh          # 构建（走缓存）并在 :9877 启动
+./scripts/build-dev-docker.sh --shell  # 在沙箱内运行智能体
+```
+
+缓存模型、登录态注入方式与已知限制见 **[DEV-DOCKER.md](DEV-DOCKER.md)**。

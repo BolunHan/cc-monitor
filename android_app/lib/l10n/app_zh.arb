@@ -3,11 +3,23 @@
   "appTitle": "cc-monitor",
   "noSessions": "无会话",
   "activeTab": "活跃 ({count})",
-  "@activeTab": { "placeholders": { "count": {} } },
+  "@activeTab": {
+    "placeholders": {
+      "count": {}
+    }
+  },
   "completeTab": "已完成 ({count})",
-  "@completeTab": { "placeholders": { "count": {} } },
+  "@completeTab": {
+    "placeholders": {
+      "count": {}
+    }
+  },
   "archivedTab": "已归档 ({count})",
-  "@archivedTab": { "placeholders": { "count": {} } },
+  "@archivedTab": {
+    "placeholders": {
+      "count": {}
+    }
+  },
   "disconnectedBanner": "已断开 — 令牌被撤销或服务器不可达。\n从侧边栏移除此服务器。",
   "stateWorking": "工作中",
   "stateIdle": "空闲",
@@ -17,16 +29,37 @@
   "stateArchived": "已归档",
   "timeJustNow": "刚刚",
   "timeMinutesAgo": "{n}分钟前",
-  "@timeMinutesAgo": { "placeholders": { "n": {} } },
+  "@timeMinutesAgo": {
+    "placeholders": {
+      "n": {}
+    }
+  },
   "timeHoursAgo": "{n}小时前",
-  "@timeHoursAgo": { "placeholders": { "n": {} } },
+  "@timeHoursAgo": {
+    "placeholders": {
+      "n": {}
+    }
+  },
   "timeDaysAgo": "{n}天前",
-  "@timeDaysAgo": { "placeholders": { "n": {} } },
+  "@timeDaysAgo": {
+    "placeholders": {
+      "n": {}
+    }
+  },
   "sseAlive": "SSE 已连接 | {count} 个事件 | 点击查看日志",
-  "@sseAlive": { "placeholders": { "count": {} } },
+  "@sseAlive": {
+    "placeholders": {
+      "count": {}
+    }
+  },
   "sseDisconnected": "SSE 已断开 | 点击查看日志",
   "eventLogTitle": "SSE 事件日志 ({filtered}/{total})",
-  "@eventLogTitle": { "placeholders": { "filtered": {}, "total": {} } },
+  "@eventLogTitle": {
+    "placeholders": {
+      "filtered": {},
+      "total": {}
+    }
+  },
   "eventLogEmpty": "无事件 — 等待 SSE…",
   "eventLogLevel": "级别：",
   "eventLogConnected": "已连接",
@@ -36,7 +69,11 @@
   "settingsTokenStatus": "令牌状态",
   "settingsTokenValid": "有效",
   "settingsTokenExpires": "过期时间：{date}",
-  "@settingsTokenExpires": { "placeholders": { "date": {} } },
+  "@settingsTokenExpires": {
+    "placeholders": {
+      "date": {}
+    }
+  },
   "settingsRotate": "刷新",
   "settingsPairNew": "配对新服务器",
   "settingsForget": "忘记服务器",
@@ -84,5 +121,23 @@
   "markComplete": "标记完成",
   "servers": "服务器",
   "noServersPaired": "无已配对服务器",
-  "addServer": "添加服务器"
+  "addServer": "添加服务器",
+  "requestAwaiting": "等待你的批准",
+  "requestAtTerminal": "请在终端回答",
+  "requestAllow": "允许",
+  "requestDeny": "拒绝",
+  "requestSubmit": "提交答案",
+  "requestCustomAnswer": "或输入自定义答案…",
+  "requestTruncated": "已截断",
+  "controlDirectiveHint": "发送指令…",
+  "controlSend": "发送",
+  "controlStop": "停止",
+  "controlResume": "继续",
+  "controlQueued": "待发送 {n} 条",
+  "controlDelivered": "已发送回答",
+  "controlMissed": "已超时 — 请在终端回答",
+  "controlQueuedOk": "已排队 — 将在智能体下次停下时送达",
+  "controlRejected": "被拒绝 — 请回答所有问题",
+  "controlFailed": "无法连接服务器",
+  "controlAnswerAll": "请先回答所有问题"
 }

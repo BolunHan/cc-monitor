@@ -553,6 +553,114 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Add Server'**
   String get addServer;
+
+  /// No description provided for @requestAwaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'awaiting your approval'**
+  String get requestAwaiting;
+
+  /// No description provided for @requestAtTerminal.
+  ///
+  /// In en, this message translates to:
+  /// **'answer at terminal'**
+  String get requestAtTerminal;
+
+  /// No description provided for @requestAllow.
+  ///
+  /// In en, this message translates to:
+  /// **'Allow'**
+  String get requestAllow;
+
+  /// No description provided for @requestDeny.
+  ///
+  /// In en, this message translates to:
+  /// **'Deny'**
+  String get requestDeny;
+
+  /// No description provided for @requestSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Submit answers'**
+  String get requestSubmit;
+
+  /// No description provided for @requestCustomAnswer.
+  ///
+  /// In en, this message translates to:
+  /// **'Or type your own answer…'**
+  String get requestCustomAnswer;
+
+  /// No description provided for @requestTruncated.
+  ///
+  /// In en, this message translates to:
+  /// **'truncated'**
+  String get requestTruncated;
+
+  /// No description provided for @controlDirectiveHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Send a directive…'**
+  String get controlDirectiveHint;
+
+  /// No description provided for @controlSend.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get controlSend;
+
+  /// No description provided for @controlStop.
+  ///
+  /// In en, this message translates to:
+  /// **'Stop'**
+  String get controlStop;
+
+  /// No description provided for @controlResume.
+  ///
+  /// In en, this message translates to:
+  /// **'Resume'**
+  String get controlResume;
+
+  /// No description provided for @controlQueued.
+  ///
+  /// In en, this message translates to:
+  /// **'{n} queued'**
+  String controlQueued(int n);
+
+  /// No description provided for @controlDelivered.
+  ///
+  /// In en, this message translates to:
+  /// **'Answer sent'**
+  String get controlDelivered;
+
+  /// No description provided for @controlMissed.
+  ///
+  /// In en, this message translates to:
+  /// **'Too late — answer at the terminal'**
+  String get controlMissed;
+
+  /// No description provided for @controlQueuedOk.
+  ///
+  /// In en, this message translates to:
+  /// **'Queued — delivered when the agent next stops'**
+  String get controlQueuedOk;
+
+  /// No description provided for @controlRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Rejected — answer every question'**
+  String get controlRejected;
+
+  /// No description provided for @controlFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not reach the server'**
+  String get controlFailed;
+
+  /// No description provided for @controlAnswerAll.
+  ///
+  /// In en, this message translates to:
+  /// **'Answer every question first'**
+  String get controlAnswerAll;
 }
 
 class _AppLocalizationsDelegate

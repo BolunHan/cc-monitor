@@ -5,6 +5,7 @@ import json
 import logging
 import shutil
 import time
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -21,6 +22,46 @@ _REVIEW_CHECK_INTERVAL = 60  # seconds
 
 # Max length for stored tool input/output to keep msg files small
 _MAX_TOOL_FIELD_LENGTH = 2000
+
+# Max length of a single tool_input field echoed to a UI for approval.
+# Long values are truncated rather than dropped, so the reviewer still sees
+# the shape of what they are approving.
+_MAX_REQUEST_FIELD_LENGTH = 4000
+
+# Max length of one detail block. Deliberately far larger than
+# _MAX_REQUEST_FIELD_LENGTH: a detail block is the thing being reviewed, and
+# approving a file write you cannot read is not a review. Truncation is always
+# flagged so the client can say so rather than silently showing a prefix.
+_MAX_DETAIL_LENGTH = 20000
+
+# Cap on the structured approval payload carried by a timeline message. Must
+# comfortably exceed _MAX_DETAIL_LENGTH, since it wraps the detail blocks.
+_MAX_APPROVAL_PAYLOAD_LENGTH = 24000
+
+# Tools whose PermissionRequest is really "the agent is asking a question"
+# rather than "the agent wants to run something".  They carry their own
+# answer options, so the UI renders them differently.
+_QUESTION_TOOLS = {"AskUserQuestion"}
+_PLAN_TOOLS = {"ExitPlanMode"}
+
+# How long a PermissionRequest hook should hold the terminal dialog open
+# waiting for a remote decision, when at least one UI is watching.
+#
+# Set to the ceiling in _MAX_HOLD_SECONDS deliberately. The whole point of
+# gating on a connected UI is that someone is watching remotely and may need
+# time to reach a phone or another machine; five minutes turned out to be too
+# short to be useful, and there is no cost to the terminal user here because
+# the hold does not apply at all when nobody is connected.
+_DEFAULT_HOLD_SECONDS = 540.0
+
+# How long a Stop hook should linger at the end of a turn, waiting for a
+# directive to arrive from a UI, before letting the turn end normally.
+#
+# Deliberately much shorter than the approval hold: this pause is felt by
+# whoever is sitting at the terminal, and its only purpose is to catch a
+# follow-up typed while the agent is finishing. It also means the agent is
+# frozen mid-transition, so it must not be long.
+_DEFAULT_DIRECTIVE_HOLD_SECONDS = 45.0
 
 
 @dataclass
@@ -82,6 +123,367 @@ class Message:
 
 
 @dataclass
+class PendingRequest:
+    """A decision an agent is blocked on, waiting for a human.
+
+    Created when a PermissionRequest hook reports in, and resolved either by a
+    UI (via ``POST /api/session/{id}/respond``) or by the hook giving up and
+    letting the local terminal dialog take over.
+
+    ``kind`` tells the UI how to render the affordance:
+
+    * ``permission`` — allow / deny
+    * ``question``   — the agent asked a multiple-choice question; answer with
+      one of ``options``
+    * ``plan``       — the agent presented a plan; approve / reject
+    """
+
+    request_id: str
+    kind: str
+    tool_name: str | None = None
+    tool_input: dict | None = None
+    preview: str | None = None
+    # Flattened choices — every option of every question, each tagged with the
+    # question it belongs to. Enough for a client that only ever answers one
+    # question, or renders a simple list.
+    options: list[dict] = field(default_factory=list)
+    # Grouped choices, one entry per question. A client must use this (rather
+    # than `options`) to answer a multi-question call, because Claude Code
+    # requires an answer for every question in the call.
+    questions: list[dict] = field(default_factory=list)
+    # What is actually being asked for, in labelled blocks any client can
+    # render without knowing tool semantics:
+    #   {"label", "value", "kind": "code"|"text"|"diff", "truncated"}
+    details: list[dict] = field(default_factory=list)
+    created_at: float = field(default_factory=time.time)
+    expires_at: float | None = None
+    # Whether a hook is currently blocked waiting for this answer. If no hook
+    # is holding, the answer is best-effort: it can still be delivered, but
+    # nothing is gated on it.
+    holding: bool = False
+
+    def to_dict(self) -> dict:
+        return {
+            "request_id": self.request_id,
+            "kind": self.kind,
+            "tool_name": self.tool_name,
+            "tool_input": self.tool_input,
+            "preview": self.preview,
+            "options": self.options,
+            "questions": self.questions,
+            "details": self.details,
+            "created_at": self.created_at,
+            "expires_at": self.expires_at,
+            "holding": self.holding,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "PendingRequest":
+        return cls(
+            request_id=data["request_id"],
+            kind=data.get("kind", "permission"),
+            tool_name=data.get("tool_name"),
+            tool_input=data.get("tool_input"),
+            preview=data.get("preview"),
+            options=data.get("options") or [],
+            questions=data.get("questions") or [],
+            details=data.get("details") or [],
+            created_at=data.get("created_at", time.time()),
+            expires_at=data.get("expires_at"),
+            holding=bool(data.get("holding", False)),
+        )
+
+
+@dataclass
+class Directive:
+    """A message a user pushed into a session from a UI."""
+
+    directive_id: str
+    text: str
+    created_at: float = field(default_factory=time.time)
+    delivered_at: float | None = None
+    via: str | None = None  # "hook" | "socket" — how it actually got in
+
+    def to_dict(self) -> dict:
+        return {
+            "directive_id": self.directive_id,
+            "text": self.text,
+            "created_at": self.created_at,
+            "delivered_at": self.delivered_at,
+            "via": self.via,
+        }
+
+
+def _build_request_preview(tool_name: str | None, tool_input: dict | None) -> str:
+    """One-line human summary of a pending tool call.
+
+    Best-effort by design: tool_input shapes vary per tool and change between
+    Claude Code releases, so anything unrecognised falls back to a compact
+    JSON dump rather than rendering nothing.
+    """
+    if not isinstance(tool_input, dict):
+        return tool_name or ""
+
+    if tool_name == "Bash":
+        return str(tool_input.get("command", ""))[:_MAX_REQUEST_FIELD_LENGTH]
+    if tool_name in ("Write", "Edit", "NotebookEdit", "Read"):
+        path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
+        return str(path)
+    if tool_name in ("WebFetch", "WebSearch"):
+        return str(tool_input.get("url") or tool_input.get("query") or "")
+    if tool_name in _PLAN_TOOLS:
+        return "Plan ready for review"
+    if tool_name in _QUESTION_TOOLS:
+        questions = tool_input.get("questions") or []
+        if isinstance(questions, list) and questions:
+            first = questions[0]
+            if isinstance(first, dict):
+                return str(first.get("question", ""))
+        return "Question"
+    try:
+        return json.dumps(tool_input, ensure_ascii=False)[:_MAX_REQUEST_FIELD_LENGTH]
+    except (TypeError, ValueError):
+        return str(tool_input)[:_MAX_REQUEST_FIELD_LENGTH]
+
+
+def _extract_options(tool_name: str | None, tool_input: dict | None) -> list[dict]:
+    """Pull answer options out of a tool call, if it has any.
+
+    Returns a list of ``{"label", "description", "header"}`` dicts — an
+    intentionally flat shape so both the web UI and the Android client can
+    render it without knowing which agent produced it.
+    """
+    if not isinstance(tool_input, dict):
+        return []
+
+    options: list[dict] = []
+
+    if tool_name in _QUESTION_TOOLS:
+        questions = tool_input.get("questions") or []
+        if isinstance(questions, list):
+            for q in questions:
+                if not isinstance(q, dict):
+                    continue
+                header = q.get("header") or q.get("question") or ""
+                for opt in q.get("options") or []:
+                    if not isinstance(opt, dict):
+                        continue
+                    options.append(
+                        {
+                            "label": opt.get("label", ""),
+                            "description": opt.get("description", ""),
+                            "question": q.get("question", ""),
+                            "header": header,
+                            "multi_select": bool(q.get("multiSelect", False)),
+                        }
+                    )
+        return options
+
+    if tool_name in _PLAN_TOOLS:
+        # ExitPlanMode is a yes/no gate; present it as such.
+        return [
+            {"label": "Approve", "description": "", "action": "allow", "header": "plan"},
+            {"label": "Reject", "description": "", "action": "deny", "header": "plan"},
+        ]
+
+    return options
+
+
+def _clip(value: str, limit: int = _MAX_DETAIL_LENGTH) -> tuple[str, bool]:
+    """Truncate a detail value, reporting whether it was truncated."""
+    if len(value) <= limit:
+        return value, False
+    return value[:limit] + f"\n… [{len(value) - limit} more characters]", True
+
+
+def _block(label: str, value: object, kind: str = "code") -> dict | None:
+    """One labelled detail block, or None when there is nothing to show."""
+    if value is None:
+        return None
+    text = value if isinstance(value, str) else str(value)
+    if not text.strip():
+        return None
+    clipped, truncated = _clip(text)
+    return {"label": label, "value": clipped, "kind": kind, "truncated": truncated}
+
+
+def _diff_text(old: object, new: object) -> str:
+    """Render a string replacement as unified-diff-ish lines.
+
+    Emitted as plain text with +/- prefixes rather than an HTML diff so every
+    client — web, Android, anything later — can style it the same way from one
+    flat string.
+    """
+    old_lines = str(old or "").splitlines() or [""]
+    new_lines = str(new or "").splitlines() or [""]
+    return "\n".join(
+        [f"- {line}" for line in old_lines] + [f"+ {line}" for line in new_lines]
+    )
+
+
+def _build_details(tool_name: str | None, tool_input: dict | None) -> list[dict]:
+    """Presentation-ready view of *what is actually being asked for*.
+
+    Built server-side, and tool-aware, for two reasons: the review content must
+    reach every client identically (the Android app should not have to
+    reimplement Claude Code's tool semantics), and `preview` alone is not
+    enough to review — it is a one-line summary, so a file write showed only a
+    path and a plan showed nothing at all.
+
+    Unknown tools fall back to the raw input rather than showing nothing: an
+    unlabelled JSON dump is still reviewable, an empty panel is not.
+    """
+    if not isinstance(tool_input, dict):
+        return []
+
+    if tool_name in _QUESTION_TOOLS:
+        # The questions are the content and are transmitted separately; a raw
+        # input dump alongside them would be noise.
+        return []
+
+    def blocks(*candidates):
+        return [b for b in candidates if b is not None]
+
+    out: list[dict] = []
+
+    if tool_name == "Bash":
+        out = blocks(_block("Command", tool_input.get("command")),
+                     _block("Description", tool_input.get("description"), "text"))
+        if tool_input.get("run_in_background"):
+            out.append({"label": "Runs in background", "value": "yes", "kind": "text", "truncated": False})
+
+    elif tool_name == "Write":
+        out = blocks(_block("File", tool_input.get("file_path")),
+                     _block("Content being written", tool_input.get("content")))
+
+    elif tool_name == "Edit":
+        out = blocks(_block("File", tool_input.get("file_path")),
+                     _block("Changes", _diff_text(tool_input.get("old_string"), tool_input.get("new_string")), "diff"))
+        if tool_input.get("replace_all"):
+            out.append({"label": "Replace all occurrences", "value": "yes", "kind": "text", "truncated": False})
+
+    elif tool_name == "MultiEdit":
+        edits = tool_input.get("edits") or []
+        chunks = [
+            _diff_text(e.get("old_string"), e.get("new_string"))
+            for e in edits if isinstance(e, dict)
+        ]
+        out = blocks(_block("File", tool_input.get("file_path")),
+                     _block("Changes", "\n\n".join(chunks), "diff"))
+
+    elif tool_name == "NotebookEdit":
+        out = blocks(_block("Notebook", tool_input.get("notebook_path")),
+                     _block("Cell", tool_input.get("cell_id")),
+                     _block("New source", tool_input.get("new_source")))
+
+    elif tool_name == "Read":
+        out = blocks(_block("File", tool_input.get("file_path")))
+        span = []
+        if tool_input.get("offset") is not None:
+            span.append(f"from line {tool_input['offset']}")
+        if tool_input.get("limit") is not None:
+            span.append(f"limit {tool_input['limit']}")
+        if span:
+            out.append({"label": "Range", "value": ", ".join(span), "kind": "text", "truncated": False})
+
+    elif tool_name in ("WebFetch", "WebSearch"):
+        out = blocks(_block("URL", tool_input.get("url")),
+                     _block("Query", tool_input.get("query"), "text"),
+                     _block("Prompt", tool_input.get("prompt"), "text"))
+
+    elif tool_name in _PLAN_TOOLS:
+        # The whole point of this request is the plan; previously it was not
+        # transmitted at all, so the review had nothing to review.
+        out = blocks(_block("Plan", tool_input.get("plan"), "text"),
+                     _block("Plan file", tool_input.get("planFilePath")))
+
+    elif tool_name in ("Task", "Agent"):
+        out = blocks(_block("Subagent", tool_input.get("subagent_type")),
+                     _block("Prompt", tool_input.get("prompt"), "text"))
+
+    elif tool_name == "TodoWrite":
+        todos = tool_input.get("todos") or []
+        lines = [
+            f"[{t.get('status', '?')}] {t.get('content', '')}"
+            for t in todos if isinstance(t, dict)
+        ]
+        out = blocks(_block("Todos", "\n".join(lines), "text"))
+
+    if not out:
+        # Unknown tool, or a known one whose fields were absent — fall back to
+        # the raw input so the reviewer is never shown an empty panel.
+        try:
+            rendered = json.dumps(tool_input, indent=2, ensure_ascii=False)
+        except (TypeError, ValueError):
+            rendered = str(tool_input)
+        out = blocks(_block("Input", rendered))
+
+    return out
+
+
+def _extract_questions(tool_input: dict | None) -> list[dict]:
+    """Grouped view of an ``AskUserQuestion`` call: one entry per question.
+
+    ``options`` is the flattened form (one entry per choice, each carrying its
+    own question text), which is all a simple client needs. This grouped form
+    is what a client needs to answer a *multi-question* call correctly: Claude
+    Code expects an ``answers`` entry for every question in the call, so a UI
+    working from the flattened list alone cannot tell when it has answered them
+    all, and would submit a partial map.
+    """
+    if not isinstance(tool_input, dict):
+        return []
+
+    questions = tool_input.get("questions")
+    if not isinstance(questions, list):
+        return []
+
+    out: list[dict] = []
+    for q in questions:
+        if not isinstance(q, dict):
+            continue
+        text = str(q.get("question", ""))
+        opts = [
+            {"label": str(o.get("label", "")), "description": str(o.get("description", ""))}
+            for o in (q.get("options") or [])
+            if isinstance(o, dict)
+        ]
+        out.append({
+            "question": text,
+            "header": str(q.get("header", "")),
+            "multi_select": bool(q.get("multiSelect", False)),
+            "options": opts,
+        })
+    return out
+
+
+def _classify_request(tool_name: str | None) -> str:
+    """Map a tool name to a PendingRequest kind."""
+    if tool_name in _QUESTION_TOOLS:
+        return "question"
+    if tool_name in _PLAN_TOOLS:
+        return "plan"
+    return "permission"
+
+
+def _safe_tool_input(tool_input: object) -> dict | None:
+    """Coerce tool_input into a JSON-serialisable dict, truncating long values.
+
+    The raw input can be arbitrarily large (a whole file for Write), and it is
+    stored per-session on disk, so each field is capped.
+    """
+    if not isinstance(tool_input, dict):
+        return None
+    out: dict = {}
+    for key, value in tool_input.items():
+        if isinstance(value, str) and len(value) > _MAX_REQUEST_FIELD_LENGTH:
+            out[key] = value[:_MAX_REQUEST_FIELD_LENGTH] + "…"
+        else:
+            out[key] = value
+    return out
+
+
+@dataclass
 class SessionState:
     """The current state of one Claude Code session."""
 
@@ -96,6 +498,14 @@ class SessionState:
     agent: str = "claude"  # claude | dsh — which coding agent reported this session
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     message_count: int = 0  # cached count, updated on message write
+    # A decision the agent is currently blocked on, if any.
+    pending_request: PendingRequest | None = None
+    # Set when a user asks for the current task to stop; the PreToolUse hook
+    # reads it back and denies tool calls until the user prompts again.
+    stop_requested: bool = False
+    stop_reason: str | None = None
+    # Directives queued from a UI but not yet delivered to the agent.
+    queued_directives: list[Directive] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -110,6 +520,10 @@ class SessionState:
             "archived": self.archived,
             "updated_at": self.updated_at.isoformat(),
             "message_count": self.message_count,
+            "pending_request": self.pending_request.to_dict() if self.pending_request else None,
+            "stop_requested": self.stop_requested,
+            "stop_reason": self.stop_reason,
+            "queued_directives": [d.to_dict() for d in self.queued_directives],
         }
 
 
@@ -140,6 +554,18 @@ class StateManager:
         self._pending_approval: set[str] = set()
         self._queues: list[asyncio.Queue] = []
         self._review_timeout_task: asyncio.Task | None = None
+
+        # --- control channel (view-only → bidirectional) ---
+        # request_id → the future a blocked PermissionRequest hook is awaiting.
+        # Resolved by a UI, or abandoned when the hook times out.
+        self._decision_waiters: dict[str, asyncio.Future] = {}
+        # session_id → messaging-socket descriptor reported by a hook. Lets the
+        # server push a directive into an *idle* session, not just a stopping
+        # one. See _deliver_via_socket().
+        self._session_sockets: dict[str, dict] = {}
+        # session_id → the future a Stop hook is parked on, waiting for a
+        # directive to hand to the agent. Resolved by queue_directive().
+        self._directive_waiters: dict[str, asyncio.Future] = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -230,6 +656,23 @@ class StateManager:
                     agent=data.get("agent", "claude"),
                     updated_at=datetime.fromisoformat(data["updated_at"]),
                     message_count=data.get("message_count", 0),
+                    # Directives are user input and survive a restart.
+                    queued_directives=[
+                        Directive(
+                            directive_id=d.get("directive_id", uuid.uuid4().hex[:12]),
+                            text=d.get("text", ""),
+                            created_at=d.get("created_at", time.time()),
+                            delivered_at=d.get("delivered_at"),
+                            via=d.get("via"),
+                        )
+                        for d in (data.get("queued_directives") or [])
+                    ],
+                    # A pending request is NOT restored: whatever hook was
+                    # blocked on it died with the old server process, so the
+                    # agent has already fallen back to its local dialog.
+                    pending_request=None,
+                    stop_requested=False,
+                    stop_reason=None,
                 )
                 self._sessions[session.session_id] = session
                 if session.state == MonitorState.PENDING_APPROVAL:
@@ -251,6 +694,12 @@ class StateManager:
         hook_event_name = raw.get("hook_event_name", "")
         notification_type = raw.get("notification_type")
         tool_name = raw.get("tool_name")
+
+        # Hooks are the only place Claude Code's messaging-socket coordinates
+        # are visible, so every event is an opportunity to refresh them.
+        socket_path = raw.get("messaging_socket")
+        if socket_path:
+            self.set_session_socket(session_id, socket_path, raw.get("messaging_token", ""))
 
         new_state = map_event(hook_event_name, notification_type)
 
@@ -274,6 +723,19 @@ class StateManager:
 
         # --- build message(s) ---
         msg_or_list = self._event_to_message(raw)
+
+        # Notification(permission_prompt) fires alongside the PermissionRequest
+        # that already recorded the real thing, and carries no details of its
+        # own. Keeping both left the timeline with a contentless duplicate row
+        # — literally "Approval needed / Waiting for approval… / Notification".
+        if (
+            hook_event_name == "Notification"
+            and notification_type == "permission_prompt"
+            and (self._sessions.get(session_id) is not None)
+            and self._sessions[session_id].pending_request is not None
+        ):
+            msg_or_list = None
+
         if msg_or_list is not None:
             msgs = msg_or_list if isinstance(msg_or_list, list) else [msg_or_list]
             for m in msgs:
@@ -326,8 +788,31 @@ class StateManager:
             cc_monitor_uid=raw.get("cc_monitor_uid", existing.cc_monitor_uid if existing else ""),
             agent=agent,
             message_count=msg_count,
+            # Control-channel state survives the per-event rebuild.
+            stop_requested=existing.stop_requested if existing else False,
+            stop_reason=existing.stop_reason if existing else None,
+            queued_directives=list(existing.queued_directives) if existing else [],
         )
         self._sessions[session_id] = session
+
+        # --- control channel ---
+        if hook_event_name == "PermissionRequest":
+            hold = self.hold_seconds_for(session_id)
+            self.create_pending_request(session, raw, hold)
+        elif hook_event_name in ("PreToolUse", "PostToolUse", "UserPromptSubmit"):
+            # The tool proceeded (or a new turn began), so any outstanding
+            # decision has been settled locally. Notification and Stop are
+            # deliberately excluded: they arrive *around* a PermissionRequest
+            # rather than after it, and clearing on them would drop live
+            # requests before a UI ever saw them.
+            session.pending_request = None
+        elif existing is not None:
+            session.pending_request = existing.pending_request
+
+        if hook_event_name == "UserPromptSubmit":
+            # A fresh prompt from the user supersedes an earlier stop.
+            session.stop_requested = False
+            session.stop_reason = None
 
         # --- persist ---
         self._write_session_file(session)
@@ -507,6 +992,261 @@ class StateManager:
         self._write_session_file(session)
         await self._broadcast(session)
         return session
+
+    # ------------------------------------------------------------------
+    # Control channel — pending requests
+    # ------------------------------------------------------------------
+
+    @property
+    def subscriber_count(self) -> int:
+        """Number of live SSE subscribers (web UI, Android app, ...)."""
+        return len(self._queues)
+
+    def hold_seconds_for(self, session_id: str) -> float:
+        """How long a PermissionRequest hook should hold the terminal dialog.
+
+        This is what keeps remote approval from ruining the local experience:
+        if nobody is watching a UI, the hook must not stall the terminal, so we
+        tell it to return immediately and let the local dialog appear as
+        normal. When at least one UI *is* connected we hold, because someone
+        may be about to answer from their phone.
+        """
+        if self.subscriber_count == 0:
+            return 0.0
+        return _DEFAULT_HOLD_SECONDS
+
+    def create_pending_request(self, session: SessionState, raw: dict, hold_seconds: float) -> PendingRequest:
+        """Register a decision the agent is blocked on, and attach it to the session."""
+        tool_name = raw.get("tool_name")
+        # Two views of the same input, with different budgets. `tool_input` is
+        # the compact archival copy (cheap to persist and broadcast); `details`
+        # is the review content and must not inherit that clip, or a file write
+        # would be truncated long before _MAX_DETAIL_LENGTH ever applied.
+        raw_input = raw.get("tool_input")
+        tool_input = _safe_tool_input(raw_input)
+        request = PendingRequest(
+            request_id=uuid.uuid4().hex[:12],
+            kind=_classify_request(tool_name),
+            tool_name=tool_name,
+            tool_input=tool_input,
+            preview=_build_request_preview(tool_name, tool_input),
+            options=_extract_options(tool_name, tool_input),
+            questions=_extract_questions(tool_input),
+            details=_build_details(
+                tool_name, raw_input if isinstance(raw_input, dict) else None
+            ),
+            expires_at=time.time() + hold_seconds if hold_seconds > 0 else None,
+            holding=hold_seconds > 0,
+        )
+        session.pending_request = request
+        return request
+
+    def get_pending_request(self, session_id: str) -> PendingRequest | None:
+        """Return the session's outstanding decision, if any."""
+        session = self._sessions.get(session_id)
+        return session.pending_request if session else None
+
+    async def resolve_pending_request(
+        self, session_id: str, request_id: str, decision: dict
+    ) -> tuple[bool, str]:
+        """Answer a pending request on behalf of a UI.
+
+        Returns ``(delivered, reason)``. ``delivered`` is False when no hook is
+        blocked any more — the answer is recorded and the request cleared, but
+        the agent will have fallen back to its local dialog, so the caller
+        should be told rather than left thinking it worked.
+        """
+        session = self._sessions.get(session_id)
+        if session is None:
+            return False, "unknown session"
+
+        pending = session.pending_request
+        if pending is None or pending.request_id != request_id:
+            return False, "no such pending request"
+
+        waiter = self._decision_waiters.get(request_id)
+        holding = waiter is not None and not waiter.done()
+
+        if holding and waiter is not None:
+            waiter.set_result(decision)
+            self._decision_waiters.pop(request_id, None)
+
+        session.pending_request = None
+        session.updated_at = datetime.now(timezone.utc)
+        self._write_session_file(session)
+        await self._broadcast(session)
+        return (True, "delivered") if holding else (False, "no hook waiting")
+
+    async def await_decision(self, request_id: str, timeout: float) -> dict | None:
+        """Block until a UI answers ``request_id``, or ``timeout`` elapses.
+
+        Returns the decision dict, or None on timeout — in which case the
+        caller must fall back to whatever the local behaviour is.
+        """
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future = loop.create_future()
+        self._decision_waiters[request_id] = future
+        try:
+            return await asyncio.wait_for(future, timeout=timeout)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            return None
+        finally:
+            self._decision_waiters.pop(request_id, None)
+
+    async def expire_pending_requests(self) -> None:
+        """Mark requests whose hold window closed with no answer.
+
+        The request is *kept* and flipped to ``holding = False`` rather than
+        deleted. Deleting it left the card still reading "pending approval"
+        with nothing to click and no explanation — the session state outlives
+        the request, so the UI has to be able to say "this one is at the
+        terminal now". It is cleared by the next real event, as any request is.
+        """
+        now = time.time()
+        for session in list(self._sessions.values()):
+            pending = session.pending_request
+            if pending is None or pending.expires_at is None:
+                continue
+            if now < pending.expires_at:
+                continue
+            if pending.request_id in self._decision_waiters:
+                continue  # still being held by a live hook
+            pending.holding = False
+            pending.expires_at = None  # don't re-evaluate it every tick
+            self._write_session_file(session)
+            await self._broadcast(session)
+
+    # ------------------------------------------------------------------
+    # Control channel — directives and stop
+    # ------------------------------------------------------------------
+
+    def hold_for_directive(self, session_id: str) -> float:
+        """How long a Stop hook should linger waiting for a directive.
+
+        Same bargain as the approval hold: only worth pausing the agent for if
+        a UI is connected to type into. With nobody watching, the hook returns
+        at once and the turn ends exactly as it would without cc-monitor.
+        """
+        if self.subscriber_count == 0:
+            return 0.0
+        return _DEFAULT_DIRECTIVE_HOLD_SECONDS
+
+    async def await_directive(self, session_id: str, timeout: float) -> Directive | None:
+        """Park until a directive is queued for ``session_id``, or time out.
+
+        Returns the directive, or None if none arrived — in which case the
+        caller must let the turn end normally.
+        """
+        directive = self.claim_directive(session_id)
+        if directive is not None:
+            return directive
+
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future = loop.create_future()
+        self._directive_waiters[session_id] = future
+        try:
+            await asyncio.wait_for(future, timeout=timeout)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            return None
+        finally:
+            self._directive_waiters.pop(session_id, None)
+        return self.claim_directive(session_id)
+
+    async def queue_directive(self, session_id: str, text: str) -> Directive:
+        """Queue a directive for delivery to the agent."""
+        session = self._sessions.get(session_id)
+        directive = Directive(directive_id=uuid.uuid4().hex[:12], text=text)
+        if session is not None:
+            session.queued_directives.append(directive)
+            session.updated_at = datetime.now(timezone.utc)
+            self._write_session_file(session)
+            await self._broadcast(session)
+
+        # Wake a Stop hook that is holding the turn open for exactly this.
+        waiter = self._directive_waiters.get(session_id)
+        if waiter is not None and not waiter.done():
+            waiter.set_result(True)
+        return directive
+
+    def claim_directive(self, session_id: str) -> Directive | None:
+        """Pop the oldest undelivered directive, marking it delivered.
+
+        Called by a Stop hook, so the directive rides back to the agent as hook
+        feedback rather than sitting in the queue until the user is prompted
+        again.
+        """
+        session = self._sessions.get(session_id)
+        if session is None:
+            return None
+        for directive in session.queued_directives:
+            if directive.delivered_at is None:
+                directive.delivered_at = time.time()
+                directive.via = "hook"
+                self._write_session_file(session)
+                return directive
+        return None
+
+    def get_directive(self, session_id: str, directive_id: str) -> Directive | None:
+        """Look up a specific directive by id."""
+        session = self._sessions.get(session_id)
+        if session is None:
+            return None
+        for directive in session.queued_directives:
+            if directive.directive_id == directive_id:
+                return directive
+        return None
+
+    async def request_stop(self, session_id: str, reason: str | None = None) -> bool:
+        """Ask a session to stop working.
+
+        Enforcement is cooperative and happens in the PreToolUse hook, which
+        reads the flag back and denies tool calls. That is the only mechanism
+        available: Claude Code exposes no external interrupt.
+        """
+        session = self._sessions.get(session_id)
+        if session is None:
+            return False
+        session.stop_requested = True
+        session.stop_reason = reason or "Stopped from cc-monitor"
+        session.updated_at = datetime.now(timezone.utc)
+        self._write_session_file(session)
+        await self._broadcast(session)
+        return True
+
+    async def clear_stop(self, session_id: str) -> None:
+        """Clear a stop request — a fresh user prompt overrides it."""
+        session = self._sessions.get(session_id)
+        if session is None or not session.stop_requested:
+            return
+        session.stop_requested = False
+        session.stop_reason = None
+        self._write_session_file(session)
+        await self._broadcast(session)
+
+    def is_stop_requested(self, session_id: str) -> bool:
+        """Whether a stop has been requested and not yet cleared."""
+        session = self._sessions.get(session_id)
+        return bool(session and session.stop_requested)
+
+    # ------------------------------------------------------------------
+    # Control channel — messaging sockets
+    # ------------------------------------------------------------------
+
+    def set_session_socket(self, session_id: str, path: str, token: str) -> None:
+        """Remember a session's Claude Code messaging socket.
+
+        Reported by the hooks, which are the only place these values are
+        visible (Claude Code exports them into the hook environment). Holding
+        them lets the server push a directive into an idle session instead of
+        waiting for it to stop.
+        """
+        if not path:
+            return
+        self._session_sockets[session_id] = {"path": path, "token": token, "seen": time.time()}
+
+    def get_session_socket(self, session_id: str) -> dict | None:
+        """Return this session's messaging-socket descriptor, if known."""
+        return self._session_sockets.get(session_id)
 
     async def broadcast_event(self, event_type: str, data: dict) -> None:
         """Broadcast an arbitrary event to all SSE subscribers."""
@@ -813,11 +1553,32 @@ class StateManager:
 
         if hook_event_name == "PermissionRequest":
             tool_name = raw.get("tool_name", "")
+            raw_input = raw.get("tool_input")
+            if not isinstance(raw_input, dict):
+                raw_input = None
+
+            # The timeline used to record only "Waiting for approval…" and the
+            # tool name, so the historical record of *what was asked* was the
+            # one thing missing from it — a question's body, a plan's text and
+            # a file's contents never reached it at all. Carry the same
+            # structured payload the live card uses, so the timeline can render
+            # it with the same renderer.
+            payload = {
+                "kind": _classify_request(tool_name),
+                "preview": _build_request_preview(tool_name, raw_input),
+                "details": _build_details(tool_name, raw_input),
+                "questions": _extract_questions(raw_input),
+            }
+            rendered = json.dumps(payload, ensure_ascii=False)
+            if len(rendered) > _MAX_APPROVAL_PAYLOAD_LENGTH:
+                rendered = rendered[:_MAX_APPROVAL_PAYLOAD_LENGTH] + "…"
+
             return Message(
                 timestamp=ts,
                 type="pending_approval",
                 tool_name=tool_name or None,
-                content="Waiting for approval…",
+                content=payload["preview"] or "Waiting for approval…",
+                tool_input=rendered,
                 skeleton=True,
                 source="PermissionRequest",
             )
@@ -862,6 +1623,7 @@ class StateManager:
         """Periodically flip stale PENDING_REVIEW sessions to IDLE."""
         while True:
             await asyncio.sleep(_REVIEW_CHECK_INTERVAL)
+            await self.expire_pending_requests()
             now = datetime.now(timezone.utc)
             expired = []
             for sid, session in self._sessions.items():

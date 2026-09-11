@@ -7,6 +7,7 @@ import '../models/session.dart';
 import '../services/notification_service.dart';
 import '../services/secure_store.dart';
 import '../widgets/agent_badge.dart';
+import '../widgets/pending_request_card.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -248,51 +249,99 @@ class _SessionCardState extends State<_SessionCard> {
       onDismissed: _handleDismissed,
       child: Card(
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        child: ListTile(
-          onTap: widget.onTap,
-          leading: CircleAvatar(backgroundColor: _stateColor(), radius: 6),
-          title: Row(
-            children: [
-              AgentBadge(agent: widget.session.agent),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(widget.session.summary ?? widget.session.cwd,
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ListTile(
+              onTap: widget.onTap,
+              leading: CircleAvatar(backgroundColor: _stateColor(), radius: 6),
+              title: Row(
+                children: [
+                  AgentBadge(agent: widget.session.agent),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(widget.session.summary ?? widget.session.cwd,
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                ],
               ),
-            ],
-          ),
-          subtitle: Text([
-            _stateLabel(widget.session.state, l10n),
-            if (widget.session.ccMonitorUid.isNotEmpty)
-              widget.session.ccMonitorUid,
-          ].join(' · ')),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_deleting)
-                _UndoButton(
-                  onTap: _undoDelete,
-                  isDark: isDark,
-                  l10n: l10n,
-                )
-              else
-                IconButton(
-                  icon: Icon(Icons.delete_outline,
-                      size: 18, color: isDark ? Colors.white30 : Colors.black38),
-                  onPressed: () => _startDelete(provider),
-                  tooltip: 'Delete',
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              subtitle: Text([
+                _stateLabel(widget.session.state, l10n),
+                if (widget.session.undeliveredDirectiveCount > 0)
+                  l10n.controlQueued(widget.session.undeliveredDirectiveCount),
+                if (widget.session.ccMonitorUid.isNotEmpty)
+                  widget.session.ccMonitorUid,
+              ].join(' · ')),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_deleting)
+                    _UndoButton(
+                      onTap: _undoDelete,
+                      isDark: isDark,
+                      l10n: l10n,
+                    )
+                  else ...[
+                    _StopButton(
+                      session: widget.session,
+                      isDark: isDark,
+                      l10n: l10n,
+                      provider: provider,
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.delete_outline,
+                          size: 18,
+                          color: isDark ? Colors.white30 : Colors.black38),
+                      onPressed: () => _startDelete(provider),
+                      tooltip: 'Delete',
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints:
+                          const BoxConstraints(minWidth: 32, minHeight: 32),
+                    ),
+                  ],
+                  const SizedBox(width: 4),
+                  Text(_formatTime(widget.session.updatedAt, l10n),
+                      style: Theme.of(context).textTheme.bodySmall),
+                ],
+              ),
+            ),
+            // Answerable straight from the list — on a phone that is the whole
+            // point; opening a detail screen to tap "Allow" is a tax.
+            if (widget.session.pendingRequest != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                child: PendingRequestCard(
+                  request: widget.session.pendingRequest!,
+                  dense: true,
+                  onRespond: (behavior, answers) =>
+                      _respond(provider, l10n, behavior, answers),
                 ),
-              const SizedBox(width: 4),
-              Text(_formatTime(widget.session.updatedAt, l10n),
-                  style: Theme.of(context).textTheme.bodySmall),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );
+  }
+
+  Future<void> _respond(
+    SessionProvider provider,
+    AppLocalizations l10n,
+    String behavior,
+    Map<String, String>? answers,
+  ) async {
+    final req = widget.session.pendingRequest;
+    if (req == null) return;
+    final outcome = await provider.respondToRequest(
+      widget.session.sessionId,
+      req.requestId,
+      behavior: behavior,
+      answers: answers,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(controlOutcomeLabel(l10n, outcome))));
   }
 
   String _stateLabel(String state, AppLocalizations l10n) {
@@ -313,6 +362,59 @@ class _SessionCardState extends State<_SessionCard> {
     if (diff.inMinutes < 60) return l10n.timeMinutesAgo(diff.inMinutes);
     if (diff.inHours < 24) return l10n.timeHoursAgo(diff.inHours);
     return l10n.timeDaysAgo(diff.inDays);
+  }
+}
+
+/// Stop / resume toggle.
+///
+/// Stop is cooperative — the agent's PreToolUse hook denies further tool calls
+/// until the user prompts again — so this asks rather than kills, and the
+/// button flips to Resume so the state is visible rather than implied.
+class _StopButton extends StatelessWidget {
+  final Session session;
+  final bool isDark;
+  final AppLocalizations l10n;
+  final SessionProvider provider;
+
+  const _StopButton({
+    required this.session,
+    required this.isDark,
+    required this.l10n,
+    required this.provider,
+  });
+
+  Future<void> _toggle(BuildContext context) async {
+    final stopped = session.stopRequested;
+    final outcome = stopped
+        ? await provider.resumeSession(session.sessionId)
+        : await provider.stopSession(session.sessionId);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(stopped ? l10n.controlResume : l10n.controlStop),
+      duration: const Duration(seconds: 2),
+    ));
+    if (outcome == ControlOutcome.failed && context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(l10n.controlFailed)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Icon(
+        session.stopRequested ? Icons.play_circle_outline : Icons.stop_circle_outlined,
+        size: 18,
+        color: session.stopRequested
+            ? Colors.green.shade400
+            : (isDark ? Colors.white30 : Colors.black38),
+      ),
+      onPressed: () => _toggle(context),
+      tooltip: session.stopRequested ? l10n.controlResume : l10n.controlStop,
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+    );
   }
 }
 

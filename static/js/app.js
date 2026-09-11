@@ -316,6 +316,198 @@ function loadSessionsView() {
         }
     }
 
+    // ---- Control channel rendering ----
+
+    // A pending request is the agent blocked on a human decision. It is
+    // rendered inline on the card so it is answerable without opening the
+    // detail modal — the whole point is answering fast from a phone.
+    // Questions come from the server already grouped (`questions`, one entry
+    // per question) as well as flattened (`options`). Grouping matters: Claude
+    // Code expects an answer for *every* question in a call, so a UI working
+    // from the flat list cannot tell when it has answered them all. Fall back
+    // to grouping the flat list for older payloads.
+    function questionsOf(req) {
+        if (req.questions && req.questions.length) return req.questions;
+        const byQuestion = new Map();
+        (req.options || []).forEach(opt => {
+            const key = opt.question || "";
+            if (!byQuestion.has(key)) byQuestion.set(key, { question: key, header: opt.header || "", multi_select: !!opt.multi_select, options: [] });
+            byQuestion.get(key).options.push({ label: opt.label, description: opt.description });
+        });
+        return [...byQuestion.values()];
+    }
+
+    function renderQuestionGroup(req, sid, rid, q, index) {
+        const qText = escapeHtml(q.question || "");
+        const header = q.header ? `<div class="pr-question__header">${escapeHtml(q.header)}</div>` : "";
+        const text = q.question ? `<div class="pr-question__text">${escapeHtml(q.question)}</div>` : "";
+        // A single-select question with nothing else in the call is the common
+        // case, and one click is the right interaction. Anything else needs
+        // explicit selection plus a submit, or a click would answer before the
+        // user finished choosing.
+        const oneClick = !q.multi_select && questionsOf(req).length === 1;
+
+        const opts = (q.options || []).map(o => {
+            const desc = o.description ? ` title="${escapeHtml(o.description)}"` : "";
+            return `<button class="btn--card btn--card-answer${oneClick ? "" : " is-selectable"}"
+                type="button" data-action="option" data-sid="${sid}" data-rid="${rid}"
+                data-qindex="${index}" data-answer="${escapeHtml(o.label)}"${desc}>${escapeHtml(o.label)}</button>`;
+        }).join("");
+
+        return `
+            <div class="pr-question" data-qindex="${index}" data-question="${qText}"
+                 data-oneclick="${oneClick ? "1" : "0"}" data-multi="${q.multi_select ? "1" : "0"}">
+                ${header}
+                ${text}
+                <div class="pr-question__options">${opts}</div>
+                <input class="pr-question__custom" type="text" data-role="custom"
+                    placeholder="${I18n.t("request.custom")}" aria-label="${I18n.t("request.custom")}">
+            </div>`;
+    }
+
+    // Read the answers off the DOM rather than a parallel JS state object, so
+    // the two can never disagree.
+    function collectAnswers(host) {
+        const answers = {};
+        let complete = true;
+        host.querySelectorAll(".pr-question").forEach(qEl => {
+            const q = qEl.dataset.question;
+            if (!q) return;
+            const custom = (qEl.querySelector("[data-role='custom']") || {}).value || "";
+            if (custom.trim()) {
+                answers[q] = custom.trim();
+                return;
+            }
+            const picked = [...qEl.querySelectorAll("button.is-selected")].map(b => b.dataset.answer);
+            if (picked.length) answers[q] = picked.join(", ");
+            else complete = false;
+        });
+        return { answers, complete };
+    }
+
+    // `details` is built server-side and tool-aware, so this stays dumb on
+    // purpose: it renders labelled blocks without knowing what a Write or a
+    // plan is. That is what lets the Android app show the same thing without
+    // reimplementing Claude Code's tool semantics.
+    function renderDetailBlock(block) {
+        const kind = block.kind || "code";
+        let value;
+        if (kind === "diff") {
+            // Colour +/- per line. The server sends one flat string, so split
+            // here rather than making every client parse a richer structure.
+            value = String(block.value || "").split("\n").map(line => {
+                const cls = line.startsWith("+ ") ? " is-add"
+                    : line.startsWith("- ") ? " is-del" : "";
+                return `<span class="pr-detail__line${cls}">${escapeHtml(line)}</span>`;
+            }).join("\n");
+        } else {
+            value = escapeHtml(block.value || "");
+        }
+        const note = block.truncated
+            ? `<span class="pr-detail__truncated">${I18n.t("request.truncated")}</span>` : "";
+        return `
+            <div class="pr-detail pr-detail--${escapeHtml(kind)}">
+                <div class="pr-detail__label">${escapeHtml(block.label || "")}${note}</div>
+                <pre class="pr-detail__value">${value}</pre>
+            </div>`;
+    }
+
+    function renderPendingRequest(session) {
+        const req = session.pending_request;
+        if (!req) return "";
+
+        const sid = escapeHtml(session.session_id);
+        const rid = escapeHtml(req.request_id);
+        const holding = req.holding !== false;
+        // `holding` False means the hook already released the terminal dialog
+        // and the prompt is being answered locally — the controls still work,
+        // but the answer is advisory, so say so rather than implying success.
+        const stateLabel = holding
+            ? I18n.t("request.awaiting")
+            : I18n.t("request.local");
+
+        let body = "";
+        let actions = "";
+
+        if (req.kind === "question" && (req.options || []).length) {
+            const groups = questionsOf(req);
+            body = `<div class="pending-request__questions">${
+                groups.map((q, i) => renderQuestionGroup(req, sid, rid, q, i)).join("")
+            }</div>`;
+            const multi = groups.length > 1 || groups.some(q => q.multi_select);
+            // Submit is always offered: it is the only way to send a typed
+            // answer even when the options are one-click.
+            actions = `
+                <button class="btn--card btn--card-allow" data-action="submit-answers"
+                    data-sid="${sid}" data-rid="${rid}">${I18n.t("request.submit")}</button>
+                <button class="btn--card btn--card-deny" data-action="respond"
+                    data-sid="${sid}" data-rid="${rid}" data-behavior="deny">${I18n.t("request.deny")}</button>`;
+            if (!multi) {
+                // Nothing to collect — say so visually rather than showing a
+                // submit that is redundant with the option buttons.
+                actions = actions.replace(
+                    `>${I18n.t("request.submit")}</button>`,
+                    ` title="${I18n.t("request.submit_hint")}">${I18n.t("request.submit")}</button>`);
+            }
+        } else {
+            actions = `
+                <button class="btn--card btn--card-allow" data-action="respond"
+                    data-sid="${sid}" data-rid="${rid}" data-behavior="allow">${I18n.t("request.allow")}</button>
+                <button class="btn--card btn--card-deny" data-action="respond"
+                    data-sid="${sid}" data-rid="${rid}" data-behavior="deny">${I18n.t("request.deny")}</button>`;
+        }
+
+        // Full detail is the review content, so prefer it. `preview` is only
+        // a one-line fallback for a payload that predates `details` — showing
+        // both would just repeat the command for a Bash request.
+        const details = (req.details || []).map(renderDetailBlock).join("");
+        const preview = !details && req.preview && req.kind !== "question"
+            ? `<pre class="pending-request__preview">${escapeHtml(truncate(req.preview, 600))}</pre>`
+            : "";
+        const tool = req.tool_name
+            ? `<span class="pending-request__tool">${escapeHtml(req.tool_name)}</span>`
+            : "";
+
+        return `
+            <div class="pending-request pending-request--${escapeHtml(req.kind)}">
+                <div class="pending-request__head">
+                    ${tool}
+                    <span class="pending-request__state${holding ? "" : " is-local"}">${stateLabel}</span>
+                </div>
+                ${details}
+                ${preview}
+                ${body}
+                <div class="pending-request__actions">${actions}</div>
+            </div>`;
+    }
+
+    // Directive input + stop. The input is a real <input> inside a clickable
+    // card, so its events are stopped from bubbling to the modal handler.
+    function renderControlBar(session) {
+        if (session.archived) return "";
+        const sid = escapeHtml(session.session_id);
+        const stopped = session.stop_requested;
+        const pending = (session.queued_directives || [])
+            .filter(d => !d.delivered_at).length;
+        const queuedNote = pending
+            ? `<span class="session-control__queued">${I18n.t("control.queued", {n: pending})}</span>`
+            : "";
+
+        const stopBtn = stopped
+            ? `<button class="btn--card btn--card-resume" data-action="resume" data-sid="${sid}">${I18n.t("control.resume")}</button>`
+            : `<button class="btn--card btn--card-stop" data-action="stop" data-sid="${sid}">${I18n.t("control.stop")}</button>`;
+
+        return `
+            <div class="session-control" data-sid="${sid}">
+                <input class="session-control__input" type="text" data-role="directive"
+                    data-sid="${sid}" placeholder="${I18n.t("control.placeholder")}"
+                    aria-label="${I18n.t("control.placeholder")}">
+                <button class="btn--card btn--card-send" data-action="send" data-sid="${sid}">${I18n.t("control.send")}</button>
+                ${stopBtn}
+                ${queuedNote}
+            </div>`;
+    }
+
     // ---- Session Cards ----
 
     function createCard(session) {
@@ -373,6 +565,8 @@ function loadSessionsView() {
                 </div>
                 <div class="session-card__time">${relativeTime(session.updated_at)}</div>
             </div>
+            ${renderPendingRequest(session)}
+            ${renderControlBar(session)}
             ${actions ? `<div class="session-card__actions">${actions}</div>` : ""}
         `;
         return card;
@@ -413,6 +607,9 @@ function loadSessionsView() {
         cards.get(session.session_id).agent = session.agent || "claude";
         cards.get(session.session_id).sizeBytes = session.size_bytes;
         cards.get(session.session_id).updatedAt = session.updated_at;
+        cards.get(session.session_id).pendingRequest = session.pending_request;
+        cards.get(session.session_id).stopRequested = session.stop_requested;
+        cards.get(session.session_id).queuedDirectives = session.queued_directives || [];
     }
 
     function clearAllCards() {
@@ -431,11 +628,232 @@ function loadSessionsView() {
 
     let _deleteTimers = {};  // sessionId → {timerId, undo: fn}
 
+    // Transient per-card status line. Errors here matter — a directive that
+    // silently failed to deliver is worse than one that visibly did.
+    // Where a transient status line should appear for this session: the open
+    // detail modal if it is showing this session, otherwise the card. Without
+    // this, an action taken from the modal would report its result to a card
+    // the user cannot see.
+    // Rebuild a session-shaped object from what the card cache holds, so the
+    // modal can reuse the card's renderers without keeping a second copy of
+    // the session state.
+    function sessionForRender(sessionId) {
+        const meta = cards.get(sessionId);
+        const prev = prevStates.get(sessionId);
+        if (!meta || !prev) return null;
+        return {
+            session_id: sessionId,
+            archived: prev.archived,
+            state: prev.state,
+            pending_request: meta.pendingRequest || null,
+            stop_requested: !!meta.stopRequested,
+            queued_directives: meta.queuedDirectives || [],
+        };
+    }
+
+    function renderDetailPending(sessionId) {
+        const host = document.getElementById("detail-pending");
+        if (!host) return;
+        const session = sessionForRender(sessionId);
+        if (!session) return;
+        host.innerHTML = renderPendingRequest(session);
+        bindActionButtons(host);
+    }
+
+    // Wire [data-action] controls in a container that is not a session card —
+    // currently the modal's pending-request block.
+    function bindActionButtons(root) {
+        root.querySelectorAll("[data-action]").forEach(btn => {
+            if (btn._ccBound) return;
+            btn._ccBound = true;
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                handleCardAction(btn.dataset.action, btn.dataset.sid, btn);
+            });
+        });
+        root.querySelectorAll("[data-role='custom']").forEach(input => {
+            if (input._ccBound) return;
+            input._ccBound = true;
+            input.addEventListener("click", (e) => e.stopPropagation());
+            input.addEventListener("mousedown", (e) => e.stopPropagation());
+            input.addEventListener("keydown", (e) => {
+                e.stopPropagation();
+                if (e.key !== "Enter") return;
+                e.preventDefault();
+                const btn = input.closest(".pr-question")
+                    ?.closest(".pending-request")
+                    ?.querySelector("[data-action='submit-answers']");
+                if (btn) handleCardAction("submit-answers", btn.dataset.sid, btn);
+            });
+        });
+    }
+
+    function feedbackHost(sessionId) {
+        const overlay = document.getElementById("detail-overlay");
+        if (overlay && _tlSessionId === sessionId) {
+            return overlay.querySelector(".detail-composer__actions")
+                || overlay.querySelector(".detail-composer");
+        }
+        const cardEl = document.getElementById("card-" + sessionId);
+        if (!cardEl) return null;
+        return cardEl.querySelector(".session-control") || cardEl;
+    }
+
+    function flashFeedback(sessionId, message, ok) {
+        const host = feedbackHost(sessionId);
+        if (!host) return;
+        let el = host.querySelector(".session-control__feedback");
+        if (!el) {
+            el = document.createElement("div");
+            el.className = "session-control__feedback";
+            host.appendChild(el);
+        }
+        el.textContent = message;
+        el.classList.toggle("is-error", ok === false);
+        clearTimeout(el._flashTimer);
+        el._flashTimer = setTimeout(() => { el.textContent = ""; }, 6000);
+    }
+
+    async function respondToRequest(sessionId, requestId, behavior, answers) {
+        try {
+            const body = {request_id: requestId, behavior};
+            if (answers) body.answers = answers;
+            const resp = await apiFetch(`/api/session/${sessionId}/respond`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify(body),
+            });
+            if (!resp.ok) {
+                flashFeedback(sessionId, I18n.t("request.failed"), false);
+                return;
+            }
+            const data = await resp.json();
+            // The server clears the request either way, so drop it here too
+            // rather than leaving buttons that no longer do anything until the
+            // next state_update lands.
+            clearPendingRequestUI(sessionId);
+            // `delivered` is False when the hook had already given up and the
+            // prompt is being answered at the terminal. Report that honestly
+            // instead of showing a success the user did not get.
+            flashFeedback(
+                sessionId,
+                data.delivered ? I18n.t("request.sent") : I18n.t("request.missed"),
+                data.delivered,
+            );
+        } catch (err) {
+            console.error("cc-monitor: respond failed", err);
+            flashFeedback(sessionId, I18n.t("request.failed"), false);
+        }
+    }
+
+    function clearPendingRequestUI(sessionId) {
+        const cardEl = document.getElementById("card-" + sessionId);
+        if (cardEl) {
+            const block = cardEl.querySelector(".pending-request");
+            if (block) block.remove();
+        }
+        const overlay = document.getElementById("detail-overlay");
+        if (overlay && _tlSessionId === sessionId) {
+            const block = overlay.querySelector(".pending-request");
+            if (block) block.remove();
+        }
+    }
+
+    async function sendDirective(sessionId, inputEl) {
+        const text = (inputEl.value || "").trim();
+        if (!text) return;
+        inputEl.value = "";
+        try {
+            const resp = await apiFetch(`/api/session/${sessionId}/directive`, {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({text}),
+            });
+            if (!resp.ok) {
+                inputEl.value = text;   // give the text back rather than losing it
+                flashFeedback(sessionId, I18n.t("control.failed"), false);
+                return;
+            }
+            // Delivery always happens at the agent's next turn boundary, so
+            // "queued" is the accurate outcome — there is no eager transport
+            // to report success for.
+            flashFeedback(sessionId, I18n.t("control.queued_ok"), true);
+        } catch (err) {
+            console.error("cc-monitor: directive failed", err);
+            inputEl.value = text;
+            flashFeedback(sessionId, I18n.t("control.failed"), false);
+        }
+    }
+
     async function handleCardAction(action, sessionId, btnEl) {
         if (action === "delete") {
             startDeleteCountdown(sessionId, btnEl);
             return;
         }
+
+        if (action === "respond") {
+            await respondToRequest(sessionId, btnEl.dataset.rid, btnEl.dataset.behavior);
+            return;
+        }
+
+        if (action === "option") {
+            const group = btnEl.closest(".pr-question");
+            if (group && group.dataset.oneclick === "1") {
+                // Single question, single select: the click *is* the answer.
+                await respondToRequest(sessionId, btnEl.dataset.rid, "allow", {
+                    [group.dataset.question]: btnEl.dataset.answer,
+                });
+                return;
+            }
+            // Otherwise select, and let Submit send — answering on the first
+            // click would pre-empt the other questions in the call.
+            const multi = !!group && group.dataset.multi === "1";
+            const wasSelected = btnEl.classList.contains("is-selected");
+            if (!multi && group) {
+                group.querySelectorAll("button.is-selected").forEach(b => b.classList.remove("is-selected"));
+            }
+            btnEl.classList.toggle("is-selected", !wasSelected);
+            return;
+        }
+
+        if (action === "submit-answers") {
+            const block = btnEl.closest(".pending-request");
+            if (!block) return;
+            const { answers, complete } = collectAnswers(block);
+            if (!complete) {
+                flashFeedback(sessionId, I18n.t("request.need_all"), false);
+                return;
+            }
+            await respondToRequest(sessionId, btnEl.dataset.rid, "allow", answers);
+            return;
+        }
+
+        if (action === "send") {
+            // The directive box lives in either the card's control bar or the
+            // detail composer, so find the one belonging to *this* button
+            // rather than assuming the card.
+            const scope = btnEl.closest(".session-control, .detail-composer");
+            const input = scope && scope.querySelector("[data-role='directive']");
+            if (input) await sendDirective(sessionId, input);
+            return;
+        }
+
+        if (action === "stop" || action === "resume") {
+            try {
+                const resp = await apiFetch(`/api/session/${sessionId}/${action}`, {method: "POST"});
+                if (resp.ok) {
+                    const session = await resp.json();
+                    updateCard(session);
+                    prevStates.set(session.session_id, {state: session.state, archived: session.archived});
+                } else {
+                    flashFeedback(sessionId, I18n.t("control.failed"), false);
+                }
+            } catch (err) {
+                console.error("cc-monitor: stop/resume failed", err);
+            }
+            return;
+        }
+
         try {
             const resp = await apiFetch(`/api/session/${sessionId}/${action}`, {method: "POST"});
             if (resp.ok) {
@@ -516,10 +934,26 @@ function loadSessionsView() {
                 handleCardAction(btn.dataset.action, btn.dataset.sid, btn);
             });
         });
+        // Directive input: Enter sends, and neither clicks nor keypresses may
+        // bubble — otherwise typing would open the detail modal on every
+        // keystroke and the text would be lost.
+        card.querySelectorAll("[data-role='directive']").forEach(input => {
+            input.addEventListener("click", (e) => e.stopPropagation());
+            input.addEventListener("mousedown", (e) => e.stopPropagation());
+            input.addEventListener("keydown", (e) => {
+                e.stopPropagation();
+                if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    sendDirective(input.dataset.sid, input);
+                }
+            });
+        });
+
         // Card click → open detail modal
         card.addEventListener("click", (e) => {
-            // Don't open modal if clicking a button
+            // Don't open modal if clicking a button or a control
             if (e.target.closest("button")) return;
+            if (e.target.closest(".session-control, .pending-request")) return;
             const sid = card.id.replace("card-", "");
             openDetailModal(sid);
         });
@@ -534,6 +968,139 @@ function loadSessionsView() {
     let _tlOffset = 0;
     let _tlTotal = 0;
     let _tlLoading = false;
+
+    // Composer for the expanded view. Same plain-text directive as the card —
+    // the only additions are room to write in and somewhere to put a long
+    // message, which the single-line card input cannot offer.
+    // Monochrome glyphs, not emoji: these sit in a control bar next to 11px
+    // labels and colour already carries the meaning, so a colour emoji would
+    // read as decoration and render differently on every platform.
+    const ICON_SEND = "↑";
+    const ICON_STOP = "■";
+    const ICON_RESUME = "▶";
+
+    function stopResumeLabel(stopped) {
+        return stopped
+            ? `${ICON_RESUME} ${I18n.t("control.resume")}`
+            : `${ICON_STOP} ${I18n.t("control.stop")}`;
+    }
+
+    function renderDetailComposer(sessionId, prev) {
+        if (prev.archived) return "";
+        const sid = escapeHtml(sessionId);
+        const stopped = !!(cards.get(sessionId) || {}).stopRequested;
+        const action = stopped ? "resume" : "stop";
+
+        return `
+            <div class="detail-composer" id="detail-composer" data-sid="${sid}">
+                <div class="detail-composer__head">
+                    <span class="detail-composer__label">${I18n.t("control.label")}</span>
+                    <button class="detail-composer__icon" id="detail-composer-toggle"
+                        type="button" aria-expanded="false"
+                        title="${I18n.t("control.expand")}" aria-label="${I18n.t("control.expand")}">⤢</button>
+                </div>
+                <textarea class="detail-composer__input" id="detail-directive"
+                    data-role="directive" data-sid="${sid}"
+                    rows="2" spellcheck="false"
+                    placeholder="${I18n.t("control.placeholder")}"></textarea>
+                <div class="detail-composer__actions">
+                    <button class="btn--card btn--card-send" data-action="send" data-sid="${sid}">${ICON_SEND} ${I18n.t("control.send")}</button>
+                    <button class="btn--card btn--card-${action}" data-action="${action}" data-sid="${sid}">${stopResumeLabel(stopped)}</button>
+                    <span class="detail-composer__hint">${I18n.t("control.hint")}</span>
+                </div>
+            </div>`;
+    }
+
+    function _autoGrow(input) {
+        // Reset first, or the box can only ever grow: scrollHeight is measured
+        // against the height we previously set.
+        input.style.height = "auto";
+        input.style.height = input.scrollHeight + "px";
+    }
+
+    function _toggleComposerSize() {
+        const composer = document.getElementById("detail-composer");
+        const input = document.getElementById("detail-directive");
+        const toggle = document.getElementById("detail-composer-toggle");
+        if (!composer || !input) return;
+
+        const expanded = composer.classList.toggle("is-expanded");
+        // Inline height from auto-grow would win over the expanded CSS height,
+        // so hand sizing back to the stylesheet on the way in and take it back
+        // on the way out.
+        if (expanded) {
+            input.style.height = "";
+        } else {
+            _autoGrow(input);
+        }
+        if (toggle) {
+            toggle.setAttribute("aria-expanded", String(expanded));
+            const label = I18n.t(expanded ? "control.collapse" : "control.expand");
+            toggle.title = label;
+            toggle.setAttribute("aria-label", label);
+        }
+        if (expanded) input.focus();
+    }
+
+    function bindDetailComposer() {
+        const composer = document.getElementById("detail-composer");
+        if (!composer) return;
+        const input = document.getElementById("detail-directive");
+        const toggle = document.getElementById("detail-composer-toggle");
+
+        if (toggle) toggle.addEventListener("click", (e) => { e.stopPropagation(); _toggleComposerSize(); });
+
+        composer.querySelectorAll("[data-action]").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                e.stopPropagation();
+                handleCardAction(btn.dataset.action, btn.dataset.sid, btn);
+            });
+        });
+
+        if (input) {
+            _autoGrow(input);
+            input.addEventListener("input", () => {
+                if (!composer.classList.contains("is-expanded")) _autoGrow(input);
+            });
+            input.addEventListener("mousedown", (e) => e.stopPropagation());
+            input.addEventListener("click", (e) => e.stopPropagation());
+            input.addEventListener("keydown", (e) => {
+                // Ctrl/Cmd+Enter sends; plain Enter and Shift+Enter are
+                // newlines, so a multi-line directive can be written without
+                // fighting the send key.
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    sendDirective(input.dataset.sid, input);
+                    return;
+                }
+                if (e.key === "Escape") {
+                    // Collapse the big view first. Otherwise let Escape close
+                    // the modal — but never while there is text to lose.
+                    if (composer.classList.contains("is-expanded")) {
+                        e.stopPropagation();
+                        _toggleComposerSize();
+                    } else if (input.value.trim()) {
+                        e.stopPropagation();
+                    }
+                }
+            });
+        }
+    }
+
+    // Keep the composer's Stop/Resume in step when state arrives over SSE.
+    function updateModalControls(session) {
+        const composer = document.getElementById("detail-composer");
+        if (!composer) return;
+        const btn = composer.querySelector("[data-action='stop'], [data-action='resume']");
+        if (!btn || btn.dataset.sid !== session.session_id) return;
+        const stopped = !!session.stop_requested;
+        const wanted = stopped ? "resume" : "stop";
+        if (btn.dataset.action === wanted) return;
+        btn.dataset.action = wanted;
+        btn.textContent = stopResumeLabel(stopped);
+        btn.classList.toggle("btn--card-resume", stopped);
+        btn.classList.toggle("btn--card-stop", !stopped);
+    }
 
     function openDetailModal(sessionId) {
         // Remove existing modal
@@ -574,9 +1141,12 @@ function loadSessionsView() {
                     <div class="detail-modal__timeline-load" id="detail-timeline-load"></div>
                     <div id="detail-timeline-msgs"></div>
                 </div>
+                <div id="detail-pending"></div>
+                ${renderDetailComposer(sessionId, prev)}
             </div>
         `;
         document.body.appendChild(overlay);
+        renderDetailPending(sessionId);
 
         // Close handlers
         document.getElementById("detail-close").addEventListener("click", closeDetailModal);
@@ -584,6 +1154,7 @@ function loadSessionsView() {
             if (e.target === overlay) closeDetailModal();
         });
         document.addEventListener("keydown", _detailEscHandler);
+        bindDetailComposer();
 
         // Waterfall auto-load on scroll
         _tlSessionId = sessionId;
@@ -824,6 +1395,59 @@ function loadSessionsView() {
         return "est. " + tokens;
     }
 
+    // Timeline record of a past approval request. The server carries the same
+    // structured payload the live card uses, in `tool_input`, so the history
+    // shows what was actually asked — previously this row was only
+    // "Approval needed / Waiting for approval…" with the question, plan or
+    // file contents simply absent.
+    function renderApprovalCard(m) {
+        let payload = null;
+        if (m.tool_input) {
+            try { payload = JSON.parse(m.tool_input); } catch (_) { payload = null; }
+        }
+
+        const title = m.tool_name || I18n.t("detail.timeline.approval_needed");
+        let html = '<div class="tl-msg__title">' + escapeHtml(title) + "</div>";
+
+        // Payload missing (an older record, or a prompt with no tool behind
+        // it) — fall back to whatever text we do have.
+        if (!payload) {
+            html += '<div class="tl-msg__text tl-msg__text--dim">' +
+                escapeHtml(m.content || I18n.t("request.awaiting")) + "</div>";
+            return html;
+        }
+
+        // A question is its own shape: the options are the content, so a
+        // generic key/value dump would bury them.
+        const questions = payload.questions || [];
+        if (questions.length) {
+            html += questions.map(q => {
+                const opts = (q.options || []).map(o =>
+                    '<li class="tl-approval__option">' +
+                        '<span class="tl-approval__label">' + escapeHtml(o.label) + "</span>" +
+                        (o.description
+                            ? '<span class="tl-approval__desc">' + escapeHtml(o.description) + "</span>"
+                            : "") +
+                    "</li>").join("");
+                return '<div class="tl-approval__question">' +
+                    (q.header ? '<div class="tl-approval__header">' + escapeHtml(q.header) + "</div>" : "") +
+                    '<div class="tl-approval__text">' + escapeHtml(q.question || "") + "</div>" +
+                    (opts ? '<ul class="tl-approval__options">' + opts + "</ul>" : "") +
+                    "</div>";
+            }).join("");
+            return html;
+        }
+
+        // Everything else — permissions and plans — reuses the live card's
+        // block renderer, so the two surfaces cannot drift.
+        html += (payload.details || []).map(renderDetailBlock).join("");
+        if (!payload.details || !payload.details.length) {
+            html += '<div class="tl-msg__text tl-msg__text--dim">' +
+                escapeHtml(payload.preview || m.content || "") + "</div>";
+        }
+        return html;
+    }
+
     function renderTimelineMsg(m) {
         const time = new Date(m.timestamp * 1000);
         const now = new Date();
@@ -893,8 +1517,7 @@ function loadSessionsView() {
                 bodyHtml = '<div class="tl-msg__text" style="font-style:italic;color:var(--color-text-muted);">Thinking</div>';
             }
         } else if (m.type === "pending_approval") {
-            bodyHtml = '<div class="tl-msg__title">' + escapeHtml(m.tool_name || "Approval needed") + '</div>';
-            bodyHtml += '<div class="tl-msg__text tl-msg__text--dim">' + escapeHtml(m.content || "Waiting for approval…") + '</div>';
+            bodyHtml = renderApprovalCard(m);
         } else {
             bodyHtml = '<div class="tl-msg__text">' + escapeHtml(m.content || "(empty)") + '</div>';
         }
@@ -1083,6 +1706,8 @@ function loadSessionsView() {
                 // Update modal badge if this session is open
                 if (session.session_id === _tlSessionId && document.getElementById("detail-overlay")) {
                     updateModalBadge(session.state);
+                    updateModalControls(session);
+                    renderDetailPending(session.session_id);
                 }
             } catch (err) {
                 console.error("cc-monitor: failed to parse SSE data", err);

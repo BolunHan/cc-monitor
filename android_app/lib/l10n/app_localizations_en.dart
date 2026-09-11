@@ -255,4 +255,60 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get addServer => 'Add Server';
+
+  @override
+  String get requestAwaiting => 'awaiting your approval';
+
+  @override
+  String get requestAtTerminal => 'answer at terminal';
+
+  @override
+  String get requestAllow => 'Allow';
+
+  @override
+  String get requestDeny => 'Deny';
+
+  @override
+  String get requestSubmit => 'Submit answers';
+
+  @override
+  String get requestCustomAnswer => 'Or type your own answer…';
+
+  @override
+  String get requestTruncated => 'truncated';
+
+  @override
+  String get controlDirectiveHint => 'Send a directive…';
+
+  @override
+  String get controlSend => 'Send';
+
+  @override
+  String get controlStop => 'Stop';
+
+  @override
+  String get controlResume => 'Resume';
+
+  @override
+  String controlQueued(int n) {
+    return '$n queued';
+  }
+
+  @override
+  String get controlDelivered => 'Answer sent';
+
+  @override
+  String get controlMissed => 'Too late — answer at the terminal';
+
+  @override
+  String get controlQueuedOk => 'Queued — delivered when the agent next stops';
+
+  @override
+  String get controlRejected => 'Rejected — answer every question';
+
+  @override
+  String get controlFailed => 'Could not reach the server';
+
+  @override
+  String get controlAnswerAll => 'Answer every question first';
 }

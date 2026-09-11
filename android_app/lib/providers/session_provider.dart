@@ -222,6 +222,86 @@ class SessionProvider extends ChangeNotifier {
     await loadSessions(showLoading: false);
   }
 
+  // ---- Control channel ----
+
+  /// Answer a pending request.
+  ///
+  /// [answers] maps question text to the chosen label (or free text). It is
+  /// required when answering an `AskUserQuestion`: `allow` on its own does not
+  /// answer a question, and the server rejects it rather than clearing the
+  /// request and stranding the session.
+  Future<ControlOutcome> respondToRequest(
+    String sessionId,
+    String requestId, {
+    required String behavior,
+    Map<String, String>? answers,
+  }) async {
+    final body = <String, dynamic>{
+      'request_id': requestId,
+      'behavior': behavior,
+    };
+    if (answers != null && answers.isNotEmpty) body['answers'] = answers;
+
+    try {
+      final resp = await _api.post('/api/session/$sessionId/respond', data: body);
+      if (resp.statusCode == 400) return ControlOutcome.rejected;
+      if (resp.statusCode != 200) return ControlOutcome.failed;
+      final data = resp.data;
+      final delivered = data is Map && (data['delivered'] as bool? ?? false);
+      return delivered ? ControlOutcome.delivered : ControlOutcome.missed;
+    } catch (e) {
+      debugPrint('[cc-monitor:control] respond failed: $e');
+      return ControlOutcome.failed;
+    }
+  }
+
+  /// Send a directive into a session.
+  ///
+  /// Always `queued`: delivery happens at the agent's next turn boundary, and
+  /// claiming otherwise would be a lie. The session's
+  /// `undeliveredDirectiveCount` is how the UI shows it is still pending.
+  Future<ControlOutcome> sendDirective(String sessionId, String text) async {
+    try {
+      final resp = await _api.post(
+        '/api/session/$sessionId/directive',
+        data: {'text': text},
+      );
+      if (resp.statusCode == 400) return ControlOutcome.rejected;
+      if (resp.statusCode != 200) return ControlOutcome.failed;
+      await loadSessions(showLoading: false);
+      return ControlOutcome.queued;
+    } catch (e) {
+      debugPrint('[cc-monitor:control] directive failed: $e');
+      return ControlOutcome.failed;
+    }
+  }
+
+  /// Ask a session to stop. Enforcement is cooperative — the agent's
+  /// PreToolUse hook denies further tool calls until the user prompts again.
+  Future<ControlOutcome> stopSession(String sessionId) async {
+    try {
+      final resp = await _api.post('/api/session/$sessionId/stop', data: const {});
+      if (resp.statusCode != 200) return ControlOutcome.failed;
+      await loadSessions(showLoading: false);
+      return ControlOutcome.delivered;
+    } catch (e) {
+      debugPrint('[cc-monitor:control] stop failed: $e');
+      return ControlOutcome.failed;
+    }
+  }
+
+  Future<ControlOutcome> resumeSession(String sessionId) async {
+    try {
+      final resp = await _api.post('/api/session/$sessionId/resume');
+      if (resp.statusCode != 200) return ControlOutcome.failed;
+      await loadSessions(showLoading: false);
+      return ControlOutcome.delivered;
+    } catch (e) {
+      debugPrint('[cc-monitor:control] resume failed: $e');
+      return ControlOutcome.failed;
+    }
+  }
+
   Future<void> deleteSession(String sessionId) async {
     await _api.delete('/api/session/$sessionId');
     removeSessionLocally(sessionId);
@@ -377,6 +457,28 @@ class SessionProvider extends ChangeNotifier {
     _messageCtrl.close();
     super.dispose();
   }
+}
+
+/// What actually happened to a control action.
+///
+/// Worth distinguishing rather than returning a bare bool: "delivered" and
+/// "missed" differ in a way the user must be told about — the second means the
+/// prompt was already answered at the terminal, so their tap did nothing.
+enum ControlOutcome {
+  /// A hook was blocked and took the answer.
+  delivered,
+
+  /// Recorded, but the agent had already fallen back to its local dialog.
+  missed,
+
+  /// Queued for the next turn boundary — directives always are.
+  queued,
+
+  /// The server refused it (e.g. a question answered without answers).
+  rejected,
+
+  /// Network or server error.
+  failed,
 }
 
 class SseEventEntry {

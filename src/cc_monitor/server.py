@@ -20,6 +20,30 @@ from fastapi.staticfiles import StaticFiles
 
 logger = logging.getLogger(__name__)
 
+# Upper bound on how long a PermissionRequest hook may hold a terminal dialog
+# open waiting for a remote answer. Guards against a caller pinning a hook
+# (and therefore a live agent) open indefinitely.
+#
+# 540s is chosen against Claude Code's *default* 600s command-hook timeout:
+# a hook whose timer expires has its output discarded, so a hold that outlived
+# the hook would silently turn a remote approval into a no-op. Keeping the
+# ceiling below the default means no hook entry needs an explicit `timeout`,
+# and existing installations keep working untouched.
+_MAX_HOLD_SECONDS = 540.0
+
+
+async def _optional_json(request: Request) -> dict:
+    """Parse a JSON body, tolerating an empty one.
+
+    These control endpoints are POSTs whose fields are all optional, and a UI
+    calling fetch() without a body should not be a 422.
+    """
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, ValueError):
+        return {}
+    return body if isinstance(body, dict) else {}
+
 
 def _detect_lan_ip() -> str:
     """Auto-detect the LAN IP address (no internet required).
@@ -150,6 +174,22 @@ def _format_sse_event(event: str, data: str | None = None) -> str:
     return f"event: {event}\n\n"
 
 
+# NOTE on the session messaging socket (CLAUDE_CODE_MESSAGING_SOCKET).
+#
+# Claude Code documents a per-session Unix socket that a script can post into,
+# which would let a directive reach an *idle* session and start a new turn. It
+# is not used here, because it does not work: measured against a real
+# interactive session on 2.1.268, every write is accepted at the transport
+# level and then silently discarded — including writes from a genuine child
+# hook holding the correct path and token. Nothing is returned to distinguish
+# "delivered" from "dropped", so anything built on it reports success it did
+# not achieve.
+#
+# Directives therefore ride the Stop hook instead (see _control_for and
+# StateManager.await_directive). The socket path is still *recorded* when hooks
+# report it, purely so the UI can show whether a session offers it at all.
+
+
 def create_app(
         data_dir: Path | None = None,
         enable_auth: bool = False,
@@ -185,6 +225,8 @@ def create_app(
     app = FastAPI(title="cc-monitor", version=__version__)
     _data_dir = data_dir or _safe_home() / ".cc-monitor"
     manager = StateManager(data_dir=_data_dir)
+    # Reachable from tests and from future middleware without re-plumbing.
+    app.state.manager = manager
 
     # Allow cross-origin requests from any origin (dashboard may be
     # hosted on GitHub Pages or another static host).
@@ -262,12 +304,52 @@ def create_app(
 
     # ---- API routes ----
 
+    def _control_for(session, hook_event_name: str) -> dict:
+        """Build the control block a hook reads back out of its event POST.
+
+        Every hook already POSTs here, so piggy-backing the control channel on
+        the response keeps the hot path (PreToolUse fires on every single tool
+        call) at exactly one round trip.
+        """
+        ctl: dict = {}
+
+        if hook_event_name == "PermissionRequest" and session.pending_request:
+            ctl["request_id"] = session.pending_request.request_id
+            ctl["hold_seconds"] = manager.hold_seconds_for(session.session_id)
+
+        elif hook_event_name == "PreToolUse" and session.stop_requested:
+            ctl["stop"] = True
+            ctl["stop_reason"] = session.stop_reason or "Stopped from cc-monitor"
+
+        elif hook_event_name == "Stop":
+            directive = manager.claim_directive(session.session_id)
+            if directive is not None:
+                ctl["directive"] = {
+                    "directive_id": directive.directive_id,
+                    "text": directive.text,
+                }
+            else:
+                # Nothing waiting right now, but a UI is watching — so the turn
+                # boundary is the moment a follow-up is most likely to be
+                # typed. Tell the hook how long to park so it can catch one.
+                hold = manager.hold_for_directive(session.session_id)
+                if hold > 0:
+                    ctl["directive_hold_seconds"] = hold
+
+        return ctl
+
     @app.post("/api/event")
     async def handle_event(request: Request):
-        """Receive a raw hook event, update state, broadcast SSE."""
+        """Receive a raw hook event, update state, broadcast SSE.
+
+        The response doubles as the hook-facing control channel — see
+        _control_for().
+        """
         raw = await request.json()
         session = await manager.handle_event(raw)
-        return JSONResponse(session.to_dict())
+        body = session.to_dict()
+        body["control"] = _control_for(session, raw.get("hook_event_name", ""))
+        return JSONResponse(body)
 
     @app.get("/api/status")
     async def get_all_status():
@@ -372,6 +454,146 @@ def create_app(
         if session is None:
             raise HTTPException(status_code=404, detail="Session not found")
         return JSONResponse(session.to_dict())
+
+    # ---- Control channel ----
+
+    @app.get("/api/request/{request_id}/decision")
+    async def await_request_decision(request_id: str, timeout: float = 0.0):
+        """Long-poll for a UI's answer to a pending request.
+
+        Called by a blocked PermissionRequest hook. Returns
+        ``{"decision": null}`` when the hold window closes unanswered — the
+        hook must then print nothing and let the local terminal dialog appear
+        exactly as it would have without cc-monitor.
+        """
+        timeout = max(0.0, min(timeout, _MAX_HOLD_SECONDS))
+        decision = await manager.await_decision(request_id, timeout)
+        return JSONResponse({"decision": decision})
+
+    @app.post("/api/session/{session_id}/respond")
+    async def respond_to_request(session_id: str, request: Request):
+        """Answer a pending request on behalf of a UI.
+
+        The decision is deliberately agent-neutral; each agent's bridge (the
+        Claude Code hook, the DSH plugin) translates it into whatever its own
+        protocol needs. ``delivered`` reports whether a hook was actually
+        blocked on this request — when it is False the agent already fell back
+        to its local dialog, and the UI should say so rather than implying the
+        answer took effect.
+        """
+        body = await _optional_json(request)
+        request_id = body.get("request_id")
+        if not request_id:
+            raise HTTPException(status_code=400, detail="request_id is required")
+
+        behavior = body.get("behavior", "allow")
+        if behavior not in ("allow", "deny"):
+            raise HTTPException(status_code=400, detail="behavior must be 'allow' or 'deny'")
+
+        # Answering an AskUserQuestion requires the answers: `allow` alone
+        # leaves the question unanswered, so the agent stays blocked while the
+        # server has already cleared the request — the client loses the prompt
+        # and the session stalls with nothing to click. Reject it instead.
+        pending = manager.get_pending_request(session_id)
+        if (
+            behavior == "allow"
+            and pending is not None
+            and pending.kind == "question"
+            and not body.get("answers")
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="an AskUserQuestion needs 'answers'; 'allow' alone does not answer it",
+            )
+
+        decision: dict = {"behavior": behavior}
+        for key in ("message", "answers", "updated_input"):
+            if body.get(key):
+                decision[key] = body[key]
+
+        delivered, reason = await manager.resolve_pending_request(
+            session_id, request_id, decision
+        )
+        return JSONResponse({
+            "status": "ok",
+            "delivered": delivered,
+            "reason": reason,
+            "decision": decision,
+        })
+
+    @app.post("/api/session/{session_id}/directive")
+    async def send_directive(session_id: str, request: Request):
+        """Send a directive into a session.
+
+        The directive is queued, and delivered by the Stop hook: either one
+        already parked at a turn boundary (which is woken immediately) or the
+        next one to arrive. So the response reports ``queued`` and the UI must
+        not promise more than that — the text reaches the agent at the next
+        turn boundary, which may be a while if the agent is mid-task.
+
+        There is no eager transport to offer instead: the session messaging
+        socket is documented but drops everything in practice (see the note
+        above _post_to_messaging_socket's former home).
+        """
+        body = await _optional_json(request)
+        text = (body.get("text") or "").strip()
+        if not text:
+            raise HTTPException(status_code=400, detail="text is required")
+        if manager.get(session_id) is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+
+        directive = await manager.queue_directive(session_id, text)
+
+        # Sending a directive is also how a user resumes a stopped session.
+        await manager.clear_stop(session_id)
+
+        return JSONResponse({
+            "status": "queued",
+            "via": "hook",
+            "directive_id": directive.directive_id,
+            # Diagnostic only — recorded because hooks report it, never used
+            # to deliver.
+            "socket_reported": bool(manager.get_session_socket(session_id)),
+        })
+
+    @app.get("/api/session/{session_id}/directive/next")
+    async def await_next_directive(session_id: str, timeout: float = 0.0):
+        """Long-poll for a directive queued against this session.
+
+        Called by a parked Stop hook at the end of a turn. Returns
+        ``{"directive": null}`` when the hold window closes with nothing typed,
+        and the turn ends normally.
+        """
+        timeout = max(0.0, min(timeout, _MAX_HOLD_SECONDS))
+        directive = await manager.await_directive(session_id, timeout)
+        return JSONResponse({
+            "directive": directive.to_dict() if directive else None,
+        })
+
+    @app.post("/api/session/{session_id}/stop")
+    async def stop_session(session_id: str, request: Request):
+        """Ask a session to stop working.
+
+        Enforcement is cooperative: the PreToolUse hook reads this flag back
+        and denies tool calls until the user prompts again. Claude Code
+        exposes no external interrupt, so this is the strongest stop
+        available — the agent stops touching things, and its current turn
+        ends at the next tool boundary.
+        """
+        body = await _optional_json(request)
+        reason = body.get("reason")
+        ok = await manager.request_stop(session_id, reason)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return JSONResponse({"status": "stop_requested", "session_id": session_id})
+
+    @app.post("/api/session/{session_id}/resume")
+    async def resume_session(session_id: str):
+        """Clear a stop request without sending a directive."""
+        if manager.get(session_id) is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        await manager.clear_stop(session_id)
+        return JSONResponse({"status": "resumed", "session_id": session_id})
 
     @app.get("/api/session/{session_id}/messages")
     async def get_session_messages(session_id: str, offset: int = 0, limit: int = 5):

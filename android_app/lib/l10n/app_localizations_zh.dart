@@ -253,4 +253,60 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get addServer => '添加服务器';
+
+  @override
+  String get requestAwaiting => '等待你的批准';
+
+  @override
+  String get requestAtTerminal => '请在终端回答';
+
+  @override
+  String get requestAllow => '允许';
+
+  @override
+  String get requestDeny => '拒绝';
+
+  @override
+  String get requestSubmit => '提交答案';
+
+  @override
+  String get requestCustomAnswer => '或输入自定义答案…';
+
+  @override
+  String get requestTruncated => '已截断';
+
+  @override
+  String get controlDirectiveHint => '发送指令…';
+
+  @override
+  String get controlSend => '发送';
+
+  @override
+  String get controlStop => '停止';
+
+  @override
+  String get controlResume => '继续';
+
+  @override
+  String controlQueued(int n) {
+    return '待发送 $n 条';
+  }
+
+  @override
+  String get controlDelivered => '已发送回答';
+
+  @override
+  String get controlMissed => '已超时 — 请在终端回答';
+
+  @override
+  String get controlQueuedOk => '已排队 — 将在智能体下次停下时送达';
+
+  @override
+  String get controlRejected => '被拒绝 — 请回答所有问题';
+
+  @override
+  String get controlFailed => '无法连接服务器';
+
+  @override
+  String get controlAnswerAll => '请先回答所有问题';
 }

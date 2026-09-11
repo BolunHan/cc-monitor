@@ -8,6 +8,7 @@ import '../models/session_stats.dart';
 import '../models/message.dart';
 import '../providers/session_provider.dart';
 import '../widgets/agent_badge.dart';
+import '../widgets/pending_request_card.dart';
 
 class SessionDetailScreen extends StatefulWidget {
   final String sessionId;
@@ -222,6 +223,16 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
                 _StateBadge(state: session.state),
               ],
             ),
+            actions: [
+              IconButton(
+                icon: Icon(session.stopRequested
+                    ? Icons.play_circle_outline
+                    : Icons.stop_circle_outlined),
+                tooltip:
+                    session.stopRequested ? l10n.controlResume : l10n.controlStop,
+                onPressed: () => _toggleStop(provider, l10n, session),
+              ),
+            ],
           ),
           body: Column(
             children: [
@@ -251,11 +262,71 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
                 ),
               const Divider(height: 1),
               Expanded(child: _buildTimeline(l10n)),
+              if (session.pendingRequest != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: PendingRequestCard(
+                    request: session.pendingRequest!,
+                    onRespond: (behavior, answers) =>
+                        _respond(provider, l10n, session, behavior, answers),
+                  ),
+                ),
+              _DirectiveComposer(
+                session: session,
+                l10n: l10n,
+                onSubmit: (text) => _sendDirective(provider, l10n, session, text),
+              ),
             ],
           ),
         );
       },
     );
+  }
+
+  Future<void> _respond(
+    SessionProvider provider,
+    AppLocalizations l10n,
+    Session session,
+    String behavior,
+    Map<String, String>? answers,
+  ) async {
+    final req = session.pendingRequest;
+    if (req == null) return;
+    final outcome = await provider.respondToRequest(
+      session.sessionId,
+      req.requestId,
+      behavior: behavior,
+      answers: answers,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(controlOutcomeLabel(l10n, outcome))));
+  }
+
+  Future<void> _toggleStop(
+      SessionProvider provider, AppLocalizations l10n, Session session) async {
+    final outcome = session.stopRequested
+        ? await provider.resumeSession(session.sessionId)
+        : await provider.stopSession(session.sessionId);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(outcome == ControlOutcome.failed
+          ? l10n.controlFailed
+          : (session.stopRequested ? l10n.controlResume : l10n.controlStop)),
+      duration: const Duration(seconds: 2),
+    ));
+  }
+
+  Future<void> _sendDirective(
+    SessionProvider provider,
+    AppLocalizations l10n,
+    Session session,
+    String text,
+  ) async {
+    final outcome = await provider.sendDirective(session.sessionId, text);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(controlOutcomeLabel(l10n, outcome))));
   }
 
   Widget _buildTimeline(AppLocalizations l10n) {
@@ -825,6 +896,111 @@ class _SkeletonPulseState extends State<_SkeletonPulse>
       animation: _anim,
       builder: (context, child) => Opacity(opacity: _anim.value, child: child),
       child: widget.child,
+    );
+  }
+}
+
+/// Directive composer for the detail screen.
+///
+/// Plain text on purpose — the same thing the web dashboard's composer sends,
+/// and the agent receives it as hook feedback at its next turn boundary, so a
+/// multi-line message is fine but rich text would buy nothing.
+class _DirectiveComposer extends StatefulWidget {
+  final Session session;
+  final AppLocalizations l10n;
+
+  /// Returns once the directive has been accepted (queued) by the server.
+  final Future<void> Function(String text) onSubmit;
+
+  const _DirectiveComposer({
+    required this.session,
+    required this.l10n,
+    required this.onSubmit,
+  });
+
+  @override
+  State<_DirectiveComposer> createState() => _DirectiveComposerState();
+}
+
+class _DirectiveComposerState extends State<_DirectiveComposer> {
+  final TextEditingController _ctrl = TextEditingController();
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final text = _ctrl.text.trim();
+    if (text.isEmpty || _sending) return;
+    setState(() => _sending = true);
+    try {
+      await widget.onSubmit(text);
+      // Only clear on the way out, and only if the widget survived: losing a
+      // typed directive because the screen rebuilt would be unforgivable.
+      if (mounted) _ctrl.clear();
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = widget.l10n;
+    final queued = widget.session.undeliveredDirectiveCount;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (queued > 0)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(l10n.controlQueued(queued),
+                    style: TextStyle(
+                        fontSize: 11, color: Theme.of(context).disabledColor)),
+              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _ctrl,
+                    enabled: !_sending,
+                    minLines: 1,
+                    maxLines: 5,
+                    textInputAction: TextInputAction.newline,
+                    style: const TextStyle(fontSize: 14),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: l10n.controlDirectiveHint,
+                      border: const OutlineInputBorder(),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filled(
+                  onPressed: _sending ? null : _send,
+                  icon: _sending
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.arrow_upward),
+                  tooltip: l10n.controlSend,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
