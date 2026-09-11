@@ -214,6 +214,11 @@ npm:publish:
     - if: '$CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/'
     - if: '$CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api"'
       when: manual
+  # needs: [] detaches this from the stage order, so it becomes playable the
+  # moment the pipeline is created. Without it the job sits in "created"
+  # rather than "manual", because the manual build/pages jobs ahead of it are
+  # never played — and GitLab refuses to play a job that is not yet "manual".
+  needs: []
   script:
     - npm install -g npm@latest
     - cd dsh-cc-monitor
