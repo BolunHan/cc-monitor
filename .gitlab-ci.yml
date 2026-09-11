@@ -32,6 +32,20 @@ stages:
   - publish
   - release
 
+# Retry infrastructure failures, not code failures. A pipeline was once
+# rejected outright with "Unable to run pipeline — Undefined error
+# (01M28KHM94KZWFEMZDC1ATF3BD)", which is GitLab's generic internal-error
+# message (it carries a Sentry event ID) and not a config problem. Retrying
+# costs nothing and covers that whole class.
+default:
+  retry:
+    max: 2
+    when:
+      - unknown_failure
+      - runner_system_failure
+      - stuck_or_timeout_failure
+      - api_failure
+
 # Trigger scope mirrors the GitHub setup exactly: every workflow over there was
 # `workflow_dispatch` / `workflow_call`, so nothing ran on an ordinary push —
 # only on a version tag (via release.yml) or a manual dispatch. Keeping that
