@@ -3,6 +3,14 @@ FROM python:3.13-slim
 LABEL org.opencontainers.image.source="https://github.com/bolunhan/cc-monitor"
 LABEL org.opencontainers.image.description="Monitor Claude Code working status via hooks"
 
+# Version shown in registry metadata (GHCR and the GitLab registry read this
+# label). Passed in by whatever runs the build rather than written here, so it
+# cannot drift from the one source of truth in src/cc_monitor/__init__.py —
+# `make docker-build` reads that file and the GitLab tag pipeline uses the tag.
+# A bare `docker build .` therefore produces an image with no version label.
+ARG CC_MONITOR_VERSION=""
+LABEL org.opencontainers.image.version="${CC_MONITOR_VERSION}"
+
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY

@@ -5,6 +5,9 @@ PORT     ?= 9876
 HOST     ?= 0.0.0.0
 VENV     := $(HOME)/Projects/venv_313
 PROJROOT := $(shell pwd)
+# Read from the package's single source of truth, so the image's OCI version
+# label cannot drift from the version the code reports.
+CC_MONITOR_VERSION := $(shell sed -n 's/^__version__ = "\(.*\)"/\1/p' $(PROJROOT)/src/cc_monitor/__init__.py)
 APK_SRC  := $(PROJROOT)/android_app
 APK_OUT  := $(APK_SRC)/build/app/outputs/flutter-apk/app-debug.apk
 
@@ -104,6 +107,7 @@ DOCKER_PROXY ?=
 docker-build:
 	$(DOCKER) build \
 		$(if $(DOCKER_PROXY),--build-arg HTTP_PROXY=$(DOCKER_PROXY) --build-arg HTTPS_PROXY=$(DOCKER_PROXY)) \
+		--build-arg CC_MONITOR_VERSION=$(CC_MONITOR_VERSION) \
 		-t cc-monitor:latest .
 
 .PHONY: docker-up

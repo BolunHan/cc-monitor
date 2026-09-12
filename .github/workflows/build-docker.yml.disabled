@@ -53,6 +53,10 @@ jobs:
         with:
           context: .
           push: true
+          # Feeds the org.opencontainers.image.version label; without it the
+          # image carries no version in registry metadata.
+          build-args: |
+            CC_MONITOR_VERSION=${{ steps.meta.outputs.version }}
           tags: |
             ${{ steps.meta.outputs.image }}:latest
             ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
